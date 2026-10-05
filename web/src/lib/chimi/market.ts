@@ -123,10 +123,17 @@ export async function loadCoin(dep: Deployment, token: Address): Promise<Coin | 
 export type PoolSwap = {
   tx: `0x${string}`;
   block: bigint;
+  time: number;
+  recipient: Address;
   buy: boolean;
   tokenAmount: bigint;
   ethAmount: bigint;
   sqrtPriceX96: bigint;
+};
+
+export type Holder = {
+  address: Address;
+  balance: bigint;
 };
 
 const swapEvent = parseAbiItem(
@@ -134,26 +141,57 @@ const swapEvent = parseAbiItem(
 );
 
 export async function loadSwaps(pool: Address, tokenIs0: boolean): Promise<PoolSwap[]> {
-  const latest = await publicClient.getBlockNumber();
-  const from = latest > 9_000n ? latest - 9_000n : 0n;
-  const logs = await publicClient.getLogs({
-    address: pool,
-    event: swapEvent,
-    fromBlock: from,
-    toBlock: latest,
-  });
-  return logs.map((log) => {
-    const amount0 = log.args.amount0 ?? 0n;
-    const amount1 = log.args.amount1 ?? 0n;
-    const tokenAmt = tokenIs0 ? amount0 : amount1;
-    const ethAmt = tokenIs0 ? amount1 : amount0;
-    return {
-      tx: log.transactionHash,
-      block: log.blockNumber,
-      buy: tokenAmt < 0n,
-      tokenAmount: tokenAmt < 0n ? -tokenAmt : tokenAmt,
-      ethAmount: ethAmt < 0n ? -ethAmt : ethAmt,
-      sqrtPriceX96: log.args.sqrtPriceX96 ?? 0n,
-    };
-  });
+  const latest = await publicClient.getBlock();
+  const latestNum = latest.number;
+  const latestTime = Number(latest.timestamp);
+  const span = 9_000n;
+  const seen = new Set<string>();
+  const rows: PoolSwap[] = [];
+  for (let i = 0; i < 10; i++) {
+    const to = latestNum - span * BigInt(i);
+    if (to <= 0n) break;
+    const from = to > span ? to - span + 1n : 0n;
+    const logs = await publicClient.getLogs({
+      address: pool,
+      event: swapEvent,
+      fromBlock: from,
+      toBlock: to,
+    });
+    for (const log of logs) {
+      const key = `${log.transactionHash}:${log.logIndex}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const amount0 = log.args.amount0 ?? 0n;
+      const amount1 = log.args.amount1 ?? 0n;
+      const tokenAmt = tokenIs0 ? amount0 : amount1;
+      const ethAmt = tokenIs0 ? amount1 : amount0;
+      const block = log.blockNumber ?? to;
+      rows.push({
+        tx: log.transactionHash ?? "0x",
+        block,
+        time: latestTime - Number(latestNum - block),
+        recipient: log.args.recipient ?? pool,
+        buy: tokenAmt < 0n,
+        tokenAmount: tokenAmt < 0n ? -tokenAmt : tokenAmt,
+        ethAmount: ethAmt < 0n ? -ethAmt : ethAmt,
+        sqrtPriceX96: log.args.sqrtPriceX96 ?? 0n,
+      });
+    }
+    if (from === 0n) break;
+  }
+  rows.sort((a, b) => (a.block < b.block ? -1 : 1));
+  return rows;
+}
+
+export async function loadHolders(token: Address, pool: Address, traders: Address[]): Promise<Holder[]> {
+  const unique = [...new Set([pool, ...traders].map((a) => a.toLowerCase() as Address))];
+  const balances = await Promise.all(
+    unique.map((holder) =>
+      publicClient.readContract({ address: token, abi: erc20Abi, functionName: "balanceOf", args: [holder] }),
+    ),
+  );
+  return unique
+    .map((address, i) => ({ address, balance: balances[i] }))
+    .filter((row) => row.balance > 0n)
+    .sort((a, b) => (a.balance < b.balance ? 1 : -1));
 }

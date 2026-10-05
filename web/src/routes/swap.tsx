@@ -4,13 +4,17 @@ import { formatEther, parseEther } from "viem";
 import { erc20Abi } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { estimatedOut, fmt, short, wethPerToken, type Coin } from "@/lib/chimi/market";
+import { readTokenMeta } from "@/lib/chimi/meta";
 import { useChimi } from "@/components/chimi/provider";
 
 export const Route = createFileRoute("/swap")({ component: SwapPage });
 
 const SLIPPAGE = [100, 200, 500];
 
-function Chip({ kind, label }: { kind: "eth" | "coin"; label: string }) {
+function Chip({ kind, label, image }: { kind: "eth" | "coin"; label: string; image?: string }) {
+  if (image) {
+    return <img src={image} alt="" className="size-[26px] rounded-full object-cover" />;
+  }
   return (
     <span
       className={`grid size-[26px] place-items-center rounded-full font-display text-[7px] ${kind === "eth" ? "border-[1.5px] border-gold text-gold" : "border-[1.5px] border-seal text-seal"}`}
@@ -29,6 +33,15 @@ function SwapPage() {
   const [slippageBps, setSlippageBps] = useState(200);
   const [settings, setSettings] = useState(false);
   const [picker, setPicker] = useState(false);
+  const [images, setImages] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const next: Record<string, string> = {};
+    for (const item of coins) {
+      const image = readTokenMeta(item.token)?.image;
+      if (image) next[item.token.toLowerCase()] = image;
+    }
+    setImages(next);
+  }, [coins]);
   const [payBal, setPayBal] = useState<bigint>();
   const [recvBal, setRecvBal] = useState<bigint>();
   const [note, setNote] = useState("");
@@ -110,6 +123,7 @@ function SwapPage() {
 
   const paySymbol = payEth ? "ETH" : coin?.symbol ?? "Select";
   const recvSymbol = payEth ? coin?.symbol ?? "Select" : "ETH";
+  const coinImage = coin ? images[coin.token.toLowerCase()] : undefined;
 
   return (
     <main>
@@ -186,6 +200,7 @@ function SwapPage() {
               symbol={paySymbol}
               kind={payEth ? "eth" : "coin"}
               mono={payEth ? "ETH" : coin?.symbol.slice(0, 4) ?? "?"}
+              image={payEth ? undefined : coinImage}
               onPick={!payEth && listed.length > 0 ? () => setPicker(true) : undefined}
               onMax={payBal !== undefined ? () => setAmount(formatEther(payBal)) : undefined}
             />
@@ -209,6 +224,7 @@ function SwapPage() {
               symbol={recvSymbol}
               kind={payEth ? "coin" : "eth"}
               mono={payEth ? coin?.symbol.slice(0, 4) ?? "?" : "ETH"}
+              image={payEth ? coinImage : undefined}
               onPick={payEth && listed.length > 0 ? () => setPicker(true) : undefined}
               readOnly
               dim={quote === 0n}
@@ -255,6 +271,7 @@ function SwapPage() {
                   <PickRow
                     key={c.token}
                     coin={c}
+                    image={images[c.token.toLowerCase()]}
                     on={c.token === coin?.token}
                     onPick={() => {
                       setToken(c.token);
@@ -294,6 +311,7 @@ function Field({
   symbol,
   kind,
   mono,
+  image,
   onPick,
   onMax,
   readOnly,
@@ -306,6 +324,7 @@ function Field({
   symbol: string;
   kind: "eth" | "coin";
   mono: string;
+  image?: string;
   onPick?: () => void;
   onMax?: () => void;
   readOnly?: boolean;
@@ -337,7 +356,7 @@ function Field({
           onClick={onPick}
           className="flex shrink-0 items-center gap-2 rounded-full border border-line bg-chip py-1.5 pr-3 pl-1.5 text-[15px] font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,.05)]"
         >
-          <Chip kind={kind} label={mono} />
+          <Chip kind={kind} label={mono} image={image} />
           {symbol}
           {onPick ? (
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" className="text-muted" aria-hidden>
@@ -357,16 +376,20 @@ function Field({
   );
 }
 
-function PickRow({ coin, on, onPick }: { coin: Coin; on: boolean; onPick: () => void }) {
+function PickRow({ coin, image, on, onPick }: { coin: Coin; image?: string; on: boolean; onPick: () => void }) {
   return (
     <button
       type="button"
       onClick={onPick}
       className={`flex items-center gap-3.5 rounded-2xl px-3 py-3 text-left ${on ? "bg-fg/6" : ""}`}
     >
-      <span className="grid size-10 shrink-0 place-items-center rounded-full border-[1.5px] border-seal font-display text-[9px] text-seal">
-        {coin.symbol.slice(0, 4)}
-      </span>
+      {image ? (
+        <img src={image} alt="" className="size-10 shrink-0 rounded-full object-cover" />
+      ) : (
+        <span className="grid size-10 shrink-0 place-items-center rounded-full border-[1.5px] border-seal font-display text-[9px] text-seal">
+          {coin.symbol.slice(0, 4)}
+        </span>
+      )}
       <span className="min-w-0 flex-1">
         <span className="block text-base font-medium">{coin.name}</span>
         <span className="block text-[13px] text-muted">${coin.symbol}</span>

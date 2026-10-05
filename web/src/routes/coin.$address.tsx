@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { formatEther, parseEther, type Address } from "viem";
 import { erc20Abi, giwaSepolia } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
@@ -7,11 +7,13 @@ import {
   estimatedOut,
   fmt,
   loadCoin,
+  loadHolders,
   loadSwaps,
   short,
   shortAddr,
   wethPerToken,
   type Coin,
+  type Holder,
   type PoolSwap,
 } from "@/lib/chimi/market";
 import { readTokenMeta, type TokenMeta } from "@/lib/chimi/meta";
@@ -20,6 +22,13 @@ import { useChimi } from "@/components/chimi/provider";
 export const Route = createFileRoute("/coin/$address")({ component: CoinPage });
 
 const SLIPPAGE = [100, 200, 500];
+const RANGES = [
+  ["5M", 5 * 60],
+  ["1H", 60 * 60],
+  ["6H", 6 * 60 * 60],
+  ["1D", 24 * 60 * 60],
+  ["ALL", 0],
+] as const;
 
 function chartPath(values: number[]) {
   const series = values.length === 1 ? [values[0], values[0]] : values;
@@ -74,7 +83,9 @@ function CoinPage() {
   const [payBal, setPayBal] = useState<bigint>();
   const [poolEth, setPoolEth] = useState<bigint>();
   const [swaps, setSwaps] = useState<PoolSwap[]>([]);
-  const [panel, setPanel] = useState<"trades" | "pool">("trades");
+  const [holders, setHolders] = useState<Holder[]>([]);
+  const [range, setRange] = useState<(typeof RANGES)[number][0]>("1H");
+  const [panel, setPanel] = useState<"trades" | "holders">("trades");
 
   useEffect(() => {
     setMeta(readTokenMeta(address));
@@ -155,8 +166,11 @@ function CoinPage() {
       })
       .catch(() => undefined);
     void loadSwaps(coin.pool, coin.tokenIs0)
-      .then((rows) => {
-        if (!cancel) setSwaps(rows);
+      .then(async (rows) => {
+        if (cancel) return;
+        setSwaps(rows);
+        const found = await loadHolders(coin.token, coin.pool, rows.map((row) => row.recipient));
+        if (!cancel) setHolders(found);
       })
       .catch(() => undefined);
     return () => {
@@ -179,15 +193,23 @@ function CoinPage() {
   }
   const quote = coin && !badAmount ? estimatedOut(parsed, price, side === "buy") : 0n;
   const minOut = (quote * BigInt(10_000 - slippageBps)) / 10_000n;
-  const chart = useMemo(() => {
-    const points = swaps.map((swap) => {
-      const eth = Number(wethPerToken(swap.sqrtPriceX96, coin?.tokenIs0 ?? true)) / 1e18 * 1_000_000_000;
-      return ethUsd ? eth * ethUsd : eth;
-    });
-    if (points.length === 0) points.push(fdvUsd ?? fdvEth);
-    else points.push(fdvUsd ?? fdvEth);
-    return chartPath(points);
-  }, [swaps, coin?.tokenIs0, ethUsd, fdvUsd, fdvEth]);
+  const now = Math.floor(Date.now() / 1000);
+  const windowSec = RANGES.find((item) => item[0] === range)?.[1] ?? 0;
+  const inRange = swaps.filter((swap) => windowSec === 0 || now - swap.time <= windowSec);
+  const dayAgo = swaps.filter((swap) => now - swap.time <= 24 * 60 * 60);
+  const volumeUsd = ethUsd ? dayAgo.reduce((sum, swap) => sum + (Number(swap.ethAmount) / 1e18) * ethUsd, 0) : undefined;
+  const capOf = (sqrt: bigint) => {
+    const eth = (Number(wethPerToken(sqrt, coin?.tokenIs0 ?? true)) / 1e18) * 1_000_000_000;
+    return ethUsd ? eth * ethUsd : eth;
+  };
+  const series = [...inRange.map((swap) => capOf(swap.sqrtPriceX96)), fdvUsd ?? fdvEth];
+  const ath = Math.max(fdvUsd ?? fdvEth, ...swaps.map((swap) => capOf(swap.sqrtPriceX96)));
+  const first = series[0] || 0;
+  const last = series[series.length - 1] || 0;
+  const change = first > 0 ? ((last - first) / first) * 100 : 0;
+  const chart = chartPath(series);
+  const clock = (unix: number) =>
+    new Date(unix * 1000).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 
   async function go() {
     if (!coin) return;
@@ -367,41 +389,77 @@ function CoinPage() {
         </section>
 
         <section className="rounded-3xl border border-line bg-chip p-5">
-          <div className="grid grid-cols-2 gap-4 border-b border-line pb-4 sm:grid-cols-4">
-            <Stat label="Market cap" value={fdvUsd ? money(fdvUsd) : `${fmt(price * 1_000_000_000n, 4)} ETH`} />
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <Stat
+              label="Market cap"
+              value={fdvUsd ? `${money(fdvUsd)} / ${money(fdvUsd)} FDV` : `${fmt(price * 1_000_000_000n, 4)} ETH`}
+            />
             <Stat label="Liquidity" value={liqUsd ? money(liqUsd) : poolEth !== undefined ? `${fmt(poolEth, 4)} ETH` : "—"} />
-            <Stat label="Price" value={`${tinyEth(price)} ETH`} />
-            <Stat label="Supply" value="1B" />
+            <Stat label="24h volume" value={volumeUsd === undefined ? "—" : money(volumeUsd)} />
+            <Stat label="ATH" value={fdvUsd || ath ? money(ath) : "—"} />
           </div>
-          <p className="mt-4 text-4xl font-semibold tracking-[-0.04em]">{fdvUsd ? money(fdvUsd) : `${fmt(price * 1_000_000_000n, 4)} ETH`}</p>
-          <p className="mt-1 text-sm text-muted">{tinyEth(price)} ETH per token</p>
-          <svg viewBox="0 0 640 280" className="mt-4 h-[280px] w-full">
-            <defs>
-              <linearGradient id="chimi-fill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#e0b45a" stopOpacity="0.35" />
-                <stop offset="100%" stopColor="#e0b45a" stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            {chart.area ? <path d={chart.area} fill="url(#chimi-fill)" /> : null}
-            {chart.line ? <path d={chart.line} fill="none" stroke="#e0b45a" strokeWidth="2" /> : null}
-          </svg>
-          <p className="text-xs text-muted">{swaps.length === 0 ? "No trades in the recent window. The line is the opening price." : "Market cap from recent pool trades."}</p>
+          <div className="mt-4 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-4xl font-semibold tracking-[-0.04em]">{fdvUsd ? money(fdvUsd) : `${fmt(price * 1_000_000_000n, 4)} ETH`}</p>
+              <p className={`mt-1 text-sm ${change < 0 ? "text-seal" : "text-ok"}`}>
+                {change > 0 ? "+" : ""}
+                {change.toFixed(2)}% <span className="text-muted">{range === "ALL" ? "all" : range}</span>
+              </p>
+            </div>
+            <div className="flex rounded-full border border-line bg-bg p-1">
+              {RANGES.map(([label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setRange(label)}
+                  className={`rounded-full px-2.5 py-1 text-xs ${range === label ? "bg-fg/10 text-fg" : "text-muted"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="relative mt-4 h-[280px]">
+            <svg viewBox="0 0 640 280" className="h-full w-full">
+              <defs>
+                <linearGradient id="chimi-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#e0b45a" stopOpacity="0.35" />
+                  <stop offset="100%" stopColor="#e0b45a" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              {[70, 140, 210].map((y) => (
+                <line key={y} x1="0" y1={y} x2="640" y2={y} stroke="#3f3325" strokeDasharray="3 6" />
+              ))}
+              {chart.area ? <path d={chart.area} fill="url(#chimi-fill)" /> : null}
+              {chart.line ? <path d={chart.line} fill="none" stroke="#e0b45a" strokeWidth="2" /> : null}
+            </svg>
+            <div className="pointer-events-none absolute inset-y-2 right-0 flex flex-col justify-between text-[11px] text-muted">
+              <span>{money(Math.max(...series))}</span>
+              <span>{money(series.reduce((a, b) => a + b, 0) / series.length || 0)}</span>
+              <span>{money(Math.min(...series))}</span>
+            </div>
+            <div className="absolute right-10 bottom-0 left-0 flex justify-between text-[11px] text-muted">
+              <span>{inRange[0] ? clock(inRange[0].time) : ""}</span>
+              <span>{inRange.length > 2 ? clock(inRange[Math.floor(inRange.length / 2)].time) : ""}</span>
+              <span>{inRange.length ? clock(inRange[inRange.length - 1].time) : "now"}</span>
+            </div>
+          </div>
         </section>
       </div>
 
       <section className="mt-4 rounded-3xl border border-line bg-chip p-4">
         <div className="flex gap-2">
-          {(["trades", "pool"] as const).map((key) => (
+          {(["trades", "holders"] as const).map((key) => (
             <button
               key={key}
               type="button"
               onClick={() => setPanel(key)}
               className={`rounded-full px-3 py-1.5 text-sm ${panel === key ? "bg-fg/10 text-fg" : "text-muted"}`}
             >
-              {key === "trades" ? "Recent trades" : "Pool"}
+              {key === "trades" ? "Trades" : "Holders"}
             </button>
           ))}
-          <span className="ml-auto text-xs text-muted">{panel === "trades" ? swaps.length : ""}</span>
+          <span className="ml-auto text-xs text-muted">{panel === "trades" ? swaps.length : holders.length}</span>
         </div>
         {panel === "trades" ? (
           <div className="mt-3 divide-y divide-line/60">
@@ -425,19 +483,29 @@ function CoinPage() {
             ))}
           </div>
         ) : (
-          <dl className="mt-3 divide-y divide-line/60 text-sm">
-            {[
-              ["Token", coin.token],
-              ["Pool", coin.pool],
-              ["Creator", coin.creator],
-              ["Wrapped ETH in pool", poolEth !== undefined ? `${fmt(poolEth, 6)} ETH` : "—"],
-            ].map(([label, value]) => (
-              <div key={label} className="flex justify-between gap-4 py-3">
-                <dt className="text-muted">{label}</dt>
-                <dd className="max-w-[60%] truncate text-right">{value}</dd>
-              </div>
-            ))}
-          </dl>
+          <div className="mt-3 divide-y divide-line/60">
+            {holders.length === 0 ? <p className="py-6 text-sm text-muted">No holder balances yet.</p> : null}
+            {holders.map((holder) => {
+              const pct = Number((holder.balance * 10_000n) / (1_000_000_000n * 10n ** 18n)) / 100;
+              const isPool = holder.address.toLowerCase() === coin.pool.toLowerCase();
+              return (
+                <a
+                  key={holder.address}
+                  href={`${explorer}/address/${holder.address}`}
+                  className="flex items-center justify-between gap-3 py-3 text-sm"
+                >
+                  <span>
+                    {shortAddr(holder.address)}
+                    {isPool ? <span className="ml-2 text-xs text-muted">Pool</span> : null}
+                  </span>
+                  <span className="text-right tabular-nums">
+                    {fmt(holder.balance, 2)} {coin.symbol}
+                    <span className="mt-0.5 block text-xs text-muted">{pct.toFixed(2)}%</span>
+                  </span>
+                </a>
+              );
+            })}
+          </div>
         )}
       </section>
     </main>

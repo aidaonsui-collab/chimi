@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fmt, wethPerToken, type Coin } from "@/lib/chimi/market";
+import { readTokenMeta } from "@/lib/chimi/meta";
 import { useChimi } from "@/components/chimi/provider";
 
 export const Route = createFileRoute("/")({ component: Home });
@@ -23,10 +24,16 @@ function Chevron() {
   );
 }
 
-function Mark({ symbol, large }: { symbol: string; large?: boolean }) {
+function Mark({ symbol, image, large }: { symbol: string; image?: string; large?: boolean }) {
+  const frame = large
+    ? "size-20 border-2 shadow-[0_0_0_6px_rgba(210,74,46,.08),0_12px_30px_rgba(210,74,46,.25)]"
+    : "size-11 border-[1.5px]";
+  if (image) {
+    return <img src={image} alt="" className={`shrink-0 rounded-full border-seal object-cover ${frame}`} />;
+  }
   return (
     <span
-      className={`grid shrink-0 place-items-center rounded-full border-seal bg-[radial-gradient(circle_at_35%_30%,rgba(210,74,46,.18),rgba(23,18,14,.6))] font-display text-seal ${large ? "size-20 border-2 text-[15px] shadow-[0_0_0_6px_rgba(210,74,46,.08),0_12px_30px_rgba(210,74,46,.25)]" : "size-11 border-[1.5px] text-[10px]"}`}
+      className={`grid shrink-0 place-items-center rounded-full border-seal bg-[radial-gradient(circle_at_35%_30%,rgba(210,74,46,.18),rgba(23,18,14,.6))] font-display text-seal ${frame} ${large ? "text-[15px]" : "text-[10px]"}`}
     >
       {symbol.slice(0, 4)}
     </span>
@@ -37,6 +44,15 @@ function Home() {
   const { coins, preview } = useChimi();
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("top");
+  const [images, setImages] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const next: Record<string, string> = {};
+    for (const coin of coins) {
+      const image = readTokenMeta(coin.token)?.image;
+      if (image) next[coin.token.toLowerCase()] = image;
+    }
+    setImages(next);
+  }, [coins]);
   const order = useMemo(() => new Map(coins.map((c, i) => [c.token, i])), [coins]);
 
   const filtered = useMemo(() => {
@@ -141,7 +157,7 @@ function Home() {
                 <span className="text-[13px] text-muted tabular-nums">#01</span>
               </div>
               <div className="relative mt-7">
-                <Mark symbol={leading.symbol} large />
+                <Mark symbol={leading.symbol} image={images[leading.token.toLowerCase()]} large />
               </div>
               <p className="relative mt-5 text-[32px] leading-[1.05] font-semibold tracking-[-0.03em]">{leading.name}</p>
               <p className="relative mt-1 text-[15px] text-muted">
@@ -183,7 +199,7 @@ function Home() {
                 >
                   <span className="text-sm text-muted tabular-nums">{String(rank.get(c.token) ?? 0).padStart(2, "0")}</span>
                   <span className="flex min-w-0 items-center gap-3.5">
-                    <Mark symbol={c.symbol} />
+                    <Mark symbol={c.symbol} image={images[c.token.toLowerCase()]} />
                     <span className="min-w-0">
                       <span className="block truncate text-base font-medium">{c.name}</span>
                       <span className="block truncate text-[13px] text-muted">
