@@ -72,15 +72,19 @@ export async function render(root: HTMLElement) {
   root.innerHTML = `
     <div class="wrap">
       <header>
-        <div>
-          <div class="mark">Chimi<small>치미 · GIWA Sepolia</small></div>
-          <p class="lede">A coin opens in its own pool. The full supply is the liquidity, and it can trade in the same transaction. There is no bonding curve.</p>
+        <div class="brand">
+          <img class="seal" src="/seal.jpg" alt="Chimi seal" />
+          <div>
+            <p class="kicker">치미 · GIWA Sepolia</p>
+            <div class="mark">Chimi</div>
+          </div>
         </div>
         <button id="wallet" class="ghost" type="button">Connect</button>
       </header>
+      <p class="lede">A coin opens in its own pool. The supply is the liquidity, locked, and it can trade in the same press. There is no bonding curve.</p>
       <div class="grid">
         <section class="card">
-          <h2>Launch</h2>
+          <h2>Press</h2>
           <label for="name">Name</label>
           <input id="name" maxlength="32" placeholder="Ridge Coin" />
           <label for="symbol">Symbol</label>
@@ -89,7 +93,7 @@ export async function render(root: HTMLElement) {
           <input id="buy" inputmode="decimal" placeholder="0" value="0" />
           <div class="row">
             <span class="hint" id="fee">Creation fee —</span>
-            <button id="create" type="button">Create</button>
+            <button id="create" type="button">Press</button>
           </div>
           <p class="status" id="create-status"></p>
         </section>
@@ -211,10 +215,12 @@ export async function render(root: HTMLElement) {
       const px = wethPerToken(c.sqrtPriceX96, c.tokenIs0);
       const fdv = px * 1_000_000_000n;
       return `<button class="coin ${i === selected ? "on" : ""}" data-i="${i}" type="button">
-        <span class="sym">$${c.symbol}</span>
-        <span class="price">${fmt(px)} ETH</span>
-        <span class="sub">${c.name}</span>
-        <span class="sub price">${fmt(fdv, 4)} ETH FDV</span>
+        <span class="stamp">${c.symbol.slice(0, 4)}</span>
+        <span>
+          <span class="sym">${c.name}</span>
+          <span class="sub">$${c.symbol}</span>
+        </span>
+        <span class="price">${fmt(px)} ETH<span class="sub">${fmt(fdv, 2)} FDV</span></span>
       </button>`;
     }).join("");
     board.querySelectorAll<HTMLButtonElement>(".coin").forEach((btn) => {

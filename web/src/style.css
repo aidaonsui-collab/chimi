@@ -5,11 +5,9 @@
   --ink: #1c140f;
   --muted: #7a6556;
   --line: #e4d8c8;
-  --gold: #c44536;
-  --gold-2: #c44536;
-  --danger: #c44536;
+  --seal: #c44536;
   --ok: #2f6b45;
-  font-family: "Iowan Old Style", Palatino, Georgia, serif;
+  font-family: "Outfit", "Avenir Next", "Segoe UI", sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -18,7 +16,7 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(900px 420px at 100% -10%, rgba(196, 69, 54, 0.08), transparent 55%),
+    radial-gradient(900px 420px at 100% -10%, rgba(196, 69, 54, 0.1), transparent 55%),
     var(--bg);
   color: var(--ink);
 }
@@ -28,11 +26,10 @@ button, input { font: inherit; color: inherit; }
 button {
   cursor: pointer;
   border: 0;
-  background: var(--gold);
-  color: #f6efe4;
+  background: var(--seal);
+  color: var(--bg-2);
   border-radius: 999px;
   padding: 0.7rem 1.1rem;
-  font-weight: 650;
 }
 
 button.ghost {
@@ -66,27 +63,41 @@ header {
   padding-bottom: 1.25rem;
 }
 
-.mark {
-  font-size: 2.8rem;
-  line-height: 0.9;
-  letter-spacing: -0.03em;
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
 }
 
-.mark small {
-  display: block;
-  margin-top: 0.45rem;
-  font-family: "Avenir Next", "Segoe UI", sans-serif;
-  font-size: 0.78rem;
-  letter-spacing: 0.18em;
+.seal {
+  width: 88px;
+  height: 88px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 1px solid var(--seal);
+  transform: rotate(-6deg);
+}
+
+.kicker {
+  margin: 0;
+  color: var(--seal);
+  letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--gold);
+  font-size: 0.75rem;
+}
+
+.mark {
+  font-family: "Iowan Old Style", Palatino, Georgia, serif;
+  font-size: 4.5rem;
+  line-height: 0.85;
+  letter-spacing: -0.03em;
 }
 
 .lede {
   max-width: 36rem;
   color: var(--muted);
-  margin: 1rem 0 0;
-  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  margin: 1.25rem 0 0;
+  font-size: 1.05rem;
 }
 
 .grid {
@@ -100,11 +111,12 @@ header {
   background: var(--bg-2);
   border: 1px solid var(--line);
   border-radius: 18px;
-  padding: 1rem;
+  padding: 1.1rem;
 }
 
 h2 {
-  font-size: 1.6rem;
+  font-family: "Iowan Old Style", Palatino, Georgia, serif;
+  font-size: 2.4rem;
   font-weight: 500;
   margin: 0 0 0.85rem;
 }
@@ -112,13 +124,8 @@ h2 {
 label {
   display: block;
   color: var(--muted);
-  font-family: "Avenir Next", "Segoe UI", sans-serif;
   font-size: 0.82rem;
   margin: 0.75rem 0 0.35rem;
-}
-
-.row, .hint, .status, .sub, .price, .sym, button, input {
-  font-family: "Avenir Next", "Segoe UI", sans-serif;
 }
 
 .row {
@@ -130,7 +137,7 @@ label {
 }
 
 .hint, .status { color: var(--muted); font-size: 0.85rem; }
-.status.bad { color: var(--danger); }
+.status.bad { color: var(--seal); }
 .status.good { color: var(--ok); }
 
 .coin {
@@ -138,18 +145,38 @@ label {
   text-align: left;
   background: transparent;
   color: var(--ink);
-  border: 1px solid transparent;
-  border-radius: 14px;
-  padding: 0.75rem;
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 0.85rem 0.2rem;
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.2rem 1rem;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.85rem;
+  align-items: center;
 }
 
-.coin.on, .coin:hover { border-color: var(--gold); background: var(--bg); }
+.coin:hover, .coin.on { background: transparent; }
 
-.sym { font-weight: 700; }
-.sub { color: var(--muted); font-size: 0.82rem; }
+.stamp {
+  width: 56px;
+  height: 56px;
+  border: 2px solid var(--seal);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--seal);
+  font-family: "Iowan Old Style", Palatino, Georgia, serif;
+  transform: rotate(-6deg);
+  background: transparent;
+}
+
+.coin.on .stamp {
+  background: var(--seal);
+  color: var(--bg-2);
+}
+
+.sym { display: block; font-weight: 560; }
+.sub { display: block; color: var(--muted); font-size: 0.82rem; }
 .price { text-align: right; font-variant-numeric: tabular-nums; }
 
 .trade {
@@ -159,9 +186,19 @@ label {
   gap: 0.6rem;
 }
 
-.empty { color: var(--muted); padding: 1.5rem 0.4rem; }
+.empty { color: var(--muted); padding: 1.5rem 0.2rem; }
+
+.foot {
+  margin-top: 1.5rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.foot a, .hint a { color: var(--seal); }
 
 @media (max-width: 800px) {
   .grid, .trade { grid-template-columns: 1fr; }
   header { align-items: flex-start; flex-direction: column; }
+  .mark { font-size: 3.4rem; }
+  .seal { width: 72px; height: 72px; }
 }
