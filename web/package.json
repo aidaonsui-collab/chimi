@@ -1,0 +1,16 @@
+{
+  "name": "chimi",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "viem": "^2.37.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "vite": "^6.3.5"
+  }
+}
