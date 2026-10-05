@@ -3,6 +3,7 @@ contracts/cache/
 contracts/broadcast/
 web/node_modules/
 web/dist/
+web/.output/
 .env
 *.env
 private-key*

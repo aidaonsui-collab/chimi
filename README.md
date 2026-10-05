@@ -29,4 +29,4 @@ npm install
 npm run dev
 ```
 
-The page reads `/deployments.json`. Until that file has a factory address, launch and trade stay disabled.
+The page is the board, the launch sheet, and a coin page. It reads `/deployments.json` and talks to the GIWA Sepolia factory. Until that file has a factory address, the board shows preview coins and launch stays disabled.
