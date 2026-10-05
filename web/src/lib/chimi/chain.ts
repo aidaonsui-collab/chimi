@@ -16,6 +16,7 @@ export const factoryAbi = parseAbi([
   "function allTokens(uint256) view returns (address)",
   "function getPool(address token) view returns ((address creator, address uniPool, uint256 positionId, uint128 liquidity, int24 tickLower, int24 tickUpper))",
   "function creationFeeDue(address creator) view returns (uint256)",
+  "event InstantQuoteTokenCreated(address indexed token, address indexed creator, address pool, uint256 positionId)",
   "function QUOTE() view returns (address)",
   "function poolFee() view returns (uint24)",
 ]);

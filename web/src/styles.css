@@ -39,23 +39,11 @@
     line-height: 1.5;
   }
 
-  input {
+  input,
+  textarea {
     font: inherit;
     color: inherit;
   }
 }
 
-@keyframes chimi-marquee {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
-}
 
-.marquee-track {
-  display: flex;
-  width: max-content;
-  animation: chimi-marquee 32s linear infinite;
-}

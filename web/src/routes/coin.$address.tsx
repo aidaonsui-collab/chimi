@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { giwaSepolia } from "@/lib/chimi/chain";
 import { fmt, short, shortAddr, wethPerToken } from "@/lib/chimi/market";
+import { readTokenMeta, type TokenMeta } from "@/lib/chimi/meta";
 import { useChimi } from "@/components/chimi/provider";
 
 export const Route = createFileRoute("/coin/$address")({ component: CoinPage });
@@ -33,6 +34,10 @@ function CoinPage() {
   const [tradeNote, setTradeNote] = useState("");
   const [kind, setKind] = useState<"" | "bad" | "good">("");
   const [busy, setBusy] = useState(false);
+  const [meta, setMeta] = useState<TokenMeta | null>(null);
+  useEffect(() => {
+    setMeta(readTokenMeta(address));
+  }, [address]);
   const explorer = giwaSepolia.blockExplorers.default.url;
   const chart = useMemo(() => (coin ? chartPath(coin.token) : { line: "", area: "" }), [coin]);
 
@@ -97,9 +102,13 @@ function CoinPage() {
         Back
       </Link>
       <div className="mt-4 flex items-center gap-4">
-        <span className="grid size-14 place-items-center rounded-full border-2 border-seal font-display text-sm text-seal">
-          {coin.symbol.slice(0, 4)}
-        </span>
+        {meta?.image ? (
+          <img src={meta.image} alt="" className="size-14 rounded-full object-cover" />
+        ) : (
+          <span className="grid size-14 place-items-center rounded-full border-2 border-seal font-display text-sm text-seal">
+            {coin.symbol.slice(0, 4)}
+          </span>
+        )}
         <div>
           <h1 className="font-display text-4xl leading-none sm:text-5xl">{coin.name}</h1>
           <p className="mt-1 text-sm text-muted">
@@ -108,6 +117,7 @@ function CoinPage() {
           </p>
         </div>
       </div>
+      {meta?.description ? <p className="mt-4 max-w-xl text-sm text-muted">{meta.description}</p> : null}
 
       <div className="mt-6 grid items-start gap-4 lg:grid-cols-[1fr_340px]">
         <section className="rounded-3xl border border-line bg-chip p-4 sm:p-5">

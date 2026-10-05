@@ -42,6 +42,14 @@ export function shortAddr(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
+/** Spot estimate after the 1% pool fee. Buying a token spends ETH. */
+export function estimatedOut(amountIn: bigint, priceWethPerToken: bigint, buyingToken: boolean): bigint {
+  if (amountIn <= 0n || priceWethPerToken <= 0n) return 0n;
+  const afterFee = (amountIn * 99n) / 100n;
+  if (buyingToken) return (afterFee * 10n ** 18n) / priceWethPerToken;
+  return (afterFee * priceWethPerToken) / 10n ** 18n;
+}
+
 export async function loadCoins(dep: Deployment): Promise<Coin[]> {
   if (!isDeployed(dep)) return [];
   const length = await publicClient.readContract({

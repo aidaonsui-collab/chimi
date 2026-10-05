@@ -6,7 +6,7 @@ import { useChimi } from "@/components/chimi/provider";
 export const Route = createFileRoute("/")({ component: Home });
 
 function Home() {
-  const { coins, note, preview, setPressOpen } = useChimi();
+  const { coins, note, preview } = useChimi();
   const [query, setQuery] = useState("");
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -38,13 +38,12 @@ function Home() {
             Name it. It opens in its own locked pool, and you can trade it right away. No bonding curve.
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => setPressOpen(true)}
+            <Link
+              to="/launch"
               className="rounded-full bg-seal px-5 py-3 text-sm font-semibold tracking-wide text-onseal"
             >
-              LAUNCH
-            </button>
+              Launch
+            </Link>
             <a href="#board" className="rounded-full border border-line px-5 py-3 text-sm font-semibold tracking-wide">
               THE BOARD
             </a>

@@ -1,5 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { createWalletClient, custom, parseEther, type Address, type EIP1193Provider, type WalletClient } from "viem";
+import {
+  createWalletClient,
+  custom,
+  parseEther,
+  parseEventLogs,
+  type Address,
+  type EIP1193Provider,
+  type WalletClient,
+} from "viem";
 import {
   POOL_FEE,
   erc20Abi,
@@ -25,8 +33,8 @@ type ChimiContext = {
   setPressOpen: (open: boolean) => void;
   connect: () => Promise<{ who: Address; client: WalletClient } | undefined>;
   refresh: () => Promise<void>;
-  createCoin: (name: string, symbol: string, firstBuy: string) => Promise<string>;
-  trade: (coin: Coin, side: "buy" | "sell", amount: string) => Promise<string>;
+  createCoin: (name: string, symbol: string, firstBuy: string) => Promise<Address>;
+  trade: (coin: Coin, side: "buy" | "sell", amount: string, minOut?: bigint) => Promise<string>;
   unwrap: () => Promise<string>;
 };
 
@@ -160,7 +168,14 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
         args: [name.trim(), symbol.trim()],
         value,
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      const created = parseEventLogs({
+        abi: factoryAbi,
+        logs: receipt.logs,
+        eventName: "InstantQuoteTokenCreated",
+      });
+      const token = created[0]?.args.token;
+      if (!token) throw new Error("The launch confirmed, but the new token was not in the receipt.");
       const next = await loadCoins(deployment);
       if (next.length === 0) {
         setCoins(previewCoins);
@@ -170,13 +185,13 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
         setPreview(false);
         setNote("");
       }
-      return hash;
+      return token;
     },
     [deployment],
   );
 
   const trade = useCallback(
-    async (coin: Coin, side: "buy" | "sell", amount: string) => {
+    async (coin: Coin, side: "buy" | "sell", amount: string, minOut: bigint = 0n) => {
       if (coin.preview) throw new Error("Preview coin. Launch a real one to trade.");
       if (!deployment) throw new Error("Factory not loaded.");
       const { who, client } = await ready();
@@ -195,7 +210,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
               fee: POOL_FEE,
               recipient: who,
               amountIn: qty,
-              amountOutMinimum: 0n,
+              amountOutMinimum: minOut,
               sqrtPriceLimitX96: 0n,
             },
           ],
@@ -227,7 +242,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
             fee: POOL_FEE,
             recipient: who,
             amountIn: qty,
-            amountOutMinimum: 0n,
+            amountOutMinimum: minOut,
             sqrtPriceLimitX96: 0n,
           },
         ],
