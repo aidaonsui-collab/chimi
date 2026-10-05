@@ -26,54 +26,7 @@ function Home() {
 
   return (
     <main>
-      <section className="mx-auto grid max-w-6xl items-end gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1.2fr_0.8fr] lg:py-16">
-        <div>
-          <p className="text-xs font-semibold tracking-[0.28em] text-gold">ON GIWA SEPOLIA</p>
-          <h1 className="mt-3 font-display text-6xl leading-[0.86] tracking-tight sm:text-8xl">
-            LAUNCH
-            <br />
-            A COIN.
-          </h1>
-          <p className="mt-5 max-w-md text-lg text-muted">
-            Name it. It opens in its own locked pool, and you can trade it right away. No bonding curve.
-          </p>
-          <div className="mt-7 flex flex-wrap gap-3">
-            <Link
-              to="/launch"
-              className="rounded-full bg-seal px-5 py-3 text-sm font-semibold tracking-wide text-onseal"
-            >
-              Launch
-            </Link>
-            <a href="#board" className="rounded-full border border-line px-5 py-3 text-sm font-semibold tracking-wide">
-              THE BOARD
-            </a>
-          </div>
-        </div>
-        <aside className="rounded-3xl border border-line bg-chip p-5">
-          <div className="flex items-center gap-4">
-            <img src="/brands/chimi-seal.jpg" alt="" className="size-20 rounded-full border border-seal object-cover" />
-            <div>
-              <p className="font-serif text-2xl text-gold">치미</p>
-              <p className="text-sm text-muted">One coin. One pool.</p>
-            </div>
-          </div>
-          <dl className="mt-5 grid grid-cols-2 gap-3">
-            {[
-              [String(coins.length), "Coins"],
-              ["1B", "Supply"],
-              ["100y", "Lock"],
-              ["1%", "Fee"],
-            ].map(([value, label]) => (
-              <div key={label} className="rounded-2xl border border-line bg-bg px-3 py-3">
-                <p className="font-display text-2xl leading-none">{value}</p>
-                <p className="mt-1 text-[11px] tracking-[0.16em] text-muted uppercase">{label}</p>
-              </div>
-            ))}
-          </dl>
-        </aside>
-      </section>
-
-      <section id="board" className="mx-auto max-w-6xl px-4 pb-16 sm:px-6">
+      <section id="board" className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
         <div>
           <p className="text-xs font-semibold tracking-[0.22em] text-gold">
             {preview ? "PREVIEW COINS" : "LIVE FROM THE FACTORY"}
