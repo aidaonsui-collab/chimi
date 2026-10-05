@@ -1,4 +1,4 @@
-import { formatEther, zeroAddress, type Address } from "viem";
+import { formatEther, parseAbiItem, zeroAddress, type Address } from "viem";
 import { erc20Abi, factoryAbi, isDeployed, poolAbi, type Deployment } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 
@@ -118,4 +118,42 @@ export async function loadCoin(dep: Deployment, token: Address): Promise<Coin | 
     tokenIs0: token0.toLowerCase() === token.toLowerCase(),
     liquidity: pool.liquidity,
   };
+}
+
+export type PoolSwap = {
+  tx: `0x${string}`;
+  block: bigint;
+  buy: boolean;
+  tokenAmount: bigint;
+  ethAmount: bigint;
+  sqrtPriceX96: bigint;
+};
+
+const swapEvent = parseAbiItem(
+  "event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)",
+);
+
+export async function loadSwaps(pool: Address, tokenIs0: boolean): Promise<PoolSwap[]> {
+  const latest = await publicClient.getBlockNumber();
+  const from = latest > 9_000n ? latest - 9_000n : 0n;
+  const logs = await publicClient.getLogs({
+    address: pool,
+    event: swapEvent,
+    fromBlock: from,
+    toBlock: latest,
+  });
+  return logs.map((log) => {
+    const amount0 = log.args.amount0 ?? 0n;
+    const amount1 = log.args.amount1 ?? 0n;
+    const tokenAmt = tokenIs0 ? amount0 : amount1;
+    const ethAmt = tokenIs0 ? amount1 : amount0;
+    return {
+      tx: log.transactionHash,
+      block: log.blockNumber,
+      buy: tokenAmt < 0n,
+      tokenAmount: tokenAmt < 0n ? -tokenAmt : tokenAmt,
+      ethAmount: ethAmt < 0n ? -ethAmt : ethAmt,
+      sqrtPriceX96: log.args.sqrtPriceX96 ?? 0n,
+    };
+  });
 }
