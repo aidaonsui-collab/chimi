@@ -4,6 +4,8 @@ contracts/broadcast/
 web/node_modules/
 web/dist/
 web/.output/
+web/.vercel/
+.vercel/
 .env
 *.env
 private-key*
