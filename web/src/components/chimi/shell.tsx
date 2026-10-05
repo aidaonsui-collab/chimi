@@ -8,13 +8,14 @@ const tabs = [
   { to: "/", label: "Board" },
   { to: "/swap", label: "Swap" },
   { to: "/analytics", label: "Analytics" },
+  { to: "/pools", label: "Pools" },
 ] as const;
 
 function TabPill({ here }: { here: string }) {
   return (
     <div className="flex items-center gap-1 rounded-full border border-line/80 bg-chip/80 p-1">
       {tabs.map((tab) => {
-        const on = here === tab.to;
+        const on = tab.to === "/pools" ? here === "/pools" || here.startsWith("/pool/") : here === tab.to;
         return (
           <Link
             key={tab.to}

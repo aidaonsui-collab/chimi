@@ -12,8 +12,10 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as LaunchRouteImport } from './routes/launch'
+import { Route as PoolsRouteImport } from './routes/pools'
 import { Route as SwapRouteImport } from './routes/swap'
 import { Route as CoinAddressRouteImport } from './routes/coin.$address'
+import { Route as PoolAddressRouteImport } from './routes/pool.$address'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -30,6 +32,11 @@ const LaunchRoute = LaunchRouteImport.update({
   path: '/launch',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PoolsRoute = PoolsRouteImport.update({
+  id: '/pools',
+  path: '/pools',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SwapRoute = SwapRouteImport.update({
   id: '/swap',
   path: '/swap',
@@ -40,43 +47,78 @@ const CoinAddressRoute = CoinAddressRouteImport.update({
   path: '/coin/$address',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PoolAddressRoute = PoolAddressRouteImport.update({
+  id: '/pool/$address',
+  path: '/pool/$address',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/launch': typeof LaunchRoute
+  '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
   '/coin/$address': typeof CoinAddressRoute
+  '/pool/$address': typeof PoolAddressRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/launch': typeof LaunchRoute
+  '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
   '/coin/$address': typeof CoinAddressRoute
+  '/pool/$address': typeof PoolAddressRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/launch': typeof LaunchRoute
+  '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
   '/coin/$address': typeof CoinAddressRoute
+  '/pool/$address': typeof PoolAddressRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/analytics' | '/launch' | '/swap' | '/coin/$address'
+  fullPaths:
+    | '/'
+    | '/analytics'
+    | '/launch'
+    | '/pools'
+    | '/swap'
+    | '/coin/$address'
+    | '/pool/$address'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/analytics' | '/launch' | '/swap' | '/coin/$address'
-  id: '__root__' | '/' | '/analytics' | '/launch' | '/swap' | '/coin/$address'
+  to:
+    | '/'
+    | '/analytics'
+    | '/launch'
+    | '/pools'
+    | '/swap'
+    | '/coin/$address'
+    | '/pool/$address'
+  id:
+    | '__root__'
+    | '/'
+    | '/analytics'
+    | '/launch'
+    | '/pools'
+    | '/swap'
+    | '/coin/$address'
+    | '/pool/$address'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AnalyticsRoute: typeof AnalyticsRoute
   LaunchRoute: typeof LaunchRoute
+  PoolsRoute: typeof PoolsRoute
   SwapRoute: typeof SwapRoute
   CoinAddressRoute: typeof CoinAddressRoute
+  PoolAddressRoute: typeof PoolAddressRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -102,6 +144,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LaunchRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pools': {
+      id: '/pools'
+      path: '/pools'
+      fullPath: '/pools'
+      preLoaderRoute: typeof PoolsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/swap': {
       id: '/swap'
       path: '/swap'
@@ -116,6 +165,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CoinAddressRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pool/$address': {
+      id: '/pool/$address'
+      path: '/pool/$address'
+      fullPath: '/pool/$address'
+      preLoaderRoute: typeof PoolAddressRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -123,8 +179,10 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnalyticsRoute: AnalyticsRoute,
   LaunchRoute: LaunchRoute,
+  PoolsRoute: PoolsRoute,
   SwapRoute: SwapRoute,
   CoinAddressRoute: CoinAddressRoute,
+  PoolAddressRoute: PoolAddressRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
