@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { fmt, wethPerToken, type Coin } from "@/lib/chimi/market";
+import { fmt, loadSwaps, wethPerToken, type Coin } from "@/lib/chimi/market";
 import { readTokenMeta } from "@/lib/chimi/meta";
 import { useChimi } from "@/components/chimi/provider";
 
@@ -14,6 +14,13 @@ function priceOf(c: Coin) {
 
 function fdvOf(c: Coin) {
   return priceOf(c) * 1_000_000_000n;
+}
+
+function money(n: number) {
+  if (!Number.isFinite(n)) return "—";
+  if (n >= 1000) return `$${Math.round(n).toLocaleString("en-US")}`;
+  if (n >= 1) return `$${n.toFixed(2)}`;
+  return `$${n.toFixed(2)}`;
 }
 
 function Chevron() {
@@ -45,6 +52,8 @@ function Home() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("top");
   const [images, setImages] = useState<Record<string, string>>({});
+  const [ethUsd, setEthUsd] = useState<number>();
+  const [volumeEth, setVolumeEth] = useState<Record<string, bigint>>({});
   useEffect(() => {
     const next: Record<string, string> = {};
     for (const coin of coins) {
@@ -53,6 +62,53 @@ function Home() {
     }
     setImages(next);
   }, [coins]);
+  useEffect(() => {
+    let cancel = false;
+    void fetch("https://api.coinbase.com/v2/prices/ETH-USD/spot")
+      .then((r) => r.json())
+      .then((body: { data?: { amount?: string } }) => {
+        const n = Number(body.data?.amount);
+        if (!cancel && Number.isFinite(n) && n > 0) setEthUsd(n);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancel = true;
+    };
+  }, []);
+  useEffect(() => {
+    const live = coins.filter((coin) => !coin.preview);
+    if (live.length === 0) return;
+    let cancel = false;
+    void Promise.all(
+      live.map(async (coin) => {
+        const swaps = await loadSwaps(coin.pool, coin.tokenIs0);
+        const now = Math.floor(Date.now() / 1000);
+        const vol = swaps.filter((swap) => now - swap.time <= 24 * 60 * 60).reduce((sum, swap) => sum + swap.ethAmount, 0n);
+        return [coin.token.toLowerCase(), vol] as const;
+      }),
+    )
+      .then((rows) => {
+        if (!cancel) setVolumeEth(Object.fromEntries(rows));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancel = true;
+    };
+  }, [coins]);
+
+  function capText(coin: Coin) {
+    const eth = Number(fdvOf(coin)) / 1e18;
+    if (ethUsd) return { value: money(eth * ethUsd), unit: "USD" };
+    return { value: fmt(fdvOf(coin), 2), unit: "ETH" };
+  }
+
+  function volumeText(coin: Coin) {
+    if (coin.preview) return { value: "—", unit: "" };
+    const wei = volumeEth[coin.token.toLowerCase()];
+    if (wei === undefined) return { value: "…", unit: "" };
+    if (ethUsd) return { value: money((Number(wei) / 1e18) * ethUsd), unit: "USD" };
+    return { value: fmt(wei, 4), unit: "ETH" };
+  }
   const order = useMemo(() => new Map(coins.map((c, i) => [c.token, i])), [coins]);
 
   const filtered = useMemo(() => {
@@ -166,14 +222,14 @@ function Home() {
               </p>
               <div className="relative mt-7 grid grid-cols-2 gap-4 border-t border-line/90 pt-5">
                 <div>
-                  <div className="text-xs text-muted">Price</div>
-                  <div className="mt-0.5 text-[22px] font-semibold tracking-[-0.02em] tabular-nums">{fmt(priceOf(leading), 6)}</div>
-                  <div className="text-xs text-muted">ETH</div>
+                  <div className="text-xs text-muted">Market cap</div>
+                  <div className="mt-0.5 text-[22px] font-semibold tracking-[-0.02em] tabular-nums">{capText(leading).value}</div>
+                  <div className="text-xs text-muted">{capText(leading).unit}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-muted">FDV</div>
-                  <div className="mt-0.5 text-[22px] font-semibold tracking-[-0.02em] tabular-nums">{fmt(fdvOf(leading), 2)}</div>
-                  <div className="text-xs text-muted">ETH</div>
+                  <div className="text-xs text-muted">24h volume</div>
+                  <div className="mt-0.5 text-[22px] font-semibold tracking-[-0.02em] tabular-nums">{volumeText(leading).value}</div>
+                  <div className="text-xs text-muted">{volumeText(leading).unit}</div>
                 </div>
               </div>
               <div className="relative mt-6 flex items-center justify-between rounded-[14px] bg-fg/6 px-4 py-3 text-sm font-medium">
@@ -186,8 +242,8 @@ function Home() {
               <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_1rem] gap-3 border-b border-line px-5 py-3.5 text-xs font-medium tracking-[0.06em] text-muted sm:grid-cols-[2.5rem_minmax(0,1fr)_8rem_7rem_1rem]">
                 <span>#</span>
                 <span>Coin</span>
-                <span className="hidden text-right sm:block">Price, ETH</span>
-                <span className="hidden text-right sm:block">FDV, ETH</span>
+                <span className="hidden text-right sm:block">Market cap</span>
+                <span className="hidden text-right sm:block">24h volume</span>
                 <span />
               </div>
               {rows.map((c) => (
@@ -208,8 +264,8 @@ function Home() {
                       </span>
                     </span>
                   </span>
-                  <span className="hidden text-right text-[15px] tabular-nums sm:block">{fmt(priceOf(c), 6)}</span>
-                  <span className="hidden text-right text-[15px] font-medium tabular-nums sm:block">{fmt(fdvOf(c), 2)}</span>
+                  <span className="hidden text-right text-[15px] tabular-nums sm:block">{capText(c).value}</span>
+                  <span className="hidden text-right text-[15px] font-medium tabular-nums sm:block">{volumeText(c).value}</span>
                   <Chevron />
                 </Link>
               ))}
