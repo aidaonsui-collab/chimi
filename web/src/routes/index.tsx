@@ -60,17 +60,16 @@ function Home() {
   return (
     <main>
       <section className="mx-auto max-w-[1180px] px-4 pt-7 pb-20 sm:px-6">
-        <div className="relative mb-12 min-h-[220px] overflow-hidden rounded-[28px] border border-line/80 shadow-[inset_0_1px_0_rgba(255,255,255,.06),0_40px_80px_-40px_rgba(0,0,0,.8)] aspect-[2.6/1]">
-          <img src="/banner.png" alt="" className="absolute inset-0 size-full object-cover object-[50%_38%]" />
-          <div className="banner-sky" />
-          <div className="banner-mist" />
-          <div className="banner-mist banner-mist-b" />
-          <div className="absolute inset-0 bg-[radial-gradient(60%_55%_at_50%_38%,rgba(10,12,30,.35),transparent_70%),linear-gradient(180deg,transparent_55%,rgba(23,18,14,.55))]" />
-          <div className="absolute inset-0 flex flex-col items-center justify-center px-[12%] text-center">
-            <h1 className="font-serif text-6xl leading-[0.9] text-fg drop-shadow-[0_12px_40px_rgba(10,12,40,.7)] sm:text-8xl">
+        <div className="relative mb-8 h-[168px] overflow-hidden rounded-[28px] border border-line/80 shadow-[inset_0_1px_0_rgba(255,255,255,.06)] sm:h-[200px]">
+          <img src="/banner.png" alt="" className="absolute inset-0 size-full object-cover object-[center_46%]" />
+          <div className="banner-clouds" />
+          <div className="banner-fog" />
+          <div className="banner-fog banner-fog-b" />
+          <div className="absolute inset-0 z-[1] flex flex-col items-center justify-center px-[12%] text-center">
+            <h1 className="font-serif text-5xl leading-[0.9] text-fg drop-shadow-[0_12px_40px_rgba(10,12,40,.7)] sm:text-6xl">
               Chimi
             </h1>
-            <p className="mt-2 font-serif text-2xl leading-none text-gold drop-shadow-[0_4px_18px_rgba(10,12,40,.8)] sm:text-3xl">
+            <p className="mt-1 font-serif text-xl leading-none text-gold drop-shadow-[0_4px_18px_rgba(10,12,40,.8)] sm:text-2xl">
               치미
             </p>
           </div>
@@ -128,11 +127,11 @@ function Home() {
         ) : null}
 
         {leading ? (
-          <div className="mt-7 flex flex-col items-stretch gap-5 lg:flex-row lg:items-start">
+          <div className="mt-7 grid w-full grid-cols-1 items-start gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
             <Link
               to="/coin/$address"
               params={{ address: leading.token }}
-              className="relative block w-full overflow-hidden rounded-[28px] border border-gold/35 bg-gradient-to-br from-[#2a1f17] to-[#1d1611] p-7 text-fg shadow-[inset_0_1px_0_rgba(255,255,255,.06),0_30px_60px_-30px_rgba(0,0,0,.8)] lg:max-w-sm lg:flex-1"
+              className="relative block w-full overflow-hidden rounded-[28px] border border-gold/35 bg-gradient-to-br from-[#2a1f17] to-[#1d1611] p-7 text-fg shadow-[inset_0_1px_0_rgba(255,255,255,.06),0_30px_60px_-30px_rgba(0,0,0,.8)]"
             >
               <div className="pointer-events-none absolute -top-20 -right-20 size-60 rounded-full bg-[radial-gradient(closest-side,rgba(210,74,46,.28),transparent)]" />
               <div className="relative flex items-center justify-between">
@@ -167,7 +166,7 @@ function Home() {
               </div>
             </Link>
 
-            <div className="w-full min-w-0 overflow-hidden rounded-3xl border border-line bg-chip/85 shadow-[inset_0_1px_0_rgba(255,255,255,.04)] lg:flex-[999_1_560px]">
+            <div className="min-w-0 overflow-hidden rounded-3xl border border-line bg-chip/85 shadow-[inset_0_1px_0_rgba(255,255,255,.04)]">
               <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_1rem] gap-3 border-b border-line px-5 py-3.5 text-xs font-medium tracking-[0.06em] text-muted sm:grid-cols-[2.5rem_minmax(0,1fr)_8rem_7rem_1rem]">
                 <span>#</span>
                 <span>Coin</span>
