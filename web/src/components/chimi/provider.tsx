@@ -53,6 +53,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
   const [pressOpen, setPressOpen] = useState(false);
   const walletRef = useRef<WalletClient | undefined>(undefined);
   const accountRef = useRef<Address | undefined>(undefined);
+  const loadGen = useRef(0);
 
   const live = deployment ? isDeployed(deployment) : false;
 
@@ -65,7 +66,9 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       setNote("Preview coins. The factory is not on this chain yet.");
       return;
     }
+    const id = ++loadGen.current;
     const next = await loadCoins(dep);
+    if (id !== loadGen.current) return;
     if (next.length === 0) {
       setCoins(previewCoins);
       setPreview(true);
@@ -90,8 +93,9 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
           setNote("Preview coins. The factory is not on this chain yet.");
           return;
         }
+        const id = ++loadGen.current;
         const next = await loadCoins(dep);
-        if (cancel) return;
+        if (cancel || id !== loadGen.current) return;
         if (next.length === 0) {
           setCoins(previewCoins);
           setPreview(true);
@@ -176,7 +180,9 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       });
       const token = created[0]?.args.token;
       if (!token) throw new Error("The launch confirmed, but the new token was not in the receipt.");
+      const id = ++loadGen.current;
       const next = await loadCoins(deployment);
+      if (id === loadGen.current) {
       if (next.length === 0) {
         setCoins(previewCoins);
         setPreview(true);
@@ -184,6 +190,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
         setCoins(next);
         setPreview(false);
         setNote("");
+      }
       }
       return token;
     },

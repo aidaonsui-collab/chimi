@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import type { Address } from "viem";
 import { giwaSepolia } from "@/lib/chimi/chain";
-import { fmt, short, shortAddr, wethPerToken } from "@/lib/chimi/market";
+import { fmt, loadCoin, short, shortAddr, wethPerToken, type Coin } from "@/lib/chimi/market";
 import { readTokenMeta, type TokenMeta } from "@/lib/chimi/meta";
 import { useChimi } from "@/components/chimi/provider";
 
@@ -26,8 +27,10 @@ function chartPath(seed: string) {
 
 function CoinPage() {
   const { address } = Route.useParams();
-  const { coins, note, trade, unwrap } = useChimi();
-  const coin = coins.find((c) => c.token.toLowerCase() === address.toLowerCase());
+  const { coins, deployment, trade, unwrap } = useChimi();
+  const listed = coins.find((c) => !c.preview && c.token.toLowerCase() === address.toLowerCase());
+  const [coin, setCoin] = useState<Coin | null>(listed ?? null);
+  const [phase, setPhase] = useState<"loading" | "ready" | "missing">(listed ? "ready" : "loading");
   const [tab, setTab] = useState<"trades" | "pool">("trades");
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [amount, setAmount] = useState("");
@@ -38,6 +41,29 @@ function CoinPage() {
   useEffect(() => {
     setMeta(readTokenMeta(address));
   }, [address]);
+
+  useEffect(() => {
+    if (listed) {
+      setCoin(listed);
+      setPhase("ready");
+      return;
+    }
+    if (!deployment) return;
+    let cancel = false;
+    setPhase("loading");
+    void loadCoin(deployment, address as Address)
+      .then((found) => {
+        if (cancel) return;
+        setCoin(found);
+        setPhase(found ? "ready" : "missing");
+      })
+      .catch(() => {
+        if (!cancel) setPhase("missing");
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [address, deployment, listed]);
   const explorer = giwaSepolia.blockExplorers.default.url;
   const chart = useMemo(() => (coin ? chartPath(coin.token) : { line: "", area: "" }), [coin]);
 
@@ -85,9 +111,11 @@ function CoinPage() {
           Board
         </Link>
         <h1 className="mt-6 font-display text-6xl leading-none">
-          {note === "Reading the factory…" ? "Reading the factory…" : "Not on this factory."}
+          {phase === "loading" ? "Reading the factory…" : "Not on this factory."}
         </h1>
-        <p className="mt-3 max-w-md text-muted">{note || shortAddr(address)}</p>
+        <p className="mt-3 max-w-md text-muted">
+          {phase === "loading" ? "Checking this coin." : shortAddr(address)}
+        </p>
       </main>
     );
   }

@@ -1,4 +1,4 @@
-import { formatEther, type Address } from "viem";
+import { formatEther, zeroAddress, type Address } from "viem";
 import { erc20Abi, factoryAbi, isDeployed, poolAbi, type Deployment } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 
@@ -91,4 +91,31 @@ export async function loadCoins(dep: Deployment): Promise<Coin[]> {
     });
   }
   return next.reverse();
+}
+
+export async function loadCoin(dep: Deployment, token: Address): Promise<Coin | null> {
+  if (!isDeployed(dep)) return null;
+  const pool = await publicClient.readContract({
+    address: dep.factory,
+    abi: factoryAbi,
+    functionName: "getPool",
+    args: [token],
+  });
+  if (pool.uniPool === zeroAddress) return null;
+  const [name, symbol, token0, slot0] = await Promise.all([
+    publicClient.readContract({ address: token, abi: erc20Abi, functionName: "name" }),
+    publicClient.readContract({ address: token, abi: erc20Abi, functionName: "symbol" }),
+    publicClient.readContract({ address: pool.uniPool, abi: poolAbi, functionName: "token0" }),
+    publicClient.readContract({ address: pool.uniPool, abi: poolAbi, functionName: "slot0" }),
+  ]);
+  return {
+    token,
+    name,
+    symbol,
+    pool: pool.uniPool,
+    creator: pool.creator,
+    sqrtPriceX96: slot0[0],
+    tokenIs0: token0.toLowerCase() === token.toLowerCase(),
+    liquidity: pool.liquidity,
+  };
 }
