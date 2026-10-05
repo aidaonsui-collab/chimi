@@ -50,51 +50,56 @@
 .banner-fog {
   position: absolute;
   pointer-events: none;
+  will-change: transform;
 }
 
 .banner-clouds {
-  top: -20%;
-  left: -20%;
-  width: 140%;
-  height: 70%;
+  top: -30%;
+  left: -35%;
+  width: 170%;
+  height: 78%;
   background:
-    radial-gradient(ellipse 22% 28% at 18% 42%, rgba(214, 224, 242, 0.55), transparent 70%),
-    radial-gradient(ellipse 28% 32% at 48% 36%, rgba(186, 204, 232, 0.4), transparent 72%),
-    radial-gradient(ellipse 24% 30% at 78% 46%, rgba(206, 216, 236, 0.48), transparent 70%);
-  filter: blur(8px);
+    radial-gradient(ellipse 18% 42% at 12% 55%, rgba(232, 238, 248, 0.95), transparent 68%),
+    radial-gradient(ellipse 24% 48% at 42% 40%, rgba(210, 222, 240, 0.8), transparent 70%),
+    radial-gradient(ellipse 20% 44% at 72% 58%, rgba(226, 234, 248, 0.9), transparent 68%),
+    radial-gradient(ellipse 16% 36% at 92% 46%, rgba(198, 214, 236, 0.75), transparent 70%);
+  filter: blur(2px);
+  opacity: 0.72;
   mix-blend-mode: screen;
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 78%);
-  mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 78%);
-  animation: cloud-drift 14s ease-in-out infinite alternate;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 82%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 82%);
+  animation: cloud-drift 7s linear infinite alternate;
 }
 
 .banner-fog {
-  bottom: -18%;
-  left: -15%;
-  width: 130%;
-  height: 58%;
+  bottom: -25%;
+  left: -30%;
+  width: 160%;
+  height: 70%;
   background:
-    radial-gradient(ellipse 46% 50% at 24% 70%, rgba(186, 202, 222, 0.55), transparent 70%),
-    radial-gradient(ellipse 40% 46% at 70% 78%, rgba(168, 188, 212, 0.45), transparent 72%);
-  filter: blur(12px);
+    radial-gradient(ellipse 42% 55% at 18% 72%, rgba(214, 226, 240, 0.85), transparent 68%),
+    radial-gradient(ellipse 36% 50% at 55% 80%, rgba(190, 208, 228, 0.7), transparent 70%),
+    radial-gradient(ellipse 34% 48% at 86% 68%, rgba(206, 220, 236, 0.8), transparent 68%);
+  filter: blur(6px);
+  opacity: 0.8;
   mix-blend-mode: screen;
-  animation: mist-drift 11s ease-in-out infinite alternate;
+  animation: mist-drift 5.5s linear infinite alternate;
 }
 
 .banner-fog-b {
-  animation-duration: 17s;
+  animation-duration: 9s;
   animation-direction: alternate-reverse;
-  opacity: 0.8;
+  opacity: 0.65;
 }
 
 @keyframes cloud-drift {
-  from { transform: translate3d(-8%, 0, 0); }
-  to { transform: translate3d(8%, 2%, 0); }
+  from { transform: translate3d(-18%, -2%, 0); }
+  to { transform: translate3d(18%, 3%, 0); }
 }
 
 @keyframes mist-drift {
-  from { transform: translate3d(10%, 4%, 0); }
-  to { transform: translate3d(-10%, -2%, 0); }
+  from { transform: translate3d(16%, 6%, 0); }
+  to { transform: translate3d(-16%, -4%, 0); }
 }
 
 @media (prefers-reduced-motion: reduce) {

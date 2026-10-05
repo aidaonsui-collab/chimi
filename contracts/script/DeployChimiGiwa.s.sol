@@ -34,7 +34,7 @@ contract DeployChimiGiwa is Script {
         p.stakingPool = p.treasury;
         p.lockDuration = uint64(vm.envOr("LOCK_DURATION", uint256(100 * 365 days)));
         p.creationFee = vm.envOr("CREATION_FEE_WEI", uint256(0));
-        p.launchVirtualQuote = vm.envOr("LAUNCH_VIRTUAL_QUOTE", uint256(1 ether));
+        p.launchVirtualQuote = vm.envOr("LAUNCH_VIRTUAL_QUOTE", uint256(1_180_308_761_395_051_186));
 
         vm.startBroadcast(pk);
         ChimiStack.Addresses memory a = ChimiStack.deploy(p);

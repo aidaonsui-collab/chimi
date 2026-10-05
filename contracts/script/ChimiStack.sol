@@ -53,8 +53,8 @@ library ChimiStack {
         p.weth = address(0);
         p.lockDuration = uint64(100 * 365 days);
         p.creationFee = 0;
-        // ~1 ETH opening FDV. Virtual token init is slightly above 1B, so spot FDV lands just under this.
-        p.launchVirtualQuote = 1 ether;
+        // $3,000 opening FDV at $2,711 ETH on 2026-10-05. Spot FDV is quote * 1e9 / VIRTUAL_TOKEN_INIT.
+        p.launchVirtualQuote = 1_180_308_761_395_051_186;
         p.memeCreatorBps = 7000;
         p.memeStakerBps = 0;
         p.wireOwner = true;

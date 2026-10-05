@@ -10,6 +10,19 @@ import { useChimi } from "@/components/chimi/provider";
 export const Route = createFileRoute("/launch")({ component: LaunchPage });
 
 const field = "mt-1 w-full rounded-xl border border-line bg-bg px-3 py-2.5 outline-none";
+const VIRTUAL_TOKEN = 1_066_666_666_666_666_666_666_666_666n;
+const SUPPLY = 1_000_000_000n * 10n ** 18n;
+
+function tokensOut(ethIn: bigint, virtualQuote: bigint): bigint {
+  if (ethIn === 0n || virtualQuote === 0n) return 0n;
+  return (ethIn * 99n * VIRTUAL_TOKEN) / (100n * virtualQuote);
+}
+
+function compactTokens(raw: bigint): string {
+  const whole = Number(raw / 10n ** 18n);
+  if (!Number.isFinite(whole)) return "0";
+  return whole.toLocaleString("en-US", { maximumFractionDigits: whole >= 1000 ? 0 : 2 });
+}
 
 function LaunchPage() {
   const { account, connect, deployment, live, createCoin } = useChimi();
@@ -24,6 +37,8 @@ function LaunchPage() {
   const [devBuy, setDevBuy] = useState("0");
   const [balance, setBalance] = useState<bigint>();
   const [fee, setFee] = useState<bigint>();
+  const [virtualQuote, setVirtualQuote] = useState<bigint>();
+  const [ethUsd, setEthUsd] = useState<number>();
   const [advanced, setAdvanced] = useState(false);
   const [note, setNote] = useState("");
   const [kind, setKind] = useState<"" | "bad" | "good">("");
@@ -64,6 +79,34 @@ function LaunchPage() {
       cancel = true;
     };
   }, [account, deployment, live]);
+
+  useEffect(() => {
+    if (!deployment || !live) return;
+    let cancel = false;
+    void publicClient
+      .readContract({ address: deployment.factory, abi: factoryAbi, functionName: "launchVirtualQuote" })
+      .then((q) => {
+        if (!cancel) setVirtualQuote(q);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancel = true;
+    };
+  }, [deployment, live]);
+
+  useEffect(() => {
+    let cancel = false;
+    void fetch("https://api.coinbase.com/v2/prices/ETH-USD/spot")
+      .then((r) => r.json())
+      .then((body: { data?: { amount?: string } }) => {
+        const n = Number(body.data?.amount);
+        if (!cancel && Number.isFinite(n) && n > 0) setEthUsd(n);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancel = true;
+    };
+  }, []);
 
   async function onImage(file: File | undefined) {
     if (!file) return;
@@ -115,13 +158,20 @@ function LaunchPage() {
 
   const due = fee ?? 0n;
   let buy = 0n;
+  let buyOk = true;
   try {
     buy = parseEther(devBuy.trim() || "0");
   } catch {
     buy = 0n;
+    buyOk = devBuy.trim() === "";
   }
   const total = due + buy;
   const mark = symbol.trim() || "TICKER";
+  const quote = virtualQuote ?? 0n;
+  const received = buyOk ? tokensOut(buy, quote) : 0n;
+  const shareBps = received === 0n || SUPPLY === 0n ? 0 : Number((received * 10_000n) / SUPPLY) / 100;
+  const fdvEth = quote === 0n ? 0 : Number((quote * SUPPLY) / VIRTUAL_TOKEN) / 1e18;
+  const fdvUsd = ethUsd && fdvEth ? fdvEth * ethUsd : undefined;
 
   return (
     <main className="mx-auto grid max-w-5xl items-start gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[1fr_300px] lg:py-12">
@@ -226,6 +276,16 @@ function LaunchPage() {
                 Max
               </button>
             </div>
+            <p className="mt-2 text-sm tabular-nums">
+              {buyOk && buy > 0n && quote > 0n
+                ? `≈ ${compactTokens(received)} ${mark} · ${shareBps.toFixed(2)}% of supply`
+                : "Enter ETH to see the token estimate"}
+            </p>
+            <p className="text-xs text-muted">
+              {fdvUsd
+                ? `Opens at about $${Math.round(fdvUsd).toLocaleString("en-US")} market cap. Estimate is the spot price after the 1% pool fee.`
+                : "Opens at a $3,000 market cap. Estimate is the spot price after the 1% pool fee."}
+            </p>
           </div>
 
           <button type="button" onClick={() => setAdvanced((v) => !v)} className="text-left text-sm text-gold">
@@ -293,7 +353,7 @@ function LaunchPage() {
           {[
             ["Pair", "ETH"],
             ["Supply", "1B"],
-            ["Developer buy", `${devBuy || "0"} ETH`],
+            ["Developer buy", buy > 0n && quote > 0n ? `${compactTokens(received)} ${mark}` : `${devBuy || "0"} ETH`],
             ["You pay", `${fmt(total, 4)} ETH`],
           ].map(([label, value]) => (
             <div key={label} className="flex justify-between gap-3 py-2">
