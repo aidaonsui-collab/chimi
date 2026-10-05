@@ -1,15 +1,15 @@
 :root {
-  color-scheme: dark;
-  --bg: #100e0c;
-  --bg-2: #1a1612;
-  --ink: #f3ecdf;
-  --muted: #a89a86;
-  --line: #3a3126;
-  --gold: #e2b15a;
-  --gold-2: #8c6230;
-  --danger: #e07a62;
-  --ok: #b7c7a3;
-  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  color-scheme: light;
+  --bg: #f4efe4;
+  --bg-2: #faf6ee;
+  --ink: #1c140f;
+  --muted: #7a6556;
+  --line: #e4d8c8;
+  --gold: #c44536;
+  --gold-2: #c44536;
+  --danger: #c44536;
+  --ok: #2f6b45;
+  font-family: "Iowan Old Style", Palatino, Georgia, serif;
 }
 
 * { box-sizing: border-box; }
@@ -18,21 +18,18 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(1200px 500px at 50% -10%, rgba(226, 177, 90, 0.16), transparent 60%),
+    radial-gradient(900px 420px at 100% -10%, rgba(196, 69, 54, 0.08), transparent 55%),
     var(--bg);
   color: var(--ink);
 }
 
-button, input {
-  font: inherit;
-  color: inherit;
-}
+button, input { font: inherit; color: inherit; }
 
 button {
   cursor: pointer;
-  border: 1px solid var(--gold-2);
+  border: 0;
   background: var(--gold);
-  color: #1a1208;
+  color: #f6efe4;
   border-radius: 999px;
   padding: 0.7rem 1.1rem;
   font-weight: 650;
@@ -41,17 +38,14 @@ button {
 button.ghost {
   background: transparent;
   color: var(--ink);
-  border-color: var(--line);
+  border: 1px solid var(--line);
 }
 
-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
+button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 input {
   width: 100%;
-  background: #0c0a08;
+  background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 0.75rem 0.85rem;
@@ -73,15 +67,14 @@ header {
 }
 
 .mark {
-  font-family: Palatino, "Iowan Old Style", Georgia, serif;
-  font-size: 2.6rem;
+  font-size: 2.8rem;
   line-height: 0.9;
   letter-spacing: -0.03em;
 }
 
 .mark small {
   display: block;
-  margin-top: 0.35rem;
+  margin-top: 0.45rem;
   font-family: "Avenir Next", "Segoe UI", sans-serif;
   font-size: 0.78rem;
   letter-spacing: 0.18em;
@@ -93,6 +86,7 @@ header {
   max-width: 36rem;
   color: var(--muted);
   margin: 1rem 0 0;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
 }
 
 .grid {
@@ -103,15 +97,14 @@ header {
 }
 
 .card {
-  background: rgba(26, 22, 18, 0.88);
+  background: var(--bg-2);
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 1rem;
 }
 
 h2 {
-  font-family: Palatino, Georgia, serif;
-  font-size: 1.35rem;
+  font-size: 1.6rem;
   font-weight: 500;
   margin: 0 0 0.85rem;
 }
@@ -119,8 +112,13 @@ h2 {
 label {
   display: block;
   color: var(--muted);
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
   font-size: 0.82rem;
   margin: 0.75rem 0 0.35rem;
+}
+
+.row, .hint, .status, .sub, .price, .sym, button, input {
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
 }
 
 .row {
@@ -131,11 +129,7 @@ label {
   margin-top: 0.9rem;
 }
 
-.hint, .status {
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
+.hint, .status { color: var(--muted); font-size: 0.85rem; }
 .status.bad { color: var(--danger); }
 .status.good { color: var(--ok); }
 
@@ -152,7 +146,7 @@ label {
   gap: 0.2rem 1rem;
 }
 
-.coin.on, .coin:hover { border-color: var(--gold-2); background: #221c16; }
+.coin.on, .coin:hover { border-color: var(--gold); background: var(--bg); }
 
 .sym { font-weight: 700; }
 .sub { color: var(--muted); font-size: 0.82rem; }
@@ -165,10 +159,7 @@ label {
   gap: 0.6rem;
 }
 
-.empty {
-  color: var(--muted);
-  padding: 1.5rem 0.4rem;
-}
+.empty { color: var(--muted); padding: 1.5rem 0.4rem; }
 
 @media (max-width: 800px) {
   .grid, .trade { grid-template-columns: 1fr; }
