@@ -46,4 +46,56 @@
   }
 }
 
+.banner-sky,
+.banner-mist {
+  position: absolute;
+  inset: -8%;
+  pointer-events: none;
+}
+
+.banner-sky {
+  background:
+    radial-gradient(ellipse 26% 14% at 18% 24%, rgba(214, 224, 242, 0.55), transparent 70%),
+    radial-gradient(ellipse 34% 16% at 62% 16%, rgba(186, 204, 230, 0.42), transparent 72%),
+    radial-gradient(ellipse 22% 12% at 84% 30%, rgba(220, 228, 244, 0.34), transparent 70%);
+  filter: blur(6px);
+  mix-blend-mode: screen;
+  mask-image: linear-gradient(to bottom, #000 0%, #000 38%, transparent 56%);
+  animation: cloud-drift 70s ease-in-out infinite alternate;
+}
+
+.banner-mist {
+  background:
+    radial-gradient(ellipse 70% 42% at 30% 92%, rgba(176, 192, 214, 0.55), transparent 68%),
+    radial-gradient(ellipse 55% 36% at 78% 86%, rgba(150, 170, 198, 0.42), transparent 70%),
+    radial-gradient(ellipse 40% 28% at 50% 70%, rgba(190, 205, 224, 0.28), transparent 72%);
+  filter: blur(10px);
+  mix-blend-mode: screen;
+  mask-image: linear-gradient(to bottom, transparent 28%, #000 52%, #000 100%);
+  animation: mist-drift 46s ease-in-out infinite alternate;
+}
+
+.banner-mist-b {
+  opacity: 0.75;
+  animation-duration: 68s;
+  animation-direction: alternate-reverse;
+}
+
+@keyframes cloud-drift {
+  from { transform: translate3d(-4%, 0, 0) scale(1.04); }
+  to { transform: translate3d(5%, 1.5%, 0) scale(1.1); }
+}
+
+@keyframes mist-drift {
+  from { transform: translate3d(-7%, 3%, 0) scale(1.06); }
+  to { transform: translate3d(8%, -2%, 0) scale(1.14); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .banner-sky,
+  .banner-mist {
+    animation: none;
+  }
+}
+
 

@@ -1,105 +1,203 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { fmt, wethPerToken } from "@/lib/chimi/market";
+import { fmt, wethPerToken, type Coin } from "@/lib/chimi/market";
 import { useChimi } from "@/components/chimi/provider";
 
 export const Route = createFileRoute("/")({ component: Home });
 
+type Sort = "top" | "new" | "az";
+
+function priceOf(c: Coin) {
+  return wethPerToken(c.sqrtPriceX96, c.tokenIs0);
+}
+
+function fdvOf(c: Coin) {
+  return priceOf(c) * 1_000_000_000n;
+}
+
+function Chevron() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="text-[#7d6f5a]" aria-hidden>
+      <path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function Mark({ symbol, large }: { symbol: string; large?: boolean }) {
+  return (
+    <span
+      className={`grid shrink-0 place-items-center rounded-full border-seal bg-[radial-gradient(circle_at_35%_30%,rgba(210,74,46,.18),rgba(23,18,14,.6))] font-display text-seal ${large ? "size-20 border-2 text-[15px] shadow-[0_0_0_6px_rgba(210,74,46,.08),0_12px_30px_rgba(210,74,46,.25)]" : "size-11 border-[1.5px] text-[10px]"}`}
+    >
+      {symbol.slice(0, 4)}
+    </span>
+  );
+}
+
 function Home() {
-  const { coins, note, preview } = useChimi();
+  const { coins, preview } = useChimi();
   const [query, setQuery] = useState("");
-  const shown = useMemo(() => {
+  const [sort, setSort] = useState<Sort>("top");
+  const order = useMemo(() => new Map(coins.map((c, i) => [c.token, i])), [coins]);
+
+  const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return coins;
     return coins.filter((c) => c.name.toLowerCase().includes(q) || c.symbol.toLowerCase().includes(q));
   }, [coins, query]);
 
-  const ranked = useMemo(() => {
-    return [...shown].sort((a, b) => {
-      const fa = wethPerToken(a.sqrtPriceX96, a.tokenIs0) * 1_000_000_000n;
-      const fb = wethPerToken(b.sqrtPriceX96, b.tokenIs0) * 1_000_000_000n;
-      if (fb === fa) return 0;
-      return fb > fa ? 1 : -1;
-    });
-  }, [shown]);
-  const leading = ranked[0];
+  const byTop = useMemo(() => [...filtered].sort((a, b) => (fdvOf(b) > fdvOf(a) ? 1 : fdvOf(b) < fdvOf(a) ? -1 : 0)), [filtered]);
+  const rank = useMemo(() => new Map(byTop.map((c, i) => [c.token, i + 1])), [byTop]);
+  const leading = byTop[0];
+
+  const rows = useMemo(() => {
+    const list = [...filtered];
+    if (sort === "top") list.sort((a, b) => (fdvOf(b) > fdvOf(a) ? 1 : -1));
+    else if (sort === "new") list.sort((a, b) => (order.get(b.token) ?? 0) - (order.get(a.token) ?? 0));
+    else list.sort((a, b) => a.name.localeCompare(b.name));
+    return sort === "top" && leading ? list.filter((c) => c.token !== leading.token) : list;
+  }, [filtered, sort, order, leading]);
 
   return (
     <main>
-      <section id="board" className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
-        <div>
-          <p className="text-xs font-semibold tracking-[0.22em] text-gold">
-            {preview ? "PREVIEW COINS" : "LIVE FROM THE FACTORY"}
-          </p>
-          <h2 className="mt-1 font-display text-4xl leading-none">THE BOARD</h2>
+      <section className="mx-auto max-w-[1180px] px-4 pt-7 pb-20 sm:px-6">
+        <div className="relative mb-12 min-h-[220px] overflow-hidden rounded-[28px] border border-line/80 shadow-[inset_0_1px_0_rgba(255,255,255,.06),0_40px_80px_-40px_rgba(0,0,0,.8)] aspect-[2.6/1]">
+          <img src="/banner.png" alt="" className="absolute inset-0 size-full object-cover object-[50%_38%]" />
+          <div className="banner-sky" />
+          <div className="banner-mist" />
+          <div className="banner-mist banner-mist-b" />
+          <div className="absolute inset-0 bg-[radial-gradient(60%_55%_at_50%_38%,rgba(10,12,30,.35),transparent_70%),linear-gradient(180deg,transparent_55%,rgba(23,18,14,.55))]" />
+          <div className="absolute inset-0 flex flex-col items-center justify-center px-[12%] text-center">
+            <h1 className="font-serif text-6xl leading-[0.9] text-fg drop-shadow-[0_12px_40px_rgba(10,12,40,.7)] sm:text-8xl">
+              Chimi
+            </h1>
+            <p className="mt-2 font-serif text-2xl leading-none text-gold drop-shadow-[0_4px_18px_rgba(10,12,40,.8)] sm:text-3xl">
+              치미
+            </p>
+          </div>
         </div>
-        <label className="mt-5 flex items-center gap-3 rounded-2xl border border-line bg-chip px-4 py-3">
-          <span className="text-xs tracking-[0.16em] text-muted uppercase">Search</span>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Find a coin"
-            aria-label="Find a coin"
-            className="w-full bg-transparent text-sm outline-none"
-          />
-        </label>
-        {preview ? <p className="mt-3 text-sm text-muted">{note} These rows are not on the factory.</p> : null}
-        {ranked.length === 0 ? <p className="mt-8 text-muted">No coin matches that.</p> : null}
+
+        <div className="flex flex-wrap items-end justify-between gap-5">
+          <div>
+            <p className="text-[13px] font-semibold tracking-[0.14em] text-gold">
+              {preview ? "PREVIEW COINS" : "LIVE FROM THE FACTORY"}
+            </p>
+            <h2 className="mt-1.5 text-[44px] leading-none font-semibold tracking-[-0.035em]">The Board</h2>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex w-full items-center gap-2.5 rounded-xl border border-line bg-chip px-3.5 py-2.5 shadow-[inset_0_1px_2px_rgba(0,0,0,.3)] sm:w-[280px]">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0 text-muted" aria-hidden>
+                <circle cx="7" cy="7" r="4.75" stroke="currentColor" strokeWidth="1.5" />
+                <path d="m10.5 10.5 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Find a coin"
+                aria-label="Find a coin"
+                className="min-w-0 flex-1 bg-transparent text-[15px] outline-none"
+              />
+            </label>
+            <div className="flex rounded-[10px] border border-line bg-chip p-[3px]">
+              {(
+                [
+                  ["top", "Top"],
+                  ["new", "New"],
+                  ["az", "A–Z"],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setSort(key)}
+                  className={`rounded-[7px] px-3.5 py-1.5 text-[13px] font-medium ${sort === key ? "bg-[#3a2d22] text-fg shadow-[0_1px_3px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.06)]" : "text-muted"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {preview ? (
+          <p className="mt-4 text-sm text-muted">Factory isn’t showing live coins. These rows are layout previews, not on the factory.</p>
+        ) : null}
+        {filtered.length === 0 ? (
+          <div className="mt-8 rounded-3xl border border-dashed border-line px-6 py-14 text-center text-muted">
+            No coin matches “{query}”.
+          </div>
+        ) : null}
 
         {leading ? (
-          <div className="mt-5 grid items-start gap-4 lg:grid-cols-[280px_1fr]">
+          <div className="mt-7 flex flex-col items-stretch gap-5 lg:flex-row lg:items-start">
             <Link
               to="/coin/$address"
               params={{ address: leading.token }}
-              className="rounded-3xl border border-gold/50 bg-chip p-5"
+              className="relative block w-full overflow-hidden rounded-[28px] border border-gold/35 bg-gradient-to-br from-[#2a1f17] to-[#1d1611] p-7 text-fg shadow-[inset_0_1px_0_rgba(255,255,255,.06),0_30px_60px_-30px_rgba(0,0,0,.8)] lg:max-w-sm lg:flex-1"
             >
-              <p className="text-[11px] tracking-[0.18em] text-gold uppercase">Leading</p>
-              <span className="mt-4 grid size-16 place-items-center rounded-full border-2 border-seal font-display text-sm text-seal">
-                {leading.symbol.slice(0, 4)}
-              </span>
-              <p className="mt-4 font-display text-3xl leading-none">{leading.name}</p>
-              <p className="mt-1 text-sm text-muted">${leading.symbol}</p>
-              <p className="mt-4 font-display text-3xl leading-none tabular-nums">
-                {fmt(wethPerToken(leading.sqrtPriceX96, leading.tokenIs0))}
+              <div className="pointer-events-none absolute -top-20 -right-20 size-60 rounded-full bg-[radial-gradient(closest-side,rgba(210,74,46,.28),transparent)]" />
+              <div className="relative flex items-center justify-between">
+                <span className="inline-flex rounded-full bg-gold/12 px-2.5 py-1 text-xs font-semibold tracking-[0.08em] text-gold">
+                  LEADING
+                </span>
+                <span className="text-[13px] text-muted tabular-nums">#01</span>
+              </div>
+              <div className="relative mt-7">
+                <Mark symbol={leading.symbol} large />
+              </div>
+              <p className="relative mt-5 text-[32px] leading-[1.05] font-semibold tracking-[-0.03em]">{leading.name}</p>
+              <p className="relative mt-1 text-[15px] text-muted">
+                ${leading.symbol}
+                {leading.preview ? " · preview" : ""}
               </p>
-              <p className="text-sm text-muted">
-                ETH · {fmt(wethPerToken(leading.sqrtPriceX96, leading.tokenIs0) * 1_000_000_000n, 2)} FDV
-              </p>
+              <div className="relative mt-7 grid grid-cols-2 gap-4 border-t border-line/90 pt-5">
+                <div>
+                  <div className="text-xs text-muted">Price</div>
+                  <div className="mt-0.5 text-[22px] font-semibold tracking-[-0.02em] tabular-nums">{fmt(priceOf(leading), 6)}</div>
+                  <div className="text-xs text-muted">ETH</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted">FDV</div>
+                  <div className="mt-0.5 text-[22px] font-semibold tracking-[-0.02em] tabular-nums">{fmt(fdvOf(leading), 2)}</div>
+                  <div className="text-xs text-muted">ETH</div>
+                </div>
+              </div>
+              <div className="relative mt-6 flex items-center justify-between rounded-[14px] bg-fg/6 px-4 py-3 text-sm font-medium">
+                <span>View coin</span>
+                <Chevron />
+              </div>
             </Link>
 
-            <div className="overflow-hidden rounded-3xl border border-line bg-chip">
-              <div className="grid grid-cols-[2rem_1fr_auto] gap-3 border-b border-line px-4 py-3 text-[11px] tracking-[0.16em] text-muted uppercase sm:grid-cols-[2rem_1fr_7rem_7rem]">
+            <div className="w-full min-w-0 overflow-hidden rounded-3xl border border-line bg-chip/85 shadow-[inset_0_1px_0_rgba(255,255,255,.04)] lg:flex-[999_1_560px]">
+              <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_1rem] gap-3 border-b border-line px-5 py-3.5 text-xs font-medium tracking-[0.06em] text-muted sm:grid-cols-[2.5rem_minmax(0,1fr)_8rem_7rem_1rem]">
                 <span>#</span>
                 <span>Coin</span>
-                <span className="hidden text-right sm:block">Price</span>
-                <span className="text-right">FDV</span>
+                <span className="hidden text-right sm:block">Price, ETH</span>
+                <span className="hidden text-right sm:block">FDV, ETH</span>
+                <span />
               </div>
-              <ul>
-                {ranked.map((c, i) => {
-                  const px = wethPerToken(c.sqrtPriceX96, c.tokenIs0);
-                  const fdv = px * 1_000_000_000n;
-                  return (
-                    <li key={c.token} className="border-b border-line last:border-0">
-                      <Link
-                        to="/coin/$address"
-                        params={{ address: c.token }}
-                        className="grid grid-cols-[2rem_1fr_auto] items-center gap-3 px-4 py-3 hover:bg-bg sm:grid-cols-[2rem_1fr_7rem_7rem]"
-                      >
-                        <span className="text-sm text-muted">{i + 1}</span>
-                        <span className="min-w-0">
-                          <span className="block truncate font-medium">{c.name}</span>
-                          <span className="text-xs text-muted">
-                            ${c.symbol}
-                            {c.preview ? " · preview" : ""}
-                          </span>
-                        </span>
-                        <span className="hidden text-right text-sm tabular-nums sm:block">{fmt(px)} ETH</span>
-                        <span className="text-right text-sm tabular-nums">{fmt(fdv, 2)}</span>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
+              {rows.map((c) => (
+                <Link
+                  key={c.token}
+                  to="/coin/$address"
+                  params={{ address: c.token }}
+                  className="grid grid-cols-[2.5rem_minmax(0,1fr)_1rem] items-center gap-3 border-b border-line/55 px-5 py-3.5 text-fg last:border-0 hover:bg-fg/4 sm:grid-cols-[2.5rem_minmax(0,1fr)_8rem_7rem_1rem]"
+                >
+                  <span className="text-sm text-muted tabular-nums">{String(rank.get(c.token) ?? 0).padStart(2, "0")}</span>
+                  <span className="flex min-w-0 items-center gap-3.5">
+                    <Mark symbol={c.symbol} />
+                    <span className="min-w-0">
+                      <span className="block truncate text-base font-medium">{c.name}</span>
+                      <span className="block truncate text-[13px] text-muted">
+                        ${c.symbol}
+                        {c.preview ? " · preview" : ""}
+                      </span>
+                    </span>
+                  </span>
+                  <span className="hidden text-right text-[15px] tabular-nums sm:block">{fmt(priceOf(c), 6)}</span>
+                  <span className="hidden text-right text-[15px] font-medium tabular-nums sm:block">{fmt(fdvOf(c), 2)}</span>
+                  <Chevron />
+                </Link>
+              ))}
             </div>
           </div>
         ) : null}

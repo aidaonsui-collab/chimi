@@ -4,61 +4,87 @@ import { giwaSepolia } from "@/lib/chimi/chain";
 import { shortAddr } from "@/lib/chimi/market";
 import { useChimi } from "@/components/chimi/provider";
 
+const tabs = [
+  { to: "/", label: "Board" },
+  { to: "/swap", label: "Swap" },
+] as const;
+
+function TabPill({ here }: { here: string }) {
+  return (
+    <div className="flex items-center gap-1 rounded-full border border-line/80 bg-chip/80 p-1">
+      {tabs.map((tab) => {
+        const on = here === tab.to;
+        return (
+          <Link
+            key={tab.to}
+            to={tab.to}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium ${on ? "bg-fg/10 text-fg shadow-[inset_0_1px_0_rgba(255,255,255,.06)]" : "text-muted"}`}
+          >
+            {tab.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Shell({ children }: { children: ReactNode }) {
   const { account, connect, deployment } = useChimi();
   const location = useLocation();
   const explorer = giwaSepolia.blockExplorers.default.url;
-  const here = location.pathname;
 
   return (
-    <div className="min-h-screen">
-      <header className="sticky top-0 z-30 border-b border-line bg-bg/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 sm:h-[4.25rem] sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-0">
-          <Link to="/" className="flex items-center gap-3">
+    <div className="flex min-h-screen flex-col">
+      <header className="sticky top-0 z-30 border-b border-line/70 bg-bg/70 backdrop-blur-xl">
+        <div className="mx-auto flex w-full max-w-[1180px] items-center justify-between gap-2 px-3 py-3 sm:h-16 sm:gap-3 sm:px-6 sm:py-0">
+          <Link to="/" className="flex min-w-0 items-center gap-2 text-fg sm:gap-3">
             <img
-              src="/brands/chimi-seal.jpg"
+              src="/seal.jpg"
               alt=""
-              className="size-10 rounded-full border border-seal object-cover"
+              className="size-9 rounded-full object-cover shadow-[0_0_0_1px_rgba(210,74,46,.8),0_4px_14px_rgba(210,74,46,.25)]"
             />
-            <span className="hidden leading-none sm:block">
-              <span className="block font-display text-xl tracking-wide">CHIMI</span>
-              <span className="font-serif text-sm text-gold">치미</span>
+            <span className="hidden items-baseline gap-2 leading-none sm:flex">
+              <span className="font-display text-lg tracking-[0.06em]">CHIMI</span>
+              <span className="font-serif text-[15px] text-gold">치미</span>
             </span>
           </Link>
-          <nav className="flex w-full items-center justify-end gap-2 sm:w-auto">
-            <Link to="/" className={`px-1.5 text-xs tracking-wide sm:px-3 sm:text-sm ${here === "/" ? "text-fg" : "text-muted"}`}>
-              Board
-            </Link>
-            <Link
-              to="/swap"
-              className={`px-1.5 text-xs tracking-wide sm:px-3 sm:text-sm ${here === "/swap" ? "text-fg" : "text-muted"}`}
-            >
-              Swap
-            </Link>
+          <nav className="hidden md:block">
+            <TabPill here={location.pathname} />
+          </nav>
+          <div className="flex items-center gap-2">
             <Link
               to="/launch"
-              className="rounded-full bg-seal px-2.5 py-1.5 text-xs font-semibold tracking-wide text-onseal sm:px-4 sm:py-2 sm:text-sm"
+              className="shrink-0 rounded-full bg-seal px-3 py-1.5 text-sm font-semibold text-onseal shadow-[inset_0_1px_0_rgba(255,255,255,.22),0_6px_20px_rgba(210,74,46,.35)] sm:px-4 sm:py-2"
             >
               Launch
             </Link>
             <button
               type="button"
               onClick={() => void connect().catch(() => undefined)}
-              className="rounded-full border border-line bg-chip px-2.5 py-1.5 text-xs tracking-wide sm:px-4 sm:py-2 sm:text-sm"
+              className="flex shrink-0 items-center gap-2 rounded-full border border-line bg-chip px-3 py-1.5 text-sm font-medium tabular-nums sm:px-4 sm:py-2"
             >
+              {account ? <span className="size-1.5 rounded-full bg-ok shadow-[0_0_8px_#8fbfae]" /> : null}
               {account ? shortAddr(account) : "Connect"}
             </button>
-          </nav>
+          </div>
         </div>
+        <nav className="flex justify-center px-3 pb-3 md:hidden">
+          <TabPill here={location.pathname} />
+        </nav>
       </header>
-      {children}
-      <footer className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-8 text-sm text-muted sm:px-6">
-        <p>치미 · GIWA Sepolia · the pool is the market</p>
-        {deployment ? (
-          <a className="text-gold" href={`${explorer}/address/${deployment.factory}`}>
-            Factory {shortAddr(deployment.factory)}
-          </a>
-        ) : null}
+      <div className="flex-1">{children}</div>
+      <footer className="border-t border-line">
+        <div className="mx-auto flex max-w-[1180px] flex-wrap items-center justify-between gap-3 px-4 py-7 text-sm text-muted sm:px-6">
+          <p className="flex items-center gap-2.5">
+            <span className="font-serif text-base text-gold">치미</span>
+            <span>GIWA Sepolia · the pool is the market</span>
+          </p>
+          {deployment ? (
+            <a href={`${explorer}/address/${deployment.factory}`}>Factory {shortAddr(deployment.factory)}</a>
+          ) : (
+            <span>Factory not deployed</span>
+          )}
+        </div>
       </footer>
     </div>
   );
