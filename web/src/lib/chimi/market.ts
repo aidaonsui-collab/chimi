@@ -140,6 +140,42 @@ const swapEvent = parseAbiItem(
   "event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)",
 );
 
+const createdEvent = parseAbiItem(
+  "event InstantQuoteTokenCreated(address indexed token, address indexed creator, address pool, uint256 positionId)",
+);
+
+export type Launch = {
+  token: Address;
+  pool: Address;
+  time: number;
+};
+
+export async function loadLaunches(factory: Address): Promise<Launch[]> {
+  const latest = await publicClient.getBlock();
+  const latestNum = latest.number;
+  const latestTime = Number(latest.timestamp);
+  const span = 9_000n;
+  const seen = new Set<string>();
+  const rows: Launch[] = [];
+  for (let i = 0; i < 16; i++) {
+    const to = latestNum - span * BigInt(i);
+    if (to <= 0n) break;
+    const from = to > span ? to - span + 1n : 0n;
+    const logs = await publicClient.getLogs({ address: factory, event: createdEvent, fromBlock: from, toBlock: to });
+    for (const log of logs) {
+      const token = log.args.token;
+      const pool = log.args.pool;
+      if (!token || !pool || seen.has(token.toLowerCase())) continue;
+      seen.add(token.toLowerCase());
+      const block = log.blockNumber ?? to;
+      rows.push({ token, pool, time: latestTime - Number(latestNum - block) });
+    }
+    if (from === 0n) break;
+  }
+  rows.sort((a, b) => a.time - b.time);
+  return rows;
+}
+
 export async function loadSwaps(pool: Address, tokenIs0: boolean): Promise<PoolSwap[]> {
   const latest = await publicClient.getBlock();
   const latestNum = latest.number;

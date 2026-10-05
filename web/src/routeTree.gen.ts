@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as LaunchRouteImport } from './routes/launch'
 import { Route as SwapRouteImport } from './routes/swap'
 import { Route as CoinAddressRouteImport } from './routes/coin.$address'
@@ -17,6 +18,11 @@ import { Route as CoinAddressRouteImport } from './routes/coin.$address'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AnalyticsRoute = AnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LaunchRoute = LaunchRouteImport.update({
@@ -37,12 +43,14 @@ const CoinAddressRoute = CoinAddressRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
   '/launch': typeof LaunchRoute
   '/swap': typeof SwapRoute
   '/coin/$address': typeof CoinAddressRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
   '/launch': typeof LaunchRoute
   '/swap': typeof SwapRoute
   '/coin/$address': typeof CoinAddressRoute
@@ -50,20 +58,22 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
   '/launch': typeof LaunchRoute
   '/swap': typeof SwapRoute
   '/coin/$address': typeof CoinAddressRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/launch' | '/swap' | '/coin/$address'
+  fullPaths: '/' | '/analytics' | '/launch' | '/swap' | '/coin/$address'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/launch' | '/swap' | '/coin/$address'
-  id: '__root__' | '/' | '/launch' | '/swap' | '/coin/$address'
+  to: '/' | '/analytics' | '/launch' | '/swap' | '/coin/$address'
+  id: '__root__' | '/' | '/analytics' | '/launch' | '/swap' | '/coin/$address'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AnalyticsRoute: typeof AnalyticsRoute
   LaunchRoute: typeof LaunchRoute
   SwapRoute: typeof SwapRoute
   CoinAddressRoute: typeof CoinAddressRoute
@@ -76,6 +86,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/analytics': {
+      id: '/analytics'
+      path: '/analytics'
+      fullPath: '/analytics'
+      preLoaderRoute: typeof AnalyticsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/launch': {
@@ -104,6 +121,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AnalyticsRoute: AnalyticsRoute,
   LaunchRoute: LaunchRoute,
   SwapRoute: SwapRoute,
   CoinAddressRoute: CoinAddressRoute,

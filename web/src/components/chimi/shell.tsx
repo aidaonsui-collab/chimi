@@ -7,6 +7,7 @@ import { useChimi } from "@/components/chimi/provider";
 const tabs = [
   { to: "/", label: "Board" },
   { to: "/swap", label: "Swap" },
+  { to: "/analytics", label: "Analytics" },
 ] as const;
 
 function TabPill({ here }: { here: string }) {
