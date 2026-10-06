@@ -23,13 +23,29 @@ const shared = new Map<string, StoredProfile | null>();
 const inflight = new Map<string, Promise<void>>();
 const listeners = new Set<() => void>();
 let storageOn: boolean | undefined;
+/** When a token was last found to have no profile. Those are re-asked after NULL_TTL_MS, so a picture saved
+ * after this tab loaded still appears (on navigation or when the tab comes back) without a hard refresh. */
+const nullAt = new Map<string, number>();
+const NULL_TTL_MS = 15_000;
+
+function needsFetch(t: string) {
+  if (inflight.has(t)) return false;
+  if (!shared.has(t)) return true;
+  return shared.get(t) === null && Date.now() - (nullAt.get(t) ?? 0) > NULL_TTL_MS;
+}
+
+function setProfile(t: string, p: StoredProfile | null) {
+  shared.set(t, p);
+  if (p) nullAt.delete(t);
+  else nullAt.set(t, Date.now());
+}
 
 function notify() {
   for (const fn of listeners) fn();
 }
 
 async function fetchProfiles(tokens: string[]) {
-  const missing = tokens.filter((t) => !shared.has(t) && !inflight.has(t));
+  const missing = tokens.filter(needsFetch);
   if (missing.length === 0) return;
   const job = (async () => {
     try {
@@ -37,9 +53,9 @@ async function fetchProfiles(tokens: string[]) {
       if (!res.ok) throw new Error(String(res.status));
       const body = (await res.json()) as { storage?: boolean; profiles?: Record<string, StoredProfile> };
       storageOn = Boolean(body.storage);
-      for (const t of missing) shared.set(t, body.profiles?.[t] ?? null);
+      for (const t of missing) setProfile(t, body.profiles?.[t] ?? null);
     } catch {
-      for (const t of missing) shared.set(t, null);
+      for (const t of missing) setProfile(t, null);
     } finally {
       for (const t of missing) inflight.delete(t);
       notify();
@@ -47,6 +63,16 @@ async function fetchProfiles(tokens: string[]) {
   })();
   for (const t of missing) inflight.set(t, job);
   await job;
+}
+
+// Mobile browsers keep tabs alive (and restore them from the back/forward cache), so re-check
+// empty profiles whenever the page is shown again.
+if (typeof window !== "undefined") {
+  const recheck = () => {
+    if (document.visibilityState === "visible") void fetchProfiles([...shared.keys()].slice(0, 50));
+  };
+  document.addEventListener("visibilitychange", recheck);
+  window.addEventListener("pageshow", recheck);
 }
 
 export type ResolvedMeta = TokenMeta & { shared: boolean };
@@ -167,7 +193,7 @@ export async function publishTokenProfile(
   });
   const body = (await res.json().catch(() => ({}))) as { error?: string; profile?: StoredProfile };
   if (!res.ok || !body.profile) throw new Error(body.error || `Could not publish (${res.status}).`);
-  shared.set(token.toLowerCase(), body.profile);
+  setProfile(token.toLowerCase(), body.profile);
   storageOn = true;
   const { imageUrl: savedUrl, ...rest } = cleaned.profile;
   saveTokenMeta(token, { ...rest, image: savedUrl || undefined });

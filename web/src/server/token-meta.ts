@@ -104,7 +104,13 @@ export async function getTokenMeta(request: Request) {
     }),
   );
   const profiles = Object.fromEntries(entries.filter(([, v]) => v));
-  return json({ storage: kvReady() && Boolean(env("BLOB_READ_WRITE_TOKEN")), profiles }, 200, "public, max-age=15, s-maxage=60, stale-while-revalidate=600");
+  // Browsers always ask the CDN (max-age=0). If any requested token has no Chimi profile yet, keep the
+  // CDN copy short so a creator's new picture shows up within seconds instead of after a long stale window.
+  const complete = tokens.every((t) => profiles[t.toLowerCase()]?.source === "chimi");
+  const cache = complete
+    ? "public, max-age=0, s-maxage=60, stale-while-revalidate=300"
+    : "public, max-age=0, s-maxage=10, stale-while-revalidate=20";
+  return json({ storage: kvReady() && Boolean(env("BLOB_READ_WRITE_TOKEN")), profiles }, 200, cache);
 }
 
 type PostBody = TokenProfile & {
