@@ -33,7 +33,11 @@ The page is the board, the launch sheet, and a coin page. It reads `/deployments
 
 ### Token pictures
 
-Name and symbol are on-chain; the picture, description, and links are a token profile. After a launch the creator signs the profile once (no gas) and `/api/token-meta` stores it in Vercel Blob after checking the signer is the coin's creator on the factory. Every page reads profiles from that endpoint, falls back to the GIWA explorer's token icon, then to the copy kept in the launching browser, then to the seal initials.
+Name and symbol are on-chain; the picture, description, and links are a token profile, stored the same way as eve.fun (Arcfun):
 
-Shared storage needs a Vercel Blob store connected to the project (Vercel adds `BLOB_READ_WRITE_TOKEN`). Without it, reads still work and pictures stay in the creator's browser. A creator can (re)publish from the coin page with "Set picture".
+1. **Picture bytes → Vercel Blob.** The browser shrinks the file to a 256px JPEG, then `POST /api/upload` (`web/src/server/upload.ts`) puts it under `chimi/` in a public Blob store and returns its `https://…public.blob.vercel-storage.com/chimi/…` URL. The limits are 1 MB, jpeg/png/gif/webp only, and 12 uploads/min per IP.
+2. **Profile record → Upstash Redis (KV).** The creator signs a register message once (no gas) covering the payload hash, a single-use nonce and a timestamp. `POST /api/token-meta` (`web/src/server/token-meta.ts`) checks the signer is the coin's creator on the factory, burns the nonce, and merges the record into `chimi:token:meta:<lowercase token>`.
+3. **Read-back.** Every page asks `GET /api/token-meta?tokens=…`, which does one KV `MGET` and is CDN-cached (`s-maxage=60`). After that it falls back to the GIWA explorer's token icon, then the copy kept in the launching browser, then the seal initials.
+
+Env vars (same names as eve.fun): `BLOB_READ_WRITE_TOKEN`, which Vercel adds when a Blob store is connected, and `KV_REST_API_URL` + `KV_REST_API_TOKEN`, which Vercel adds when an Upstash Redis/KV store is connected (`UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` also work). Without them, reads still work and pictures stay in the creator's browser. A creator can (re)publish from the coin page with "Set picture".
 

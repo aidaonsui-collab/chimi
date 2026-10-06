@@ -1,24 +1,33 @@
-import { getAddress, keccak256, toHex, type Address } from "viem";
+import { getAddress, keccak256, stringToHex, type Address, type Hex } from "viem";
 
 /**
  * Shared token profile (picture, description, links).
  *
- * Name and symbol live on-chain. Everything here is published by the coin's
- * creator through /api/token-meta, signed with the creator wallet, so every
- * visitor sees the same picture instead of only the browser that launched it.
+ * Same path as eve.fun / Arcfun (aidaonsui-collab/Arcfun):
+ *   1. the browser uploads the picture to POST /api/upload, which stores it in the public
+ *      Vercel Blob store and returns its https URL;
+ *   2. the creator signs the profile (payload hash + single-use nonce + timestamp) and
+ *      POST /api/token-meta stores the record, imageUrl included, in Upstash Redis (Vercel KV);
+ *   3. tiles and token pages read it back with GET /api/token-meta?tokens=…
+ * Name and symbol stay on-chain.
  */
 export type TokenProfile = {
   description?: string;
-  image?: string;
+  imageUrl?: string;
   twitter?: string;
   telegram?: string;
   website?: string;
 };
 
-export type StoredProfile = TokenProfile & {
+/** What GET /api/token-meta returns per token. */
+export type StoredProfile = {
   token: Address;
+  image?: string;
+  description?: string;
+  twitter?: string;
+  telegram?: string;
+  website?: string;
   creator?: Address;
-  issuedAt?: string;
   source: "chimi" | "explorer";
 };
 
@@ -26,55 +35,62 @@ export const PROFILE_LIMITS = {
   description: 280,
   handle: 64,
   website: 200,
-  /** A 256px JPEG data URL from shrinkImage() is ~20-40 KB. */
-  imageBytes: 400_000,
-  /** Signed profiles older than this are rejected so stale payloads can't be replayed. */
-  maxAgeMs: 10 * 60 * 1000,
+  url: 500,
+  /** Signed registers older or newer than this are rejected (same window as eve.fun). */
+  maxSkewMs: 10 * 60 * 1000,
 } as const;
 
-const IMAGE_DATA = /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/;
-
 /** Trims and bounds every field. Returns an error string when the profile can't be stored. */
-export function cleanProfile(input: TokenProfile): { profile: TokenProfile } | { error: string } {
+export function cleanProfile(input: TokenProfile): { profile: Required<TokenProfile> } | { error: string } {
   const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
-  const profile: TokenProfile = {
+  const profile = {
     description: str(input.description, PROFILE_LIMITS.description),
+    imageUrl: str(input.imageUrl, PROFILE_LIMITS.url),
     twitter: str(input.twitter, PROFILE_LIMITS.handle).replace(/^@/, ""),
     telegram: str(input.telegram, PROFILE_LIMITS.handle),
     website: str(input.website, PROFILE_LIMITS.website),
   };
+  if (profile.imageUrl && !/^https:\/\//i.test(profile.imageUrl)) return { error: "Image must be an https URL." };
   if (profile.website && !/^https?:\/\//i.test(profile.website)) return { error: "Website must start with http:// or https://" };
-  const image = typeof input.image === "string" ? input.image.trim() : "";
-  if (image) {
-    if (image.startsWith("data:")) {
-      if (!IMAGE_DATA.test(image)) return { error: "Unsupported image format." };
-      if (image.length > PROFILE_LIMITS.imageBytes) return { error: "Image is too large." };
-    } else if (!/^(https:\/\/|ipfs:\/\/|ar:\/\/)/i.test(image) || image.length > 500) {
-      return { error: "Image must be an uploaded picture, an https:// URL, or an ipfs:// URI." };
-    }
-    profile.image = image;
-  }
   return { profile };
 }
 
-/** Stable hash of the cleaned profile; this is what the creator signs. */
-export function profileHash(profile: TokenProfile): `0x${string}` {
-  const ordered = {
-    description: profile.description ?? "",
-    image: profile.image ?? "",
-    twitter: profile.twitter ?? "",
-    telegram: profile.telegram ?? "",
-    website: profile.website ?? "",
-  };
-  return keccak256(toHex(JSON.stringify(ordered)));
+/* ---- Register signature, mirrored from Arcfun lib/arc-auth.ts ---- */
+
+export const AUTH_NONCE_RE = /^[0-9a-f]{32}$/i;
+
+export function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map((v) => stableStringify(v)).join(",")}]`;
+  const obj = value as Record<string, unknown>;
+  return `{${Object.keys(obj)
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`)
+    .join(",")}}`;
 }
 
-export function profileMessage(token: string, chainId: number, hash: string, issuedAt: string) {
+export function hashPayload(value: unknown): Hex {
+  return keccak256(stringToHex(stableStringify(value)));
+}
+
+export function newAuthNonce(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export function tokenRegisterMessage(opts: { token: string; payloadHash: Hex; nonce: string; timestamp: number }) {
   return [
-    "Publish Chimi token profile",
-    `Token: ${getAddress(token)}`,
-    `Chain: ${chainId}`,
-    `Profile: ${hash}`,
-    `Issued: ${issuedAt}`,
+    "Chimi token register",
+    `Token: ${getAddress(opts.token)}`,
+    "Action: register-token",
+    `Payload: ${opts.payloadHash}`,
+    `Nonce: ${opts.nonce.toLowerCase()}`,
+    `Timestamp: ${opts.timestamp}`,
   ].join("\n");
+}
+
+/** The exact object the creator signs and the server re-hashes. */
+export function registerPayload(token: string, profile: Required<TokenProfile>) {
+  return { token: getAddress(token), ...profile };
 }

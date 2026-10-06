@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { giwaSepolia } from "@/lib/chimi/chain";
 import { readTokenMeta, saveTokenMeta, type TokenMeta } from "@/lib/chimi/meta";
-import { cleanProfile, profileHash, profileMessage, type StoredProfile, type TokenProfile } from "@/lib/chimi/profile";
+import { cleanProfile, hashPayload, newAuthNonce, registerPayload, tokenRegisterMessage, type StoredProfile } from "@/lib/chimi/profile";
 
 const IPFS_GATEWAY = "https://ipfs.io/ipfs/";
 const ARWEAVE_GATEWAY = "https://arweave.net/";
@@ -119,30 +118,59 @@ export function sharedStorageEnabled() {
   return storageOn;
 }
 
+/** Uploads a picture to POST /api/upload (Vercel Blob) and returns its public https URL. */
+export async function uploadImage(file: File): Promise<string> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch("/api/upload", { method: "POST", body: fd });
+  const body = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
+  if (!res.ok || !body?.url) throw new Error(body?.error || `upload failed: ${res.status}`);
+  return body.url;
+}
+
+async function dataUrlToFile(dataUrl: string, name: string): Promise<File> {
+  const blob = await (await fetch(dataUrl)).blob();
+  const ext = blob.type.split("/")[1]?.replace("jpeg", "jpg") || "jpg";
+  return new File([blob], `${name}.${ext}`, { type: blob.type || "image/jpeg" });
+}
+
+export type ProfileInput = {
+  description?: string;
+  /** A data: URL from shrinkImage() (uploaded first) or an existing https URL. */
+  image?: string;
+  twitter?: string;
+  telegram?: string;
+  website?: string;
+};
+
 /**
- * Publishes a token profile for everyone. The creator wallet signs the profile hash;
- * the server checks the signer against the factory's recorded creator.
+ * Publishes a token profile for everyone, the eve.fun way: upload the picture to Blob,
+ * then the creator signs payload hash + nonce + timestamp and the server stores the record in KV.
  */
 export async function publishTokenProfile(
   token: string,
-  input: TokenProfile,
+  input: ProfileInput,
   sign: (message: string) => Promise<`0x${string}`>,
 ): Promise<void> {
-  const cleaned = cleanProfile(input);
+  let imageUrl = input.image?.trim() ?? "";
+  if (imageUrl.startsWith("data:")) imageUrl = await uploadImage(await dataUrlToFile(imageUrl, token.slice(2, 10).toLowerCase()));
+  const cleaned = cleanProfile({ ...input, imageUrl });
   if ("error" in cleaned) throw new Error(cleaned.error);
-  const issuedAt = new Date().toISOString();
-  const message = profileMessage(token, giwaSepolia.id, profileHash(cleaned.profile), issuedAt);
+  const timestamp = Date.now();
+  const nonce = newAuthNonce();
+  const message = tokenRegisterMessage({ token, payloadHash: hashPayload(registerPayload(token, cleaned.profile)), nonce, timestamp });
   const signature = await sign(message);
   const res = await fetch("/api/token-meta", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ token, profile: cleaned.profile, issuedAt, signature }),
+    body: JSON.stringify({ token, ...cleaned.profile, signature, timestamp, nonce }),
   });
   const body = (await res.json().catch(() => ({}))) as { error?: string; profile?: StoredProfile };
   if (!res.ok || !body.profile) throw new Error(body.error || `Could not publish (${res.status}).`);
   shared.set(token.toLowerCase(), body.profile);
   storageOn = true;
-  saveTokenMeta(token, { description: cleaned.profile.description ?? "", ...cleaned.profile });
+  const { imageUrl: savedUrl, ...rest } = cleaned.profile;
+  saveTokenMeta(token, { ...rest, image: savedUrl || undefined });
   notify();
 }
 
