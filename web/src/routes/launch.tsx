@@ -5,7 +5,9 @@ import { factoryAbi } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { fmt, short } from "@/lib/chimi/market";
 import { saveTokenMeta, shrinkImage } from "@/lib/chimi/meta";
+import { publishTokenProfile, refreshTokenProfiles } from "@/lib/chimi/token-image";
 import { useChimi } from "@/components/chimi/provider";
+import { TokenLogo } from "@/components/chimi/token-logo";
 
 export const Route = createFileRoute("/launch")({ component: LaunchPage });
 
@@ -25,7 +27,7 @@ function compactTokens(raw: bigint): string {
 }
 
 function LaunchPage() {
-  const { account, connect, deployment, live, createCoin } = useChimi();
+  const { account, connect, deployment, live, createCoin, signMessage } = useChimi();
   const navigate = useNavigate();
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
@@ -138,13 +140,26 @@ function LaunchPage() {
       setKind("");
       setNote("Confirm the launch in your wallet.");
       const token = await createCoin(name.trim(), symbol.trim(), devBuy.trim() || "0");
-      saveTokenMeta(token, {
+      const profile = {
         description: description.trim(),
         image,
         twitter: twitter.trim(),
         telegram: telegram.trim(),
         website: website.trim(),
-      });
+      };
+      saveTokenMeta(token, profile);
+      refreshTokenProfiles();
+      if (image || profile.description || profile.twitter || profile.telegram || profile.website) {
+        // Share the picture with every visitor, not just this browser. A failure here never
+        // blocks the launch; the creator can publish later from the coin page.
+        setKind("");
+        setNote(`${symbol.trim()} is in its pool. Sign once (no gas) to share its picture with everyone.`);
+        try {
+          await publishTokenProfile(token, profile, signMessage);
+        } catch {
+          /* kept locally; coin page offers "Set picture" to retry */
+        }
+      }
       setKind("good");
       setNote(`${symbol.trim()} is in its pool.`);
       await navigate({ to: "/coin/$address", params: { address: token } });
@@ -310,7 +325,7 @@ function LaunchPage() {
             </dl>
           ) : null}
           <p className="text-xs text-muted">
-            Name and symbol are written on-chain. The image, description, and links stay in this browser.
+            Name and symbol are written on-chain. After launch you sign once (no gas) to share the image, description, and links with everyone.
           </p>
         </div>
         <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-4">
@@ -336,13 +351,7 @@ function LaunchPage() {
       <aside className="rounded-3xl border border-line bg-chip p-5 lg:sticky lg:top-24">
         <h2 className="font-display text-2xl">Your token</h2>
         <div className="mt-4 flex items-center gap-3">
-          {image ? (
-            <img src={image} alt="" className="size-14 rounded-full object-cover" />
-          ) : (
-            <span className="grid size-14 place-items-center rounded-full border-2 border-seal font-display text-xs text-seal">
-              {mark.slice(0, 4)}
-            </span>
-          )}
+          <TokenLogo symbol={mark} image={image} size={56} />
           <div>
             <p className="font-display text-xl leading-none">{name.trim() || "Untitled"}</p>
             <p className="mt-1 text-sm text-muted">${mark}</p>

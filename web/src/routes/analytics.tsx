@@ -174,7 +174,7 @@ function LineChart({
     <div className="relative h-[280px]">
       <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full">
         {ticks.map((tick, i) => (
-          <line key={tick} x1="0" y1={16 + i * ((height - 40) / 2)} x2={width} y2={16 + i * ((height - 40) / 2)} stroke="#3f3325" strokeDasharray="3 6" />
+          <line key={`${i}-${tick}`} x1="0" y1={16 + i * ((height - 40) / 2)} x2={width} y2={16 + i * ((height - 40) / 2)} stroke="#3f3325" strokeDasharray="3 6" />
         ))}
         <path d={area} fill="#e0b45a" opacity="0.18" />
         <path d={line} fill="none" stroke="#e0b45a" strokeWidth="2" />

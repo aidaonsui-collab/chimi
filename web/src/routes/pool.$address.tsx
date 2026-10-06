@@ -3,8 +3,8 @@ import { useEffect, useState } from "react";
 import { type Address } from "viem";
 import { erc20Abi } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
-import { fmt, loadCoin, loadSwaps, shortAddr, wethPerToken, type Coin, type PoolSwap } from "@/lib/chimi/market";
-import { readTokenMeta } from "@/lib/chimi/meta";
+import { feeLabel, fmt, loadCoin, loadSwaps, shortAddr, wethPerToken, type Coin, type PoolSwap } from "@/lib/chimi/market";
+import { useTokenProfile } from "@/lib/chimi/token-image";
 import { tickFromSqrtPriceX96, tokensPerEthFromTick } from "@/lib/chimi/range";
 import { PairMark } from "@/components/chimi/pair-mark";
 import { PositionDesk } from "@/components/chimi/position-form";
@@ -34,7 +34,7 @@ function PoolPage() {
   const [tf, setTf] = useState<"1D" | "1W" | "All">("1D");
   const [hover, setHover] = useState(-1);
   const [copied, setCopied] = useState(false);
-  const [image, setImage] = useState<string>();
+  const image = useTokenProfile(coin?.token)?.image;
 
   useEffect(() => {
     if (listed) {
@@ -74,7 +74,6 @@ function PoolPage() {
 
   useEffect(() => {
     if (window.location.hash === "#new") setCreating(true);
-    if (coin) setImage(readTokenMeta(coin.token)?.image);
   }, [coin]);
 
   if (!coin || !deployment) {
@@ -151,7 +150,7 @@ function PoolPage() {
             <h1 className="text-[clamp(30px,4vw,42px)] leading-none font-semibold tracking-[-0.035em]">{coin.symbol} / ETH</h1>
             <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[13px]">
               <span className="flex items-center gap-1.5 rounded-lg bg-ok/10 px-2.5 py-1 text-ok"><span className="size-1.5 rounded-full bg-ok" />GIWA Sepolia</span>
-              <span className="overflow-hidden rounded-lg bg-fg/7 text-muted"><span className="px-2 py-1">v3</span><span className="border-l border-bg px-2 py-1">1%</span></span>
+              <span className="overflow-hidden rounded-lg bg-fg/7 text-muted"><span className="px-2 py-1">v3</span><span className="border-l border-bg px-2 py-1">{feeLabel(coin.fee)}</span></span>
               <button type="button" onClick={() => { void navigator.clipboard.writeText(coin.pool); setCopied(true); setTimeout(() => setCopied(false), 1400); }} className="rounded-lg bg-fg/7 px-2.5 py-1 text-muted tabular-nums">
                 {shortAddr(coin.pool)} {copied ? "Copied" : ""}
               </button>

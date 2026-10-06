@@ -36,6 +36,8 @@ type ChimiContext = {
   createCoin: (name: string, symbol: string, firstBuy: string) => Promise<Address>;
   trade: (coin: Coin, side: "buy" | "sell", amount: string, minOut?: bigint) => Promise<string>;
   unwrap: () => Promise<string>;
+  /** Personal-sign with the connected wallet (used to publish token pictures). */
+  signMessage: (message: string) => Promise<`0x${string}`>;
 };
 
 const Ctx = createContext<ChimiContext | null>(null);
@@ -283,6 +285,12 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
     return hash;
   }, [deployment]);
 
+  const signMessage = useCallback(async (message: string) => {
+    const { who, client } = await ready();
+    return client.signMessage({ account: who, message });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const value = useMemo(
     () => ({
       deployment,
@@ -298,8 +306,9 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       createCoin,
       trade,
       unwrap,
+      signMessage,
     }),
-    [deployment, live, coins, preview, note, account, pressOpen, connect, refresh, createCoin, trade, unwrap],
+    [deployment, live, coins, preview, note, account, pressOpen, connect, refresh, createCoin, trade, unwrap, signMessage],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

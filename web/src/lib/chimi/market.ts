@@ -1,5 +1,5 @@
-import { formatEther, parseAbiItem, zeroAddress, type Address } from "viem";
-import { erc20Abi, factoryAbi, isDeployed, poolAbi, type Deployment } from "@/lib/chimi/chain";
+import { decodeEventLog, formatEther, parseAbiItem, toEventSelector, zeroAddress, type Address } from "viem";
+import { POOL_FEE, erc20Abi, factoryAbi, giwaSepolia, isDeployed, poolAbi, type Deployment } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 
 export type Coin = {
@@ -11,8 +11,15 @@ export type Coin = {
   sqrtPriceX96: bigint;
   tokenIs0: boolean;
   liquidity: bigint;
+  /** Pool fee tier in hundredths of a bip (10000 = 1%). Read from the pool. */
+  fee?: number;
   preview?: boolean;
 };
+
+/** "1%", "0.3%", "0.05%" from a v3 fee tier. */
+export function feeLabel(fee: number = POOL_FEE) {
+  return `${Number((fee / 10_000).toFixed(4))}%`;
+}
 
 const Q96 = 2n ** 96n;
 
@@ -75,9 +82,10 @@ export async function loadCoins(dep: Deployment): Promise<Coin[]> {
         args: [token],
       }),
     ]);
-    const [token0, slot0] = await Promise.all([
+    const [token0, slot0, fee] = await Promise.all([
       publicClient.readContract({ address: pool.uniPool, abi: poolAbi, functionName: "token0" }),
       publicClient.readContract({ address: pool.uniPool, abi: poolAbi, functionName: "slot0" }),
+      publicClient.readContract({ address: pool.uniPool, abi: poolAbi, functionName: "fee" }).catch(() => POOL_FEE),
     ]);
     next.push({
       token,
@@ -88,6 +96,7 @@ export async function loadCoins(dep: Deployment): Promise<Coin[]> {
       sqrtPriceX96: slot0[0],
       tokenIs0: token0.toLowerCase() === token.toLowerCase(),
       liquidity: pool.liquidity,
+      fee: Number(fee),
     });
   }
   return next.reverse();
@@ -102,11 +111,12 @@ export async function loadCoin(dep: Deployment, token: Address): Promise<Coin | 
     args: [token],
   });
   if (pool.uniPool === zeroAddress) return null;
-  const [name, symbol, token0, slot0] = await Promise.all([
+  const [name, symbol, token0, slot0, fee] = await Promise.all([
     publicClient.readContract({ address: token, abi: erc20Abi, functionName: "name" }),
     publicClient.readContract({ address: token, abi: erc20Abi, functionName: "symbol" }),
     publicClient.readContract({ address: pool.uniPool, abi: poolAbi, functionName: "token0" }),
     publicClient.readContract({ address: pool.uniPool, abi: poolAbi, functionName: "slot0" }),
+    publicClient.readContract({ address: pool.uniPool, abi: poolAbi, functionName: "fee" }).catch(() => POOL_FEE),
   ]);
   return {
     token,
@@ -117,6 +127,7 @@ export async function loadCoin(dep: Deployment, token: Address): Promise<Coin | 
     sqrtPriceX96: slot0[0],
     tokenIs0: token0.toLowerCase() === token.toLowerCase(),
     liquidity: pool.liquidity,
+    fee: Number(fee),
   };
 }
 
@@ -230,4 +241,81 @@ export async function loadHolders(token: Address, pool: Address, traders: Addres
     .map((address, i) => ({ address, balance: balances[i] }))
     .filter((row) => row.balance > 0n)
     .sort((a, b) => (a.balance < b.balance ? 1 : -1));
+}
+
+export type SwapWindow = {
+  swaps: PoolSwap[];
+  /** Unix time the swap history is complete from. Stats for windows older than this are unknown. */
+  coveredFrom: number;
+  source: "explorer" | "rpc";
+};
+
+const SWAP_TOPIC = toEventSelector(swapEvent);
+
+type ExplorerLog = {
+  blockNumber: string;
+  timeStamp: string;
+  data: `0x${string}`;
+  topics: (`0x${string}` | null)[];
+  transactionHash: `0x${string}`;
+  logIndex: string;
+};
+
+/**
+ * Swaps for the last `seconds`. The public RPC caps getLogs at ~10k blocks (~3h at 1s blocks),
+ * so long windows read from the chain's Blockscout indexer. If the indexer is down, falls back
+ * to the RPC scan (about a day) and reports the shorter coverage so callers can show a dash.
+ */
+export async function loadSwapWindow(pool: Address, tokenIs0: boolean, seconds: number): Promise<SwapWindow> {
+  const latest = await publicClient.getBlock();
+  const now = Number(latest.timestamp);
+  try {
+    const back = await publicClient.getBlock({ blockNumber: latest.number > 100_000n ? latest.number - 100_000n : 0n });
+    const span = Number(latest.number - back.number) || 1;
+    const secsPerBlock = Math.max(0.05, (now - Number(back.timestamp)) / span);
+    const blocksBack = BigInt(Math.ceil(seconds / secsPerBlock) + 600);
+    const fromBlock = latest.number > blocksBack ? latest.number - blocksBack : 0n;
+    const rows: PoolSwap[] = [];
+    const seen = new Set<string>();
+    const pageSize = 1000;
+    for (let page = 1; page <= 30; page++) {
+      const url = `${giwaSepolia.blockExplorers.default.url}/api?module=logs&action=getLogs&address=${pool}&topic0=${SWAP_TOPIC}&fromBlock=${fromBlock}&toBlock=${latest.number}&page=${page}&offset=${pageSize}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`explorer ${res.status}`);
+      const body = (await res.json()) as { status?: string; message?: string; result?: ExplorerLog[] | string };
+      if (!Array.isArray(body.result)) {
+        if (body.message && /no (records|logs) found/i.test(body.message)) break;
+        throw new Error(body.message || "explorer error");
+      }
+      for (const log of body.result) {
+        const key = `${log.transactionHash}:${log.logIndex}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const topics = log.topics.filter((t): t is `0x${string}` => Boolean(t));
+        const decoded = decodeEventLog({ abi: [swapEvent], data: log.data, topics: topics as [`0x${string}`, ...`0x${string}`[]] });
+        const args = decoded.args;
+        const tokenAmt = tokenIs0 ? args.amount0 : args.amount1;
+        const ethAmt = tokenIs0 ? args.amount1 : args.amount0;
+        rows.push({
+          tx: log.transactionHash,
+          block: BigInt(log.blockNumber),
+          time: Number(BigInt(log.timeStamp)),
+          recipient: args.recipient,
+          buy: tokenAmt < 0n,
+          tokenAmount: tokenAmt < 0n ? -tokenAmt : tokenAmt,
+          ethAmount: ethAmt < 0n ? -ethAmt : ethAmt,
+          sqrtPriceX96: args.sqrtPriceX96,
+        });
+      }
+      if (body.result.length < pageSize) break;
+      if (page === 30) throw new Error("too many swaps for the explorer window");
+    }
+    rows.sort((a, b) => (a.block < b.block ? -1 : 1));
+    return { swaps: rows, coveredFrom: now - seconds, source: "explorer" };
+  } catch {
+    const swaps = await loadSwaps(pool, tokenIs0);
+    // loadSwaps reads 10 windows of 9,000 blocks.
+    const back = await publicClient.getBlock({ blockNumber: latest.number > 90_000n ? latest.number - 90_000n : 0n });
+    return { swaps, coveredFrom: back.number === 0n ? 0 : Number(back.timestamp), source: "rpc" };
+  }
 }

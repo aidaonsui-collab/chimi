@@ -4,7 +4,9 @@ import { formatEther, parseEther } from "viem";
 import { erc20Abi } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { estimatedOut, fmt, short, wethPerToken, type Coin } from "@/lib/chimi/market";
-import { readTokenMeta } from "@/lib/chimi/meta";
+import { compactUsd } from "@/lib/chimi/format";
+import { useTokenImages } from "@/lib/chimi/token-image";
+import { EthLogo, TokenLogo } from "@/components/chimi/token-logo";
 import { useChimi } from "@/components/chimi/provider";
 
 export const Route = createFileRoute("/swap")({ component: SwapPage });
@@ -12,16 +14,8 @@ export const Route = createFileRoute("/swap")({ component: SwapPage });
 const SLIPPAGE = [100, 200, 500];
 
 function Chip({ kind, label, image }: { kind: "eth" | "coin"; label: string; image?: string }) {
-  if (image) {
-    return <img src={image} alt="" className="size-[26px] rounded-full object-cover" />;
-  }
-  return (
-    <span
-      className={`grid size-[26px] place-items-center rounded-full font-display text-[7px] ${kind === "eth" ? "border-[1.5px] border-gold text-gold" : "border-[1.5px] border-seal text-seal"}`}
-    >
-      {label.slice(0, 4)}
-    </span>
-  );
+  if (kind === "eth") return <EthLogo size={26} />;
+  return <TokenLogo symbol={label} image={image} size={26} />;
 }
 
 function SwapPage() {
@@ -33,15 +27,21 @@ function SwapPage() {
   const [slippageBps, setSlippageBps] = useState(200);
   const [settings, setSettings] = useState(false);
   const [picker, setPicker] = useState(false);
-  const [images, setImages] = useState<Record<string, string>>({});
+  const images = useTokenImages(useMemo(() => coins.map((item) => item.token), [coins]));
+  const [ethUsd, setEthUsd] = useState<number>();
   useEffect(() => {
-    const next: Record<string, string> = {};
-    for (const item of coins) {
-      const image = readTokenMeta(item.token)?.image;
-      if (image) next[item.token.toLowerCase()] = image;
-    }
-    setImages(next);
-  }, [coins]);
+    let cancel = false;
+    void fetch("https://api.coinbase.com/v2/prices/ETH-USD/spot")
+      .then((r) => r.json())
+      .then((body: { data?: { amount?: string } }) => {
+        const n = Number(body.data?.amount);
+        if (!cancel && Number.isFinite(n) && n > 0) setEthUsd(n);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancel = true;
+    };
+  }, []);
   const [payBal, setPayBal] = useState<bigint>();
   const [recvBal, setRecvBal] = useState<bigint>();
   const [note, setNote] = useState("");
@@ -88,6 +88,11 @@ function SwapPage() {
   const tradable = Boolean(coin && live && !coin.preview);
   const quote = coin && !badAmount ? estimatedOut(parsed, price, payEth) : 0n;
   const minOut = (quote * BigInt(10_000 - slippageBps)) / 10_000n;
+  const priceEth = Number(price) / 1e18;
+  const usdOf = (wei: bigint, isEth: boolean) =>
+    ethUsd && wei > 0n ? compactUsd((Number(wei) / 1e18) * (isEth ? 1 : priceEth) * ethUsd) : undefined;
+  const payUsd = !badAmount ? usdOf(parsed, payEth) : undefined;
+  const recvUsd = usdOf(quote, !payEth);
 
   async function submit() {
     if (!coin || !tradable) return;
@@ -203,6 +208,7 @@ function SwapPage() {
               image={payEth ? undefined : coinImage}
               onPick={!payEth && listed.length > 0 ? () => setPicker(true) : undefined}
               onMax={payBal !== undefined ? () => setAmount(formatEther(payBal)) : undefined}
+              usd={payUsd}
             />
             <button
               type="button"
@@ -228,11 +234,12 @@ function SwapPage() {
               onPick={payEth && listed.length > 0 ? () => setPicker(true) : undefined}
               readOnly
               dim={quote === 0n}
+              usd={recvUsd}
             />
           </div>
 
           <div className="mt-2.5 rounded-[20px] border border-line/70 px-4">
-            <Row label="Rate" value={coin ? `1 ${coin.symbol} = ${fmt(price, 8)} ETH` : "—"} />
+            <Row label="Rate" value={coin ? `1 ${coin.symbol} = ${priceEth > 0 ? priceEth.toLocaleString("en-US", { maximumSignificantDigits: 4, maximumFractionDigits: 20 }) : "0"} ETH` : "—"} />
             <Row label="Minimum received" value={quote === 0n ? "—" : `${fmt(minOut)} ${recvSymbol}`} />
             <Row label="Route" value="Chimi pool · 1% fee" last />
           </div>
@@ -316,6 +323,7 @@ function Field({
   onMax,
   readOnly,
   dim,
+  usd,
 }: {
   label: string;
   balance?: bigint;
@@ -329,6 +337,7 @@ function Field({
   onMax?: () => void;
   readOnly?: boolean;
   dim?: boolean;
+  usd?: string;
 }) {
   return (
     <div className={`rounded-[22px] border border-line px-5 py-[18px] ${readOnly ? "bg-bg/55" : "bg-bg"}`}>
@@ -356,7 +365,7 @@ function Field({
           onClick={onPick}
           className="flex shrink-0 items-center gap-2 rounded-full border border-line bg-chip py-1.5 pr-3 pl-1.5 text-[15px] font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,.05)]"
         >
-          <Chip kind={kind} label={mono} image={image} />
+          <Chip kind={kind} label={symbol || mono} image={image} />
           {symbol}
           {onPick ? (
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" className="text-muted" aria-hidden>
@@ -365,7 +374,8 @@ function Field({
           ) : null}
         </button>
       </div>
-      <div className="mt-2 flex min-h-[22px] items-center justify-end">
+      <div className="mt-2 flex min-h-[22px] items-center justify-between gap-3">
+        <span className="text-[13px] text-muted tabular-nums">{usd ?? ""}</span>
         {onMax ? (
           <button type="button" onClick={onMax} className="rounded-full bg-gold/12 px-2.5 py-0.5 text-xs font-semibold tracking-[0.04em] text-gold">
             MAX
@@ -383,13 +393,7 @@ function PickRow({ coin, image, on, onPick }: { coin: Coin; image?: string; on: 
       onClick={onPick}
       className={`flex items-center gap-3.5 rounded-2xl px-3 py-3 text-left ${on ? "bg-fg/6" : ""}`}
     >
-      {image ? (
-        <img src={image} alt="" className="size-10 shrink-0 rounded-full object-cover" />
-      ) : (
-        <span className="grid size-10 shrink-0 place-items-center rounded-full border-[1.5px] border-seal font-display text-[9px] text-seal">
-          {coin.symbol.slice(0, 4)}
-        </span>
-      )}
+      <TokenLogo symbol={coin.symbol} image={image} size={40} />
       <span className="min-w-0 flex-1">
         <span className="block text-base font-medium">{coin.name}</span>
         <span className="block text-[13px] text-muted">${coin.symbol}</span>
