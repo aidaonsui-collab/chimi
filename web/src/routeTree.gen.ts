@@ -14,6 +14,7 @@ import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as LaunchRouteImport } from './routes/launch'
 import { Route as PoolsRouteImport } from './routes/pools'
 import { Route as SwapRouteImport } from './routes/swap'
+import { Route as ApiTokenMetaRouteImport } from './routes/api/token-meta'
 import { Route as CoinAddressRouteImport } from './routes/coin.$address'
 import { Route as PoolAddressRouteImport } from './routes/pool.$address'
 
@@ -42,6 +43,11 @@ const SwapRoute = SwapRouteImport.update({
   path: '/swap',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTokenMetaRoute = ApiTokenMetaRouteImport.update({
+  id: '/api/token-meta',
+  path: '/api/token-meta',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CoinAddressRoute = CoinAddressRouteImport.update({
   id: '/coin/$address',
   path: '/coin/$address',
@@ -59,6 +65,7 @@ export interface FileRoutesByFullPath {
   '/launch': typeof LaunchRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
+  '/api/token-meta': typeof ApiTokenMetaRoute
   '/coin/$address': typeof CoinAddressRoute
   '/pool/$address': typeof PoolAddressRoute
 }
@@ -68,6 +75,7 @@ export interface FileRoutesByTo {
   '/launch': typeof LaunchRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
+  '/api/token-meta': typeof ApiTokenMetaRoute
   '/coin/$address': typeof CoinAddressRoute
   '/pool/$address': typeof PoolAddressRoute
 }
@@ -78,6 +86,7 @@ export interface FileRoutesById {
   '/launch': typeof LaunchRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
+  '/api/token-meta': typeof ApiTokenMetaRoute
   '/coin/$address': typeof CoinAddressRoute
   '/pool/$address': typeof PoolAddressRoute
 }
@@ -89,6 +98,7 @@ export interface FileRouteTypes {
     | '/launch'
     | '/pools'
     | '/swap'
+    | '/api/token-meta'
     | '/coin/$address'
     | '/pool/$address'
   fileRoutesByTo: FileRoutesByTo
@@ -98,6 +108,7 @@ export interface FileRouteTypes {
     | '/launch'
     | '/pools'
     | '/swap'
+    | '/api/token-meta'
     | '/coin/$address'
     | '/pool/$address'
   id:
@@ -107,6 +118,7 @@ export interface FileRouteTypes {
     | '/launch'
     | '/pools'
     | '/swap'
+    | '/api/token-meta'
     | '/coin/$address'
     | '/pool/$address'
   fileRoutesById: FileRoutesById
@@ -117,6 +129,7 @@ export interface RootRouteChildren {
   LaunchRoute: typeof LaunchRoute
   PoolsRoute: typeof PoolsRoute
   SwapRoute: typeof SwapRoute
+  ApiTokenMetaRoute: typeof ApiTokenMetaRoute
   CoinAddressRoute: typeof CoinAddressRoute
   PoolAddressRoute: typeof PoolAddressRoute
 }
@@ -158,6 +171,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SwapRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/token-meta': {
+      id: '/api/token-meta'
+      path: '/api/token-meta'
+      fullPath: '/api/token-meta'
+      preLoaderRoute: typeof ApiTokenMetaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/coin/$address': {
       id: '/coin/$address'
       path: '/coin/$address'
@@ -181,6 +201,7 @@ const rootRouteChildren: RootRouteChildren = {
   LaunchRoute: LaunchRoute,
   PoolsRoute: PoolsRoute,
   SwapRoute: SwapRoute,
+  ApiTokenMetaRoute: ApiTokenMetaRoute,
   CoinAddressRoute: CoinAddressRoute,
   PoolAddressRoute: PoolAddressRoute,
 }

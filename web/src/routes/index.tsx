@@ -1,7 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { fmt, loadSwaps, wethPerToken, type Coin } from "@/lib/chimi/market";
-import { readTokenMeta } from "@/lib/chimi/meta";
+import { tokenUsd } from "@/lib/chimi/format";
+import { useTokenImages } from "@/lib/chimi/token-image";
+import { TokenLogo } from "@/components/chimi/token-logo";
 import { useChimi } from "@/components/chimi/provider";
 
 export const Route = createFileRoute("/")({ component: Home });
@@ -32,36 +34,26 @@ function Chevron() {
 }
 
 function Mark({ symbol, image, large }: { symbol: string; image?: string; large?: boolean }) {
-  const frame = large
-    ? "size-20 border-2 shadow-[0_0_0_6px_rgba(210,74,46,.08),0_12px_30px_rgba(210,74,46,.25)]"
-    : "size-11 border-[1.5px]";
-  if (image) {
-    return <img src={image} alt="" className={`shrink-0 rounded-full border-seal object-cover ${frame}`} />;
+  if (large) {
+    return (
+      <TokenLogo
+        symbol={symbol}
+        image={image}
+        size={80}
+        className="shadow-[0_0_0_6px_rgba(210,74,46,.08),0_12px_30px_rgba(210,74,46,.25)]"
+      />
+    );
   }
-  return (
-    <span
-      className={`grid shrink-0 place-items-center rounded-full border-seal bg-[radial-gradient(circle_at_35%_30%,rgba(210,74,46,.18),rgba(23,18,14,.6))] font-display text-seal ${frame} ${large ? "text-[15px]" : "text-[10px]"}`}
-    >
-      {symbol.slice(0, 4)}
-    </span>
-  );
+  return <TokenLogo symbol={symbol} image={image} size={44} />;
 }
 
 function Home() {
   const { coins, preview } = useChimi();
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("top");
-  const [images, setImages] = useState<Record<string, string>>({});
+  const images = useTokenImages(useMemo(() => coins.map((coin) => coin.token), [coins]));
   const [ethUsd, setEthUsd] = useState<number>();
   const [volumeEth, setVolumeEth] = useState<Record<string, bigint>>({});
-  useEffect(() => {
-    const next: Record<string, string> = {};
-    for (const coin of coins) {
-      const image = readTokenMeta(coin.token)?.image;
-      if (image) next[coin.token.toLowerCase()] = image;
-    }
-    setImages(next);
-  }, [coins]);
   useEffect(() => {
     let cancel = false;
     void fetch("https://api.coinbase.com/v2/prices/ETH-USD/spot")
@@ -100,6 +92,11 @@ function Home() {
     const eth = Number(fdvOf(coin)) / 1e18;
     if (ethUsd) return { value: money(eth * ethUsd), unit: "USD" };
     return { value: fmt(fdvOf(coin), 2), unit: "ETH" };
+  }
+
+  function priceText(coin: Coin) {
+    if (!ethUsd) return `${fmt(priceOf(coin), 10)} ETH`;
+    return tokenUsd((Number(priceOf(coin)) / 1e18) * ethUsd);
   }
 
   function volumeText(coin: Coin) {
@@ -239,9 +236,11 @@ function Home() {
             </Link>
 
             <div className="min-w-0 overflow-hidden rounded-3xl border border-line bg-chip/85 shadow-[inset_0_1px_0_rgba(255,255,255,.04)]">
-              <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_1rem] gap-3 border-b border-line px-5 py-3.5 text-xs font-medium tracking-[0.06em] text-muted sm:grid-cols-[2.5rem_minmax(0,1fr)_8rem_7rem_1rem]">
+              <div className="grid grid-cols-[2rem_minmax(0,1fr)_auto_1rem] gap-3 border-b border-line px-5 py-3.5 text-xs font-medium tracking-[0.06em] text-muted sm:grid-cols-[2.5rem_minmax(0,1fr)_7rem_8rem_7rem_1rem]">
                 <span>#</span>
                 <span>Coin</span>
+                <span className="text-right sm:hidden">Market cap</span>
+                <span className="hidden text-right sm:block">Price</span>
                 <span className="hidden text-right sm:block">Market cap</span>
                 <span className="hidden text-right sm:block">24h volume</span>
                 <span />
@@ -251,7 +250,7 @@ function Home() {
                   key={c.token}
                   to="/coin/$address"
                   params={{ address: c.token }}
-                  className="grid grid-cols-[2.5rem_minmax(0,1fr)_1rem] items-center gap-3 border-b border-line/55 px-5 py-3.5 text-fg last:border-0 hover:bg-fg/4 sm:grid-cols-[2.5rem_minmax(0,1fr)_8rem_7rem_1rem]"
+                  className="grid grid-cols-[2rem_minmax(0,1fr)_auto_1rem] items-center gap-3 border-b border-line/55 px-5 py-3.5 text-fg last:border-0 hover:bg-fg/4 sm:grid-cols-[2.5rem_minmax(0,1fr)_7rem_8rem_7rem_1rem]"
                 >
                   <span className="text-sm text-muted tabular-nums">{String(rank.get(c.token) ?? 0).padStart(2, "0")}</span>
                   <span className="flex min-w-0 items-center gap-3.5">
@@ -264,6 +263,8 @@ function Home() {
                       </span>
                     </span>
                   </span>
+                  <span className="text-right text-[15px] font-medium tabular-nums sm:hidden">{capText(c).value}</span>
+                  <span className="hidden text-right text-[15px] tabular-nums sm:block">{priceText(c)}</span>
                   <span className="hidden text-right text-[15px] tabular-nums sm:block">{capText(c).value}</span>
                   <span className="hidden text-right text-[15px] font-medium tabular-nums sm:block">{volumeText(c).value}</span>
                   <Chevron />

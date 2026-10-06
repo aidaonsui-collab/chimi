@@ -1,10 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { formatEther, parseEther, type Address } from "viem";
-import { erc20Abi, giwaSepolia } from "@/lib/chimi/chain";
+import { POOL_FEE, erc20Abi, giwaSepolia } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import {
   estimatedOut,
+  feeLabel,
   fmt,
   loadCoin,
   loadHolders,
@@ -16,8 +17,11 @@ import {
   type Holder,
   type PoolSwap,
 } from "@/lib/chimi/market";
-import { readTokenMeta, type TokenMeta } from "@/lib/chimi/meta";
+import { saveTokenMeta, shrinkImage } from "@/lib/chimi/meta";
+import { tokenUsd } from "@/lib/chimi/format";
+import { publishTokenProfile, refreshTokenProfiles, sharedStorageEnabled, useTokenProfile } from "@/lib/chimi/token-image";
 import { useChimi } from "@/components/chimi/provider";
+import { EthLogo, TokenLogo } from "@/components/chimi/token-logo";
 
 export const Route = createFileRoute("/coin/$address")({ component: CoinPage });
 
@@ -67,7 +71,7 @@ function money(n: number) {
 
 function CoinPage() {
   const { address } = Route.useParams();
-  const { coins, deployment, account, connect, trade, unwrap } = useChimi();
+  const { coins, deployment, account, connect, trade, unwrap, signMessage } = useChimi();
   const listed = coins.find((c) => !c.preview && c.token.toLowerCase() === address.toLowerCase());
   const [coin, setCoin] = useState<Coin | null>(listed ?? null);
   const [phase, setPhase] = useState<"loading" | "ready" | "missing">(listed ? "ready" : "loading");
@@ -78,7 +82,8 @@ function CoinPage() {
   const [tradeNote, setTradeNote] = useState("");
   const [kind, setKind] = useState<"" | "bad" | "good">("");
   const [busy, setBusy] = useState(false);
-  const [meta, setMeta] = useState<TokenMeta | null>(null);
+  const meta = useTokenProfile(address);
+  const [editing, setEditing] = useState(false);
   const [ethUsd, setEthUsd] = useState<number>();
   const [payBal, setPayBal] = useState<bigint>();
   const [poolEth, setPoolEth] = useState<bigint>();
@@ -86,10 +91,6 @@ function CoinPage() {
   const [holders, setHolders] = useState<Holder[]>([]);
   const [range, setRange] = useState<(typeof RANGES)[number][0]>("1H");
   const [panel, setPanel] = useState<"trades" | "holders">("trades");
-
-  useEffect(() => {
-    setMeta(readTokenMeta(address));
-  }, [address]);
 
   useEffect(() => {
     if (listed) {
@@ -274,153 +275,71 @@ function CoinPage() {
 
   const paySymbol = side === "buy" ? "ETH" : coin.symbol;
   const recvSymbol = side === "buy" ? coin.symbol : "ETH";
+  const coinLogo = (size: number) => <TokenLogo symbol={coin.symbol} image={meta?.image} size={size} />;
+  const isCreator = Boolean(account && coin.creator && account.toLowerCase() === coin.creator.toLowerCase() && !coin.preview);
+  const priceUsd = ethUsd ? (Number(price) / 1e18) * ethUsd : undefined;
+  const links = [
+    { label: "Contract", href: `${explorer}/address/${coin.token}` },
+    { label: "Pool", href: `${explorer}/address/${coin.pool}` },
+    meta?.twitter ? { label: "X", href: `https://x.com/${meta.twitter}` } : null,
+    meta?.telegram ? { label: "Telegram", href: `https://t.me/${meta.telegram}` } : null,
+    meta?.website ? { label: "Website", href: meta.website } : null,
+  ].filter((link): link is { label: string; href: string } => Boolean(link));
 
   return (
-    <main className="mx-auto max-w-[1180px] px-4 py-6 sm:px-6">
-      <Link to="/" className="inline-flex items-center rounded-full border border-line bg-chip px-3 py-1.5 text-sm text-muted">
-        ← Board
-      </Link>
+    <main className="mx-auto max-w-[1180px] px-4 pt-5 pb-16 sm:px-6 sm:pt-7">
+      <nav className="flex items-center gap-1.5 text-sm text-muted" aria-label="Breadcrumb">
+        <Link to="/" className="hover:text-fg">Board</Link>
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden><path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        <span className="text-fg">{coin.symbol}</span>
+        <span className="ml-1 truncate tabular-nums">{shortAddr(coin.token)}</span>
+      </nav>
 
-      <section className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-line bg-chip/80 px-5 py-4">
-        <div>
-          <p className="text-sm font-medium">About</p>
-          <p className="mt-1 max-w-xl text-sm text-muted">
-            {meta?.description || "The full supply sits in a locked pool. No bonding curve."}
-          </p>
+      <header className="mt-4 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3.5">
+          {coinLogo(56)}
+          <div className="min-w-0">
+            <h1 className="truncate text-[28px] leading-tight font-semibold tracking-[-0.03em] sm:text-[32px]">{coin.name}</h1>
+            <p className="text-[15px] text-muted">{coin.symbol}</p>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <a className="rounded-full border border-line px-3 py-1.5 text-sm" href={`${explorer}/address/${coin.token}`}>Contract</a>
-          <a className="rounded-full border border-line px-3 py-1.5 text-sm" href={`${explorer}/address/${coin.pool}`}>Pool</a>
-          {meta?.twitter ? <a className="rounded-full border border-line px-3 py-1.5 text-sm" href={`https://x.com/${meta.twitter}`}>X</a> : null}
-          {meta?.website ? <a className="rounded-full border border-line px-3 py-1.5 text-sm" href={meta.website}>Site</a> : null}
+          {links.map((link) => (
+            <a key={link.label} href={link.href} target="_blank" rel="noreferrer" className="rounded-full border border-line bg-chip px-3.5 py-1.5 text-sm text-muted hover:text-fg">
+              {link.label}
+            </a>
+          ))}
+          {isCreator ? (
+            <button type="button" onClick={() => setEditing((v) => !v)} className="rounded-full border border-gold/40 bg-gold/10 px-3.5 py-1.5 text-sm font-medium text-gold">
+              {meta?.shared ? "Edit profile" : "Set picture"}
+            </button>
+          ) : null}
         </div>
-      </section>
+      </header>
 
-      <div className="mt-4 grid items-start gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
-        <section className="rounded-3xl border border-line bg-chip p-4">
-          <div className="flex items-center gap-3 px-1 pb-4">
-            {meta?.image ? (
-              <img src={meta.image} alt="" className="size-12 rounded-2xl object-cover" />
-            ) : (
-              <span className="grid size-12 place-items-center rounded-2xl border border-seal font-display text-[10px] text-seal">{coin.symbol.slice(0, 4)}</span>
-            )}
-            <div>
-              <p className="text-lg font-semibold tracking-[-0.02em]">{coin.name}</p>
-              <p className="text-xs tracking-[0.14em] text-muted">{coin.symbol}</p>
-            </div>
-          </div>
+      {isCreator && editing ? (
+        <ProfileEditor
+          token={coin.token}
+          symbol={coin.symbol}
+          initial={meta}
+          sign={signMessage}
+          onDone={() => setEditing(false)}
+        />
+      ) : null}
 
-          <div className="relative flex flex-col gap-1.5">
-            <TradeField
-              label={side === "buy" ? "Buy with" : "Sell"}
-              symbol={paySymbol}
-              value={amount}
-              onChange={setAmount}
-              balance={payBal}
-            />
-            <button
-              type="button"
-              aria-label="Flip direction"
-              onClick={() => {
-                setSide((v) => (v === "buy" ? "sell" : "buy"));
-                setAmount("");
-              }}
-              className="absolute top-1/2 left-1/2 z-10 grid size-9 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-line bg-bg"
-            >
-              ↕
-            </button>
-            <TradeField
-              label={side === "buy" ? "Buy" : "Receive"}
-              symbol={recvSymbol}
-              value={quote === 0n ? "0" : fmt(quote)}
-              readOnly
-            />
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            {[25, 50, 75, 100].map((pct) => (
-              <button
-                key={pct}
-                type="button"
-                disabled={payBal === undefined}
-                onClick={() => payBal !== undefined && setAmount(formatEther((payBal * BigInt(pct)) / 100n))}
-                className="flex-1 rounded-full border border-line py-1.5 text-xs text-muted"
-              >
-                {pct}%
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-3 flex items-center justify-between px-1 text-sm">
-            <span className="text-muted">Slippage</span>
-            <button type="button" onClick={() => setAdjust((v) => !v)} className="rounded-full border border-line px-3 py-1 text-xs">
-              {slippageBps / 100}% · Adjust
-            </button>
-          </div>
-          {adjust ? (
-            <div className="mt-2 flex gap-2">
-              {SLIPPAGE.map((bps) => (
-                <button
-                  key={bps}
-                  type="button"
-                  onClick={() => setSlippageBps(bps)}
-                  className={`rounded-full px-3 py-1 text-xs ${slippageBps === bps ? "bg-fg text-bg" : "border border-line text-muted"}`}
-                >
-                  {bps / 100}%
-                </button>
-              ))}
-            </div>
-          ) : null}
-
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void go()}
-            className="mt-4 w-full rounded-2xl bg-seal py-3.5 text-base font-semibold text-onseal disabled:opacity-40"
-          >
-            {busy ? "Confirming…" : account ? (side === "buy" ? "Buy" : "Sell") : "Connect wallet"}
-          </button>
-          <button type="button" onClick={() => void doUnwrap()} className="mt-2 w-full text-center text-xs text-muted">
-            Unwrap WETH
-          </button>
-          {tradeNote ? (
-            <p className={`mt-2 text-center text-sm ${kind === "bad" ? "text-seal" : kind === "good" ? "text-ok" : "text-muted"}`}>{tradeNote}</p>
-          ) : null}
-        </section>
-
-        <section className="rounded-3xl border border-line bg-chip p-5">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <Stat
-              label="Market cap"
-              value={fdvUsd ? `${money(fdvUsd)} / ${money(fdvUsd)} FDV` : `${fmt(price * 1_000_000_000n, 4)} ETH`}
-            />
-            <Stat label="Liquidity" value={liqUsd ? money(liqUsd) : poolEth !== undefined ? `${fmt(poolEth, 4)} ETH` : "—"} />
-            <Stat label="24h volume" value={volumeUsd === undefined ? "—" : money(volumeUsd)} />
-            <Stat label="ATH" value={fdvUsd || ath ? money(ath) : "—"} />
-          </div>
-          <div className="mt-4 flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <p className="text-4xl font-semibold tracking-[-0.04em]">{fdvUsd ? money(fdvUsd) : `${fmt(price * 1_000_000_000n, 4)} ETH`}</p>
-              <p className={`mt-1 text-sm ${change < 0 ? "text-seal" : "text-ok"}`}>
-                {change > 0 ? "+" : ""}
-                {change.toFixed(2)}% <span className="text-muted">{range === "ALL" ? "all" : range}</span>
-              </p>
-            </div>
-            <div className="flex rounded-full border border-line bg-bg p-1">
-              {RANGES.map(([label]) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => setRange(label)}
-                  className={`rounded-full px-2.5 py-1 text-xs ${range === label ? "bg-fg/10 text-fg" : "text-muted"}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="relative mt-4 h-[280px]">
-            <svg viewBox="0 0 640 280" className="h-full w-full">
+      <div className="mt-6 grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="min-w-0 lg:col-start-1">
+          <p className="text-[40px] leading-none font-semibold tracking-[-0.04em] tabular-nums sm:text-[44px]">
+            {fdvUsd ? money(fdvUsd) : `${fmt(price * 1_000_000_000n, 4)} ETH`}
+          </p>
+          <p className="mt-1.5 text-sm">
+            <span className={change < 0 ? "text-seal" : "text-ok"}>
+              {change < 0 ? "▼" : "▲"} {Math.abs(change).toFixed(2)}%
+            </span>
+            <span className="ml-1.5 text-muted">{range === "ALL" ? "all time" : range} · market cap</span>
+          </p>
+          <div className="relative mt-5 h-[240px] sm:h-[300px]">
+            <svg viewBox="0 0 640 280" preserveAspectRatio="none" className="h-full w-full">
               <defs>
                 <linearGradient id="chimi-fill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#e0b45a" stopOpacity="0.35" />
@@ -428,10 +347,10 @@ function CoinPage() {
                 </linearGradient>
               </defs>
               {[70, 140, 210].map((y) => (
-                <line key={y} x1="0" y1={y} x2="640" y2={y} stroke="#3f3325" strokeDasharray="3 6" />
+                <line key={y} x1="0" y1={y} x2="640" y2={y} stroke="#3f3325" strokeDasharray="3 6" vectorEffect="non-scaling-stroke" />
               ))}
               {chart.area ? <path d={chart.area} fill="url(#chimi-fill)" /> : null}
-              {chart.line ? <path d={chart.line} fill="none" stroke="#e0b45a" strokeWidth="2" /> : null}
+              {chart.line ? <path d={chart.line} fill="none" stroke="#e0b45a" strokeWidth="2" vectorEffect="non-scaling-stroke" /> : null}
             </svg>
             <div className="pointer-events-none absolute inset-y-2 right-0 flex flex-col justify-between text-[11px] text-muted">
               <span>{money(Math.max(...series))}</span>
@@ -444,79 +363,253 @@ function CoinPage() {
               <span>{inRange.length ? clock(inRange[inRange.length - 1].time) : "now"}</span>
             </div>
           </div>
+          <div className="mt-4 flex justify-between gap-3">
+            <div className="flex rounded-full border border-line bg-chip p-1">
+              {RANGES.map(([label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setRange(label)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium ${range === label ? "bg-fg/10 text-fg" : "text-muted"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
         </section>
-      </div>
 
-      <section className="mt-4 rounded-3xl border border-line bg-chip p-4">
-        <div className="flex gap-2">
-          {(["trades", "holders"] as const).map((key) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setPanel(key)}
-              className={`rounded-full px-3 py-1.5 text-sm ${panel === key ? "bg-fg/10 text-fg" : "text-muted"}`}
-            >
-              {key === "trades" ? "Trades" : "Holders"}
+        <section className="min-w-0 rounded-[28px] border border-line bg-chip p-3 shadow-[inset_0_1px_0_rgba(255,255,255,.05),0_30px_60px_-30px_rgba(0,0,0,.8)] lg:sticky lg:top-24 lg:col-start-2 lg:row-span-4 lg:row-start-1">
+          <div className="flex items-center justify-between px-2 pt-1 pb-3">
+            <div className="flex rounded-[10px] border border-line bg-bg p-[3px]">
+              {(["buy", "sell"] as const).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    setSide(key);
+                    setAmount("");
+                  }}
+                  className={`rounded-[7px] px-4 py-1.5 text-[13px] font-medium capitalize ${side === key ? "bg-[#3a2d22] text-fg shadow-[inset_0_1px_0_rgba(255,255,255,.06)]" : "text-muted"}`}
+                >
+                  {key}
+                </button>
+              ))}
+            </div>
+            <button type="button" onClick={() => setAdjust((v) => !v)} className="rounded-full border border-line px-3 py-1.5 text-[13px] font-medium text-muted tabular-nums">
+              {slippageBps / 100}% slippage
             </button>
-          ))}
-          <span className="ml-auto text-xs text-muted">{panel === "trades" ? swaps.length : holders.length}</span>
-        </div>
-        {panel === "trades" ? (
-          <div className="mt-3 divide-y divide-line/60">
-            {swaps.length === 0 ? <p className="py-6 text-sm text-muted">No swaps in the last few thousand blocks.</p> : null}
-            {[...swaps].reverse().map((swap) => (
-              <a
-                key={`${swap.tx}-${swap.block}`}
-                href={`${explorer}/tx/${swap.tx}`}
-                className="flex items-center justify-between gap-3 py-3 text-sm"
+          </div>
+          {adjust ? (
+            <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-line bg-bg px-4 py-3">
+              <span className="text-sm text-muted">Max slippage</span>
+              <div className="flex gap-1.5">
+                {SLIPPAGE.map((bps) => (
+                  <button
+                    key={bps}
+                    type="button"
+                    onClick={() => setSlippageBps(bps)}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium ${slippageBps === bps ? "border-fg bg-fg text-bg" : "border-line text-muted"}`}
+                  >
+                    {bps / 100}%
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="relative flex flex-col gap-1.5">
+            <TradeField
+              label={side === "buy" ? "You pay" : "You sell"}
+              symbol={paySymbol}
+              logo={side === "buy" ? <EthLogo size={26} /> : coinLogo(26)}
+              value={amount}
+              onChange={setAmount}
+              balance={payBal}
+              usd={ethUsd && parsed > 0n ? money((Number(parsed) / 1e18) * (side === "buy" ? 1 : Number(price) / 1e18) * ethUsd) : undefined}
+            />
+            <button
+              type="button"
+              aria-label="Flip direction"
+              onClick={() => {
+                setSide((v) => (v === "buy" ? "sell" : "buy"));
+                setAmount("");
+              }}
+              className="absolute top-1/2 left-1/2 z-10 grid size-10 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-[14px] border-4 border-chip bg-chip text-fg shadow-[0_0_0_1px_#3f3325]"
+            >
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden>
+                <path d="M8 2.5v11M3.5 9 8 13.5 12.5 9" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <TradeField
+              label="You receive"
+              symbol={recvSymbol}
+              logo={side === "buy" ? coinLogo(26) : <EthLogo size={26} />}
+              value={quote === 0n ? "0" : fmt(quote)}
+              readOnly
+              usd={ethUsd && quote > 0n ? money((Number(quote) / 1e18) * (side === "buy" ? Number(price) / 1e18 : 1) * ethUsd) : undefined}
+            />
+          </div>
+
+          <div className="mt-2.5 flex gap-1.5">
+            {[25, 50, 75, 100].map((pct) => (
+              <button
+                key={pct}
+                type="button"
+                disabled={payBal === undefined}
+                onClick={() => payBal !== undefined && setAmount(formatEther((payBal * BigInt(pct)) / 100n))}
+                className="flex-1 rounded-full border border-line py-1.5 text-xs text-muted disabled:opacity-40"
               >
-                <span>
-                  <span className={swap.buy ? "text-ok" : "text-seal"}>{swap.buy ? "Buy" : "Sell"}</span>
-                  <span className="ml-2">{fmt(swap.tokenAmount, 2)} {coin.symbol}</span>
-                  <span className="mt-0.5 block text-xs text-muted">{shortAddr(swap.tx)}</span>
-                </span>
-                <span className="text-right tabular-nums">
-                  {fmt(swap.ethAmount, 6)} ETH
-                  {ethUsd ? <span className="mt-0.5 block text-xs text-muted">{money((Number(swap.ethAmount) / 1e18) * ethUsd)}</span> : null}
-                </span>
-              </a>
+                {pct === 100 ? "Max" : `${pct}%`}
+              </button>
             ))}
           </div>
-        ) : (
-          <div className="mt-3 divide-y divide-line/60">
-            {holders.length === 0 ? <p className="py-6 text-sm text-muted">No holder balances yet.</p> : null}
-            {holders.map((holder) => {
-              const pct = Number((holder.balance * 10_000n) / (1_000_000_000n * 10n ** 18n)) / 100;
-              const isPool = holder.address.toLowerCase() === coin.pool.toLowerCase();
-              return (
-                <a
-                  key={holder.address}
-                  href={`${explorer}/address/${holder.address}`}
-                  className="flex items-center justify-between gap-3 py-3 text-sm"
-                >
-                  <span>
-                    {shortAddr(holder.address)}
-                    {isPool ? <span className="ml-2 text-xs text-muted">Pool</span> : null}
-                  </span>
-                  <span className="text-right tabular-nums">
-                    {fmt(holder.balance, 2)} {coin.symbol}
-                    <span className="mt-0.5 block text-xs text-muted">{pct.toFixed(2)}%</span>
-                  </span>
-                </a>
-              );
-            })}
+
+          <div className="mt-2.5 rounded-[20px] border border-line/70 px-4 text-sm">
+            <div className="flex justify-between gap-3 border-b border-line/55 py-2.5">
+              <span className="text-muted">Rate</span>
+              <span className="text-right tabular-nums">1 {coin.symbol} = {tinyEth(price)} ETH</span>
+            </div>
+            <div className="flex justify-between gap-3 py-2.5">
+              <span className="text-muted">Minimum received</span>
+              <span className="text-right tabular-nums">{quote === 0n ? "—" : `${fmt(minOut)} ${recvSymbol}`}</span>
+            </div>
           </div>
-        )}
-      </section>
+
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void go()}
+            className="mt-3 w-full rounded-[20px] bg-seal py-4 text-base font-semibold text-onseal shadow-[inset_0_1px_0_rgba(255,255,255,.22),0_10px_30px_rgba(210,74,46,.28)] disabled:opacity-40"
+          >
+            {busy ? "Confirming…" : account ? (side === "buy" ? `Buy ${coin.symbol}` : `Sell ${coin.symbol}`) : "Connect wallet"}
+          </button>
+          <button type="button" onClick={() => void doUnwrap()} className="mt-2 w-full text-center text-xs text-muted">
+            Unwrap WETH
+          </button>
+          {tradeNote ? (
+            <p className={`mt-2 text-center text-sm ${kind === "bad" ? "text-seal" : kind === "good" ? "text-ok" : "text-muted"}`}>{tradeNote}</p>
+          ) : null}
+        </section>
+
+        <section className="min-w-0 lg:col-start-1">
+          <h2 className="text-xl font-semibold tracking-[-0.02em]">Stats</h2>
+          <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-5 rounded-3xl border border-line bg-chip px-5 py-5 sm:grid-cols-3">
+            <Stat label="Market cap" value={fdvUsd ? money(fdvUsd) : `${fmt(price * 1_000_000_000n, 4)} ETH`} />
+            <Stat label="FDV" value={fdvUsd ? money(fdvUsd) : `${fmt(price * 1_000_000_000n, 4)} ETH`} />
+            <Stat label="Liquidity" value={liqUsd ? money(liqUsd) : poolEth !== undefined ? `${fmt(poolEth, 4)} ETH` : "—"} />
+            <Stat label="1 day volume" value={volumeUsd === undefined ? "—" : money(volumeUsd)} />
+            <Stat label="All-time high" value={fdvUsd || ath ? money(ath) : "—"} />
+            <Stat label="Price" value={priceUsd !== undefined ? tokenUsd(priceUsd) : `${tinyEth(price)} ETH`} />
+          </div>
+        </section>
+
+        <section className="min-w-0 lg:col-start-1">
+          <h2 className="text-xl font-semibold tracking-[-0.02em]">About</h2>
+          <div className="mt-3 rounded-3xl border border-line bg-chip px-5 py-5">
+            <p className="text-[15px] text-muted">{meta?.description || "The full supply sits in a locked pool. No bonding curve."}</p>
+            <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-muted">
+              <span>Creator <a className="text-fg tabular-nums" href={`${explorer}/address/${coin.creator}`} target="_blank" rel="noreferrer">{shortAddr(coin.creator)}</a></span>
+              <span>Supply <span className="text-fg">1B</span></span>
+              <span>Pool <span className="text-fg">{coin.symbol}/ETH · v3 · {feeLabel(coin.fee ?? POOL_FEE)}</span></span>
+              <span>Launch liquidity <span className="text-fg">locked 100 years</span></span>
+            </div>
+          </div>
+        </section>
+
+        <section className="min-w-0 lg:col-start-1">
+          <div className="flex items-center gap-2">
+            {(["trades", "holders"] as const).map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setPanel(key)}
+                className={`rounded-full px-3.5 py-1.5 text-[15px] font-semibold ${panel === key ? "bg-fg/10 text-fg" : "text-muted"}`}
+              >
+                {key === "trades" ? "Transactions" : "Holders"}
+              </button>
+            ))}
+            <span className="ml-auto text-xs text-muted">{panel === "trades" ? swaps.length : holders.length}</span>
+          </div>
+          <div className="mt-3 overflow-hidden rounded-3xl border border-line bg-chip">
+            {panel === "trades" ? (
+              <>
+                <div className="grid grid-cols-[3.5rem_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-b border-line bg-[#261d16] px-5 py-3 text-[13px] text-muted sm:grid-cols-[4rem_3.5rem_minmax(0,1fr)_minmax(0,1fr)_7rem]">
+                  <span>Time</span>
+                  <span className="hidden sm:block">Type</span>
+                  <span className="text-right">{coin.symbol}</span>
+                  <span className="text-right">ETH</span>
+                  <span className="hidden text-right sm:block">Tx</span>
+                </div>
+                {swaps.length === 0 ? <p className="px-5 py-6 text-sm text-muted">No swaps in the last few thousand blocks.</p> : null}
+                {[...swaps].reverse().map((swap) => (
+                  <a
+                    key={`${swap.tx}-${swap.block}`}
+                    href={`${explorer}/tx/${swap.tx}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="grid grid-cols-[3.5rem_minmax(0,1fr)_minmax(0,1fr)] items-center gap-3 border-b border-line/55 px-5 py-3 text-sm tabular-nums last:border-0 sm:grid-cols-[4rem_3.5rem_minmax(0,1fr)_minmax(0,1fr)_7rem]"
+                  >
+                    <span className="text-muted">{ago(now - swap.time)}</span>
+                    <span className={`hidden font-medium sm:block ${swap.buy ? "text-ok" : "text-seal"}`}>{swap.buy ? "Buy" : "Sell"}</span>
+                    <span className="truncate text-right">
+                      <span className={`mr-1.5 sm:hidden ${swap.buy ? "text-ok" : "text-seal"}`}>{swap.buy ? "Buy" : "Sell"}</span>
+                      {fmt(swap.tokenAmount, 2)}
+                    </span>
+                    <span className="text-right">
+                      {fmt(swap.ethAmount, 6)}
+                      {ethUsd ? <span className="block text-xs text-muted">{money((Number(swap.ethAmount) / 1e18) * ethUsd)}</span> : null}
+                    </span>
+                    <span className="hidden text-right text-muted sm:block">{shortAddr(swap.tx)}</span>
+                  </a>
+                ))}
+              </>
+            ) : (
+              <>
+                {holders.length === 0 ? <p className="px-5 py-6 text-sm text-muted">No holder balances yet.</p> : null}
+                {holders.map((holder) => {
+                  const share = Number((holder.balance * 10_000n) / (1_000_000_000n * 10n ** 18n)) / 100;
+                  const isPool = holder.address.toLowerCase() === coin.pool.toLowerCase();
+                  return (
+                    <a
+                      key={holder.address}
+                      href={`${explorer}/address/${holder.address}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-between gap-3 border-b border-line/55 px-5 py-3 text-sm last:border-0"
+                    >
+                      <span className="tabular-nums">
+                        {shortAddr(holder.address)}
+                        {isPool ? <span className="ml-2 text-xs text-muted">Pool</span> : null}
+                      </span>
+                      <span className="text-right tabular-nums">
+                        {fmt(holder.balance, 2)} {coin.symbol}
+                        <span className="mt-0.5 block text-xs text-muted">{share.toFixed(2)}%</span>
+                      </span>
+                    </a>
+                  );
+                })}
+              </>
+            )}
+          </div>
+        </section>
+      </div>
     </main>
   );
 }
 
+function ago(seconds: number) {
+  if (seconds < 60) return `${Math.max(0, seconds)}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h`;
+  return `${Math.floor(seconds / 86_400)}d`;
+}
+
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <p className="text-xs text-muted">{label}</p>
-      <p className="mt-1 text-sm font-medium tabular-nums">{value}</p>
+    <div className="min-w-0">
+      <p className="text-[13px] text-muted">{label}</p>
+      <p className="mt-0.5 truncate text-lg font-semibold tracking-[-0.01em] tabular-nums">{value}</p>
     </div>
   );
 }
@@ -524,37 +617,150 @@ function Stat({ label, value }: { label: string; value: string }) {
 function TradeField({
   label,
   symbol,
+  logo,
   value,
   onChange,
   balance,
   readOnly,
+  usd,
 }: {
   label: string;
   symbol: string;
+  logo: ReactNode;
   value: string;
   onChange?: (value: string) => void;
   balance?: bigint;
   readOnly?: boolean;
+  usd?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-line bg-bg px-4 py-3">
-      <div className="flex justify-between text-xs text-muted">
-        <span>{label}</span>
+    <div className={`rounded-[22px] border border-line px-4 py-4 ${readOnly ? "bg-bg/55" : "bg-bg"}`}>
+      <p className="text-[13px] text-muted">{label}</p>
+      <div className="mt-1.5 flex items-center gap-3">
+        {readOnly ? (
+          <p className="min-w-0 flex-1 truncate text-[32px] leading-[1.15] font-medium tracking-[-0.03em] tabular-nums">{value}</p>
+        ) : (
+          <input
+            inputMode="decimal"
+            value={value}
+            placeholder="0"
+            aria-label={label}
+            onChange={(e) => onChange?.(e.target.value)}
+            className="min-w-0 flex-1 bg-transparent text-[32px] leading-[1.15] font-medium tracking-[-0.03em] tabular-nums outline-none"
+          />
+        )}
+        <span className="flex shrink-0 items-center gap-2 rounded-full border border-line bg-chip py-1 pr-3 pl-1 text-[15px] font-semibold">
+          {logo}
+          {symbol}
+        </span>
+      </div>
+      <div className="mt-1.5 flex justify-between gap-3 text-[13px] text-muted tabular-nums">
+        <span>{usd ?? ""}</span>
         <span>{balance === undefined ? "" : `Balance ${fmt(balance, 4)}`}</span>
       </div>
-      {readOnly ? (
-        <p className="mt-1 text-3xl font-medium tabular-nums">{value}</p>
-      ) : (
-        <input
-          inputMode="decimal"
-          value={value}
-          placeholder="0"
-          aria-label={label}
-          onChange={(e) => onChange?.(e.target.value)}
-          className="mt-1 w-full bg-transparent text-3xl font-medium tabular-nums outline-none"
-        />
-      )}
-      <p className="mt-2 text-sm">{symbol}</p>
     </div>
+  );
+}
+
+function ProfileEditor({
+  token,
+  symbol,
+  initial,
+  sign,
+  onDone,
+}: {
+  token: Address;
+  symbol: string;
+  initial: { description?: string; image?: string; twitter?: string; telegram?: string; website?: string } | null;
+  sign: (message: string) => Promise<`0x${string}`>;
+  onDone: () => void;
+}) {
+  const [image, setImage] = useState(initial?.image);
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [twitter, setTwitter] = useState(initial?.twitter ?? "");
+  const [telegram, setTelegram] = useState(initial?.telegram ?? "");
+  const [website, setWebsite] = useState(initial?.website ?? "");
+  const [note, setNote] = useState("");
+  const [bad, setBad] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const input = "mt-1 w-full rounded-xl border border-line bg-bg px-3 py-2.5 text-[15px] text-fg outline-none";
+
+  async function publish() {
+    const profile = { description, image, twitter, telegram, website };
+    try {
+      setBusy(true);
+      setBad(false);
+      setNote("Sign the message in your wallet. It costs no gas.");
+      await publishTokenProfile(token, profile, sign);
+      setNote("Published. Everyone now sees this picture.");
+      setTimeout(onDone, 900);
+    } catch (err) {
+      saveTokenMeta(token, { ...profile, description });
+      refreshTokenProfiles();
+      setBad(true);
+      setNote(`${short(err)} Saved in this browser only.`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="mt-5 rounded-3xl border border-gold/30 bg-chip p-5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold">Token profile</h2>
+        <button type="button" onClick={onDone} className="text-sm text-muted">Close</button>
+      </div>
+      <p className="mt-1 text-sm text-muted">
+        You launched {symbol}. Sign once with your wallet to share its picture, description, and links with everyone.
+        {sharedStorageEnabled() === false ? " Shared pictures aren’t switched on for this site yet, so this will only save in this browser." : ""}
+      </p>
+      <div className="mt-4 grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)]">
+        <label className="flex cursor-pointer flex-col items-center gap-2 text-sm text-muted">
+          <TokenLogo symbol={symbol} image={image} size={88} />
+          <span className="rounded-full border border-line px-3 py-1 text-xs">Choose image</span>
+          <input
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              void shrinkImage(file)
+                .then(setImage)
+                .catch((err) => {
+                  setBad(true);
+                  setNote(short(err));
+                });
+            }}
+          />
+        </label>
+        <div className="grid gap-3">
+          <label className="block text-sm text-muted">
+            Description
+            <textarea value={description} maxLength={280} rows={2} onChange={(e) => setDescription(e.target.value)} className={input} />
+          </label>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="block text-sm text-muted">
+              X handle
+              <input value={twitter} onChange={(e) => setTwitter(e.target.value.replace(/^@/, ""))} className={input} />
+            </label>
+            <label className="block text-sm text-muted">
+              Telegram
+              <input value={telegram} onChange={(e) => setTelegram(e.target.value)} className={input} />
+            </label>
+            <label className="block text-sm text-muted">
+              Website
+              <input value={website} placeholder="https://" onChange={(e) => setWebsite(e.target.value)} className={input} />
+            </label>
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <p className={`text-sm ${bad ? "text-seal" : "text-muted"}`}>{note}</p>
+        <button type="button" disabled={busy} onClick={() => void publish()} className="rounded-full bg-seal px-5 py-2.5 text-sm font-semibold text-onseal disabled:opacity-40">
+          {busy ? "Publishing…" : "Sign and publish"}
+        </button>
+      </div>
+    </section>
   );
 }

@@ -30,3 +30,10 @@ npm run dev
 ```
 
 The page is the board, the launch sheet, and a coin page. It reads `/deployments.json` and talks to the GIWA Sepolia factory. Until that file has a factory address, the board shows preview coins and launch stays disabled.
+
+### Token pictures
+
+Name and symbol are on-chain; the picture, description, and links are a token profile. After a launch the creator signs the profile once (no gas) and `/api/token-meta` stores it in Vercel Blob after checking the signer is the coin's creator on the factory. Every page reads profiles from that endpoint, falls back to the GIWA explorer's token icon, then to the copy kept in the launching browser, then to the seal initials.
+
+Shared storage needs a Vercel Blob store connected to the project (Vercel adds `BLOB_READ_WRITE_TOKEN`). Without it, reads still work and pictures stay in the creator's browser. A creator can (re)publish from the coin page with "Set picture".
+

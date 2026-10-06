@@ -1,10 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createWalletClient, custom, encodeFunctionData, type Address, type EIP1193Provider } from "viem";
 import { erc20Abi, giwaSepolia, positionManagerAbi } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
-import { loadSwaps, shortAddr, wethPerToken, type Coin } from "@/lib/chimi/market";
-import { readTokenMeta } from "@/lib/chimi/meta";
+import { feeLabel, loadSwapWindow, wethPerToken, type Coin } from "@/lib/chimi/market";
+import { compactUsd, pct } from "@/lib/chimi/format";
+import { useTokenImages } from "@/lib/chimi/token-image";
+import { POOL_FEE } from "@/lib/chimi/chain";
 import { tickFromSqrtPriceX96 } from "@/lib/chimi/range";
 import { PairMark } from "@/components/chimi/pair-mark";
 import { useChimi } from "@/components/chimi/provider";
@@ -13,10 +15,16 @@ export const Route = createFileRoute("/pools")({ component: PoolsPage });
 
 type Row = {
   coin: Coin;
-  tvlUsd: number;
-  volUsd: number;
-  apr: number;
+  /** undefined = not known (no ETH price or no swap history for that window). Never guessed. */
+  tvlUsd?: number;
+  vol1d?: number;
+  vol30d?: number;
+  ratio?: number;
+  apr?: number;
+  source: "explorer" | "rpc";
 };
+
+const DAY = 86_400;
 
 type Position = {
   id: bigint;
@@ -30,7 +38,18 @@ type Position = {
   token1: Address;
 };
 
-type SortKey = "tvl" | "vol" | "ratio" | "apr";
+type SortKey = "tvl" | "vol1d" | "vol30d" | "ratio" | "apr";
+
+const COLUMNS: [SortKey, string][] = [
+  ["tvl", "TVL"],
+  ["vol1d", "1D vol"],
+  ["vol30d", "30D vol"],
+  ["ratio", "1D vol/TVL"],
+  ["apr", "Pool APR"],
+];
+
+const sortValue = (row: Row, key: SortKey) =>
+  key === "tvl" ? row.tvlUsd : key === "vol1d" ? row.vol1d : key === "vol30d" ? row.vol30d : key === "ratio" ? row.ratio : row.apr;
 
 function money(n: number) {
   if (!Number.isFinite(n) || n <= 0) return "$0.00";
@@ -46,8 +65,12 @@ function PoolsPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<SortKey>("tvl");
-  const [images, setImages] = useState<Record<string, string>>({});
+  const [sort, setSort] = useState<SortKey>("vol1d");
+  const [desc, setDesc] = useState(true);
+  const [loadingRows, setLoadingRows] = useState(true);
+  const images = useTokenImages(useMemo(() => coins.map((coin) => coin.token), [coins]));
+  const scroller = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -67,28 +90,41 @@ function PoolsPage() {
 
   useEffect(() => {
     const listed = coins.filter((coin) => !coin.preview);
-    if (!deployment || !ethUsd || listed.length === 0) return;
+    if (!deployment || listed.length === 0) {
+      setLoadingRows(!deployment);
+      return;
+    }
     let cancel = false;
+    setLoadingRows(true);
     void Promise.all(
-      listed.map(async (coin) => {
-        const [weth, token, swaps] = await Promise.all([
+      listed.map(async (coin): Promise<Row> => {
+        const [weth, token, history] = await Promise.all([
           publicClient.readContract({ address: deployment.weth, abi: erc20Abi, functionName: "balanceOf", args: [coin.pool] }),
           publicClient.readContract({ address: coin.token, abi: erc20Abi, functionName: "balanceOf", args: [coin.pool] }),
-          loadSwaps(coin.pool, coin.tokenIs0),
+          loadSwapWindow(coin.pool, coin.tokenIs0, 30 * DAY),
         ]);
-        const price = Number(wethPerToken(coin.sqrtPriceX96, coin.tokenIs0)) / 1e18;
-        const tvlUsd = (Number(weth) / 1e18) * ethUsd + (Number(token) / 1e18) * price * ethUsd;
         const now = Math.floor(Date.now() / 1000);
-        const volEth = swaps.filter((swap) => now - swap.time <= 86400).reduce((sum, swap) => sum + Number(swap.ethAmount) / 1e18, 0);
-        const volUsd = volEth * ethUsd;
-        const apr = tvlUsd > 0 ? ((volUsd * 0.01) / tvlUsd) * 365 * 100 : 0;
-        return { coin, tvlUsd, volUsd, apr };
+        const price = Number(wethPerToken(coin.sqrtPriceX96, coin.tokenIs0)) / 1e18;
+        const ethIn = (since: number) =>
+          history.swaps.filter((swap) => swap.time >= since).reduce((sum, swap) => sum + Number(swap.ethAmount) / 1e18, 0);
+        const covered = (seconds: number) => history.coveredFrom <= now - seconds + 60;
+        if (!ethUsd) return { coin, source: history.source };
+        const tvlUsd = (Number(weth) / 1e18) * ethUsd + (Number(token) / 1e18) * price * ethUsd;
+        const vol1d = covered(DAY) ? ethIn(now - DAY) * ethUsd : undefined;
+        const vol30d = covered(30 * DAY) ? ethIn(now - 30 * DAY) * ethUsd : undefined;
+        const feeRate = (coin.fee ?? POOL_FEE) / 1_000_000;
+        const ratio = vol1d !== undefined && tvlUsd > 0 ? vol1d / tvlUsd : undefined;
+        const apr = vol1d !== undefined && tvlUsd > 0 ? ((vol1d * feeRate * 365) / tvlUsd) * 100 : undefined;
+        return { coin, tvlUsd, vol1d, vol30d, ratio, apr, source: history.source };
       }),
     )
       .then((next) => {
-        if (!cancel) setRows(next.sort((a, b) => b.tvlUsd - a.tvlUsd));
+        if (!cancel) setRows(next);
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancel) setLoadingRows(false);
+      });
     return () => {
       cancel = true;
     };
@@ -144,13 +180,17 @@ function PoolsPage() {
   }, [deployment, account, coins]);
 
   useEffect(() => {
-    const next: Record<string, string> = {};
-    for (const coin of coins) {
-      const image = readTokenMeta(coin.token)?.image;
-      if (image) next[coin.token.toLowerCase()] = image;
-    }
-    setImages(next);
-  }, [coins]);
+    const el = scroller.current;
+    if (!el) return;
+    const update = () => setEdges({ left: el.scrollLeft > 4, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 4 });
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      el.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [rows.length]);
 
   const rowByToken = useMemo(() => new Map(rows.map((row) => [row.coin.token.toLowerCase(), row])), [rows]);
   const held = positions.filter((position) => position.coin);
@@ -162,11 +202,23 @@ function PoolsPage() {
       return !q || row.coin.symbol.toLowerCase().includes(q) || row.coin.name.toLowerCase().includes(q);
     })
     .sort((a, b) => {
-      if (sort === "ratio") return (b.tvlUsd > 0 ? b.volUsd / b.tvlUsd : 0) - (a.tvlUsd > 0 ? a.volUsd / a.tvlUsd : 0);
-      if (sort === "vol") return b.volUsd - a.volUsd;
-      if (sort === "apr") return b.apr - a.apr;
-      return b.tvlUsd - a.tvlUsd;
+      const av = sortValue(a, sort);
+      const bv = sortValue(b, sort);
+      if (av === undefined && bv === undefined) return 0;
+      if (av === undefined) return 1;
+      if (bv === undefined) return -1;
+      return desc ? bv - av : av - bv;
     });
+  const missing30d = rows.some((row) => row.tvlUsd !== undefined && row.vol30d === undefined);
+  const noPrice = rows.length > 0 && rows.every((row) => row.tvlUsd === undefined);
+
+  function sortBy(key: SortKey) {
+    if (key === sort) setDesc((v) => !v);
+    else {
+      setSort(key);
+      setDesc(true);
+    }
+  }
   const first = filtered[0] ?? rows[0];
 
   async function collectAll() {
@@ -286,38 +338,106 @@ function PoolsPage() {
 
       <div className="mt-14 flex flex-wrap items-end justify-between gap-4">
         <h2 className="text-[28px] font-semibold tracking-[-0.03em]">Top pools</h2>
-        <label className="flex w-[260px] max-w-full items-center gap-2.5 rounded-xl border border-line bg-chip px-3.5 py-2">
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search pools" aria-label="Search pools" className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
-        </label>
-      </div>
-      <div className="mt-4 overflow-x-auto rounded-3xl border border-line bg-chip/85">
-        <div className="min-w-[720px]">
-          <div className="grid grid-cols-[3rem_minmax(0,1fr)_7.5rem_7.5rem_7.5rem_6.5rem] items-center gap-3 border-b border-line bg-fg/3 px-6 py-3.5 text-[13px] text-muted">
-            <span>#</span><span>Pool</span>
-            {([["tvl", "TVL"], ["vol", "1D vol"], ["ratio", "1D vol/TVL"], ["apr", "Fee APR"]] as const).map(([key, label]) => (
-              <button key={key} type="button" onClick={() => setSort(key)} className={`justify-self-end text-[13px] ${sort === key ? "font-semibold text-fg" : ""}`}>{sort === key ? "↓ " : ""}{label}</button>
-            ))}
-          </div>
-          {filtered.map((row, i) => (
-            <Link key={row.coin.token} to="/pool/$address" params={{ address: row.coin.token }} className="grid grid-cols-[3rem_minmax(0,1fr)_7.5rem_7.5rem_7.5rem_6.5rem] items-center gap-3 border-b border-line/55 px-6 py-4 text-[15px]">
-              <span className="text-muted tabular-nums">{i + 1}</span>
-              <span className="flex min-w-0 items-center gap-3.5">
-                <PairMark symbol={row.coin.symbol} image={images[row.coin.token.toLowerCase()]} size={40} />
-                <span className="min-w-0">
-                  <span className="block truncate font-semibold">{row.coin.symbol} / ETH</span>
-                  <span className="block truncate text-[13px] text-muted">v3 · 1% · {shortAddr(row.coin.pool)}</span>
-                </span>
-              </span>
-              <span className="text-right font-medium tabular-nums">{money(row.tvlUsd)}</span>
-              <span className="text-right tabular-nums">{money(row.volUsd)}</span>
-              <span className="text-right text-muted tabular-nums">{row.tvlUsd > 0 ? (row.volUsd / row.tvlUsd).toFixed(3) : "—"}</span>
-              <span className="text-right font-medium text-ok tabular-nums">{row.apr.toFixed(2)}%</span>
-            </Link>
-          ))}
-          {filtered.length === 0 ? <p className="px-6 py-10 text-center text-[15px] text-muted">{query ? `No pool matches “${query}”.` : "No Chimi pools yet."}</p> : null}
+        <div className="flex w-full items-center gap-2 sm:w-auto">
+          <label className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl border border-line bg-chip px-3.5 py-2 sm:w-[260px] sm:flex-none">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" className="shrink-0 text-muted" aria-hidden>
+              <circle cx="7" cy="7" r="4.75" stroke="currentColor" strokeWidth="1.5" />
+              <path d="m10.5 10.5 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search pools" aria-label="Search pools" className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
+          </label>
+          {edges.left || edges.right ? (
+            <div className="flex shrink-0 gap-1.5">
+              {(["left", "right"] as const).map((dir) => (
+                <button
+                  key={dir}
+                  type="button"
+                  aria-label={dir === "left" ? "Scroll table left" : "Scroll table right"}
+                  disabled={!edges[dir]}
+                  onClick={() => scroller.current?.scrollBy({ left: dir === "left" ? -180 : 180, behavior: "smooth" })}
+                  className="grid size-9 place-items-center rounded-full border border-line bg-chip text-fg disabled:opacity-35"
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+                    <path d={dir === "left" ? "M10 3.5 5.5 8l4.5 4.5" : "M6 3.5 10.5 8 6 12.5"} stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
+      <div className="mt-4 overflow-hidden rounded-3xl border border-line bg-chip">
+        <div ref={scroller} className="overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="min-w-max">
+            <div className={`${POOL_GRID} border-b border-line bg-[#261d16] text-[13px] text-muted`}>
+              <span className="hidden py-3.5 pl-5 sm:block">#</span>
+              <span className={`${STICKY} bg-[#261d16] py-3.5 pl-4 sm:pl-2 ${edges.left ? STICKY_SHADOW : ""}`}>Pool</span>
+              {COLUMNS.map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => sortBy(key)}
+                  aria-sort={sort === key ? (desc ? "descending" : "ascending") : "none"}
+                  className={`flex items-center justify-end gap-1 py-3.5 pr-4 text-right text-[13px] whitespace-nowrap last:pr-5 ${sort === key ? "font-semibold text-fg" : ""}`}
+                >
+                  {sort === key ? (
+                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden className={desc ? "" : "rotate-180"}>
+                      <path d="M8 2.5v11M3.5 9 8 13.5 12.5 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ) : null}
+                  {label}
+                </button>
+              ))}
+            </div>
+            {filtered.map((row, i) => (
+              <Link
+                key={row.coin.token}
+                to="/pool/$address"
+                params={{ address: row.coin.token }}
+                className={`${POOL_GRID} group border-b border-line/55 text-[15px] last:border-0`}
+              >
+                <span className="hidden py-4 pl-5 text-muted tabular-nums sm:block">{i + 1}</span>
+                <span className={`${STICKY} flex items-center gap-3 bg-chip py-3.5 pl-4 transition-colors group-hover:bg-[#2a2019] sm:pl-2 ${edges.left ? STICKY_SHADOW : ""}`}>
+                  <PairMark symbol={row.coin.symbol} image={images[row.coin.token.toLowerCase()]} size={32} />
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold">{row.coin.symbol}/ETH</span>
+                    <span className="block truncate text-[13px] text-muted">v3 · {feeLabel(row.coin.fee)}</span>
+                  </span>
+                </span>
+                <Cell value={compactUsd(row.tvlUsd)} strong />
+                <Cell value={compactUsd(row.vol1d)} />
+                <Cell value={compactUsd(row.vol30d)} />
+                <Cell value={row.ratio === undefined ? "—" : row.ratio.toFixed(row.ratio < 0.1 ? 3 : 2)} muted />
+                <Cell value={pct(row.apr)} tone={row.apr !== undefined && row.apr > 0 ? "text-ok" : undefined} last />
+              </Link>
+            ))}
+            {filtered.length === 0 ? (
+              <p className="px-6 py-10 text-center text-[15px] text-muted">
+                {loadingRows && live.length > 0 ? "Reading pools…" : query ? `No pool matches “${query}”.` : "No Chimi pools yet."}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+      <p className="mt-3 text-xs text-muted">
+        TVL is each pool’s ETH and token reserves at the pool price. Volume is the ETH side of on-chain swaps, read from the GIWA explorer.
+        Pool APR is 1D fees × 365 ÷ TVL at the pool’s fee tier.
+        {noPrice ? " The ETH price didn’t load, so USD columns show —." : ""}
+        {missing30d ? " The explorer couldn’t be reached, so 30D volume shows — (the chain RPC only returns about a day of swaps)." : ""}
+      </p>
     </main>
+  );
+}
+
+const POOL_GRID = "grid grid-cols-[minmax(11.5rem,1fr)_repeat(5,6.5rem)] items-center sm:grid-cols-[3rem_minmax(14rem,1fr)_repeat(5,7.25rem)]";
+const STICKY = "sticky left-0 z-10 min-w-0 pr-3";
+const STICKY_SHADOW = "shadow-[8px_0_12px_-8px_rgba(0,0,0,.6)]";
+
+function Cell({ value, strong, muted, tone, last }: { value: string; strong?: boolean; muted?: boolean; tone?: string; last?: boolean }) {
+  return (
+    <span className={`py-4 pr-4 text-right tabular-nums whitespace-nowrap ${last ? "pr-5" : ""} ${strong ? "font-medium" : ""} ${muted ? "text-muted" : ""} ${tone ?? ""}`}>
+      {value}
+    </span>
   );
 }
 
@@ -344,5 +464,5 @@ function liquidityValue(position: Position, row: Row | undefined) {
   const tick = tickFromSqrtPriceX96(position.coin.sqrtPriceX96);
   if (tick < position.tickLower || tick >= position.tickUpper) return 0;
   const share = Number((position.liquidity * 1_000_000n) / position.coin.liquidity) / 1_000_000;
-  return share * row.tvlUsd;
+  return share * (row.tvlUsd ?? 0);
 }

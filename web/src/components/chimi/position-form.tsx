@@ -21,7 +21,8 @@ import {
 } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { fmt, short, type Coin, type PoolSwap } from "@/lib/chimi/market";
-import { readTokenMeta } from "@/lib/chimi/meta";
+import { useTokenProfile } from "@/lib/chimi/token-image";
+import { TokenLogo } from "@/components/chimi/token-logo";
 import { PairMark } from "@/components/chimi/pair-mark";
 import {
   bandPercents,
@@ -190,16 +191,13 @@ export function PositionDesk({
   const [busy, setBusy] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [tf, setTf] = useState<"1D" | "1W" | "1M" | "1Y" | "All">("1D");
-  const [image, setImage] = useState<string>();
+  const image = useTokenProfile(coin.token)?.image;
   const chartRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<"min" | "max" | null>(null);
 
   const selected = positions.find((position) => position.id.toString() === selectedId) ?? positions[0];
   const createRange: TickRange = rangeMode === "full" ? { tickLower: MIN_TICK, tickUpper: MAX_TICK } : ticks;
 
-  useEffect(() => {
-    setImage(readTokenMeta(coin.token)?.image);
-  }, [coin.token]);
   const createSide = depositSide(coin.sqrtPriceX96, createRange, coin.tokenIs0);
   const currentTokens = coin.sqrtPriceX96 > 0n
     ? tokensPerEthFromTick(tickFromSqrtPriceX96(coin.sqrtPriceX96), coin.tokenIs0)
@@ -867,7 +865,7 @@ export function PositionDesk({
               <div className="flex items-center gap-3">
                 <input inputMode="decimal" value={createSide === "eth" ? "" : createToken} disabled={createSide === "eth"} placeholder="0" onChange={(event) => fillCreate("token", event.target.value)} className="min-w-0 flex-1 bg-transparent text-4xl font-medium tracking-[-0.02em] tabular-nums outline-none disabled:opacity-40" />
                 <span className="flex items-center gap-2 rounded-full border border-line bg-chip py-1.5 pr-3 pl-1.5 text-base font-semibold">
-                  {image ? <img src={image} alt="" className="size-7 rounded-full object-cover shadow-[0_0_0_1.5px_#d24a2e]" /> : <span className="grid size-7 place-items-center font-display text-[7px] text-seal shadow-[inset_0_0_0_1.5px_#d24a2e]">{coin.symbol.slice(0, 4)}</span>}
+                  <TokenLogo symbol={coin.symbol} image={image} size={28} />
                   {coin.symbol}
                 </span>
               </div>
