@@ -12,11 +12,16 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as LaunchRouteImport } from './routes/launch'
+import { Route as PointsRouteImport } from './routes/points'
 import { Route as PoolsRouteImport } from './routes/pools'
 import { Route as SwapRouteImport } from './routes/swap'
+import { Route as ApiHousesRouteImport } from './routes/api/houses'
+import { Route as ApiPointsRouteImport } from './routes/api/points'
 import { Route as ApiTokenMetaRouteImport } from './routes/api/token-meta'
 import { Route as ApiUploadRouteImport } from './routes/api/upload'
 import { Route as CoinAddressRouteImport } from './routes/coin.$address'
+import { Route as HousesIndexRouteImport } from './routes/houses.index'
+import { Route as HousesTagRouteImport } from './routes/houses.$tag'
 import { Route as PoolAddressRouteImport } from './routes/pool.$address'
 
 const IndexRoute = IndexRouteImport.update({
@@ -34,6 +39,11 @@ const LaunchRoute = LaunchRouteImport.update({
   path: '/launch',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PointsRoute = PointsRouteImport.update({
+  id: '/points',
+  path: '/points',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PoolsRoute = PoolsRouteImport.update({
   id: '/pools',
   path: '/pools',
@@ -42,6 +52,16 @@ const PoolsRoute = PoolsRouteImport.update({
 const SwapRoute = SwapRouteImport.update({
   id: '/swap',
   path: '/swap',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiHousesRoute = ApiHousesRouteImport.update({
+  id: '/api/houses',
+  path: '/api/houses',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPointsRoute = ApiPointsRouteImport.update({
+  id: '/api/points',
+  path: '/api/points',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiTokenMetaRoute = ApiTokenMetaRouteImport.update({
@@ -59,6 +79,16 @@ const CoinAddressRoute = CoinAddressRouteImport.update({
   path: '/coin/$address',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HousesIndexRoute = HousesIndexRouteImport.update({
+  id: '/houses/',
+  path: '/houses/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HousesTagRoute = HousesTagRouteImport.update({
+  id: '/houses/$tag',
+  path: '/houses/$tag',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PoolAddressRoute = PoolAddressRouteImport.update({
   id: '/pool/$address',
   path: '/pool/$address',
@@ -69,35 +99,50 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/launch': typeof LaunchRoute
+  '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
+  '/api/houses': typeof ApiHousesRoute
+  '/api/points': typeof ApiPointsRoute
   '/api/token-meta': typeof ApiTokenMetaRoute
   '/api/upload': typeof ApiUploadRoute
   '/coin/$address': typeof CoinAddressRoute
+  '/houses/$tag': typeof HousesTagRoute
   '/pool/$address': typeof PoolAddressRoute
+  '/houses/': typeof HousesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/launch': typeof LaunchRoute
+  '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
+  '/api/houses': typeof ApiHousesRoute
+  '/api/points': typeof ApiPointsRoute
   '/api/token-meta': typeof ApiTokenMetaRoute
   '/api/upload': typeof ApiUploadRoute
   '/coin/$address': typeof CoinAddressRoute
+  '/houses/$tag': typeof HousesTagRoute
   '/pool/$address': typeof PoolAddressRoute
+  '/houses': typeof HousesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/launch': typeof LaunchRoute
+  '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
+  '/api/houses': typeof ApiHousesRoute
+  '/api/points': typeof ApiPointsRoute
   '/api/token-meta': typeof ApiTokenMetaRoute
   '/api/upload': typeof ApiUploadRoute
   '/coin/$address': typeof CoinAddressRoute
+  '/houses/$tag': typeof HousesTagRoute
   '/pool/$address': typeof PoolAddressRoute
+  '/houses/': typeof HousesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -105,46 +150,66 @@ export interface FileRouteTypes {
     | '/'
     | '/analytics'
     | '/launch'
+    | '/points'
     | '/pools'
     | '/swap'
+    | '/api/houses'
+    | '/api/points'
     | '/api/token-meta'
     | '/api/upload'
     | '/coin/$address'
+    | '/houses/$tag'
     | '/pool/$address'
+    | '/houses/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/analytics'
     | '/launch'
+    | '/points'
     | '/pools'
     | '/swap'
+    | '/api/houses'
+    | '/api/points'
     | '/api/token-meta'
     | '/api/upload'
     | '/coin/$address'
+    | '/houses/$tag'
     | '/pool/$address'
+    | '/houses'
   id:
     | '__root__'
     | '/'
     | '/analytics'
     | '/launch'
+    | '/points'
     | '/pools'
     | '/swap'
+    | '/api/houses'
+    | '/api/points'
     | '/api/token-meta'
     | '/api/upload'
     | '/coin/$address'
+    | '/houses/$tag'
     | '/pool/$address'
+    | '/houses/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AnalyticsRoute: typeof AnalyticsRoute
   LaunchRoute: typeof LaunchRoute
+  PointsRoute: typeof PointsRoute
   PoolsRoute: typeof PoolsRoute
   SwapRoute: typeof SwapRoute
+  ApiHousesRoute: typeof ApiHousesRoute
+  ApiPointsRoute: typeof ApiPointsRoute
   ApiTokenMetaRoute: typeof ApiTokenMetaRoute
   ApiUploadRoute: typeof ApiUploadRoute
   CoinAddressRoute: typeof CoinAddressRoute
+  HousesTagRoute: typeof HousesTagRoute
   PoolAddressRoute: typeof PoolAddressRoute
+  HousesIndexRoute: typeof HousesIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -170,6 +235,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LaunchRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/points': {
+      id: '/points'
+      path: '/points'
+      fullPath: '/points'
+      preLoaderRoute: typeof PointsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pools': {
       id: '/pools'
       path: '/pools'
@@ -182,6 +254,20 @@ declare module '@tanstack/react-router' {
       path: '/swap'
       fullPath: '/swap'
       preLoaderRoute: typeof SwapRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/houses': {
+      id: '/api/houses'
+      path: '/api/houses'
+      fullPath: '/api/houses'
+      preLoaderRoute: typeof ApiHousesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/points': {
+      id: '/api/points'
+      path: '/api/points'
+      fullPath: '/api/points'
+      preLoaderRoute: typeof ApiPointsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/token-meta': {
@@ -205,6 +291,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CoinAddressRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/houses/': {
+      id: '/houses/'
+      path: '/houses'
+      fullPath: '/houses/'
+      preLoaderRoute: typeof HousesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/houses/$tag': {
+      id: '/houses/$tag'
+      path: '/houses/$tag'
+      fullPath: '/houses/$tag'
+      preLoaderRoute: typeof HousesTagRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pool/$address': {
       id: '/pool/$address'
       path: '/pool/$address'
@@ -219,12 +319,17 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnalyticsRoute: AnalyticsRoute,
   LaunchRoute: LaunchRoute,
+  PointsRoute: PointsRoute,
   PoolsRoute: PoolsRoute,
   SwapRoute: SwapRoute,
+  ApiHousesRoute: ApiHousesRoute,
+  ApiPointsRoute: ApiPointsRoute,
   ApiTokenMetaRoute: ApiTokenMetaRoute,
   ApiUploadRoute: ApiUploadRoute,
   CoinAddressRoute: CoinAddressRoute,
+  HousesTagRoute: HousesTagRoute,
   PoolAddressRoute: PoolAddressRoute,
+  HousesIndexRoute: HousesIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

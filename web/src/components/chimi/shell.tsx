@@ -1,5 +1,5 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { giwaSepolia } from "@/lib/chimi/chain";
 import { shortAddr } from "@/lib/chimi/market";
 import { useChimi } from "@/components/chimi/provider";
@@ -9,18 +9,31 @@ const tabs = [
   { to: "/swap", label: "Swap" },
   { to: "/analytics", label: "Analytics" },
   { to: "/pools", label: "Pools" },
+  { to: "/points", label: "Points" },
+  { to: "/houses", label: "Houses" },
 ] as const;
 
 function TabPill({ here }: { here: string }) {
+  const bar = useRef<HTMLDivElement>(null);
+  // On a phone the tabs scroll sideways; keep the current one in view.
+  useEffect(() => {
+    bar.current?.querySelector<HTMLElement>("[data-on]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [here]);
   return (
-    <div className="flex items-center gap-1 rounded-full border border-line/80 bg-chip/80 p-1">
+    <div ref={bar} className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-line/80 bg-chip/80 p-1 [scrollbar-width:none]">
       {tabs.map((tab) => {
-        const on = tab.to === "/pools" ? here === "/pools" || here.startsWith("/pool/") : here === tab.to;
+        const on =
+          tab.to === "/pools"
+            ? here === "/pools" || here.startsWith("/pool/")
+            : tab.to === "/houses"
+              ? here.startsWith("/houses")
+              : here === tab.to;
         return (
           <Link
             key={tab.to}
             to={tab.to}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium ${on ? "bg-fg/10 text-fg shadow-[inset_0_1px_0_rgba(255,255,255,.06)]" : "text-muted"}`}
+            data-on={on || undefined}
+            className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-medium sm:px-4 ${on ? "bg-fg/10 text-fg shadow-[inset_0_1px_0_rgba(255,255,255,.06)]" : "text-muted"}`}
           >
             {tab.label}
           </Link>
@@ -50,7 +63,7 @@ export function Shell({ children }: { children: ReactNode }) {
               <span className="font-serif text-[15px] text-gold">치미</span>
             </span>
           </Link>
-          <nav className="hidden md:block">
+          <nav className="hidden lg:block">
             <TabPill here={location.pathname} />
           </nav>
           <div className="flex items-center gap-2">
@@ -70,7 +83,7 @@ export function Shell({ children }: { children: ReactNode }) {
             </button>
           </div>
         </div>
-        <nav className="flex justify-center px-3 pb-3 md:hidden">
+        <nav className="flex justify-center px-3 pb-3 lg:hidden">
           <TabPill here={location.pathname} />
         </nav>
       </header>

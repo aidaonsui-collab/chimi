@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite dev --host 127.0.0.1 --port 5173",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.0",
@@ -20,6 +21,7 @@
     "viem": "^2.37.5"
   },
   "devDependencies": {
+    "@types/node": "^24.19.2",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "typescript": "^5.7.0",
