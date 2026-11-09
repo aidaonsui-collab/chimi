@@ -5,7 +5,9 @@ import { fmtPoints, useHouses, usePoints } from "@/lib/chimi/rewards";
 import { useChimi } from "@/components/chimi/provider";
 import { FoundHouseDialog } from "@/components/chimi/found-house";
 import { HouseSeal } from "@/components/chimi/house-seal";
+import { IconChevronRight, IconPlus } from "@/components/chimi/icons";
 import { SectionLabel, Skeleton } from "@/components/chimi/rewards-bits";
+import { Empty } from "@/components/chimi/ui";
 
 export const Route = createFileRoute("/houses/")({
   head: () => ({ meta: [{ title: "Houses · Chimi" }] }),
@@ -24,12 +26,12 @@ function HousesPage() {
 
   return (
     <main>
-      <section className="mx-auto max-w-[1180px] px-4 pt-9 pb-20 sm:px-6">
-        <div className="flex flex-wrap items-end justify-between gap-5">
+      <section className="page pt-4 pb-16">
+        <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-5">
           <div>
             <SectionLabel>가문 · HOUSES</SectionLabel>
-            <h1 className="mt-1.5 text-[44px] leading-none font-semibold tracking-[-0.035em]">Houses</h1>
-            <p className="mt-3 max-w-[540px] text-[15px] text-muted">
+            <h1 className="mt-2 text-[34px] leading-[1.05] font-semibold tracking-[-0.03em] sm:text-[42px]">Houses</h1>
+            <p className="mt-3 max-w-[540px] text-[15px] leading-relaxed text-muted">
               Up to {MAX_MEMBERS} Dojang holders under one seal. Every point a member earns also counts for the house.
             </p>
           </div>
@@ -37,24 +39,25 @@ function HousesPage() {
             <button
               type="button"
               onClick={() => setFounding(true)}
-              className="rounded-full bg-seal px-5 py-2.5 text-sm font-semibold text-onseal shadow-[inset_0_1px_0_rgba(255,255,255,.22),0_6px_20px_rgba(210,74,46,.35)]"
+              className="btn btn-lg btn-primary"
             >
+              <IconPlus size={18} />
               Found a house
             </button>
           ) : null}
         </div>
 
-        {!writable ? <p className="mt-5 text-sm text-muted">Houses aren’t switched on yet. They need the site’s database.</p> : null}
+        {!writable ? <p className="mt-5 rounded-xl border border-gold/25 bg-gold/8 px-4 py-3 text-sm">Houses aren’t switched on yet. They need the site’s database.</p> : null}
 
         {myHouse ? (
           <Link
             to="/houses/$tag"
             params={{ tag: myHouse.house.tag }}
-            className="mt-7 flex items-center gap-4 rounded-3xl border border-gold/35 bg-gradient-to-br from-[#2a1f17] to-[#1d1611] p-4 pr-5 sm:p-5"
+            className="card card-lift group mt-7 flex items-center gap-4 border-gold/30 p-4 pr-5 sm:p-5"
           >
             <HouseSeal seal={myHouse.house.seal} ink={myHouse.house.ink} size={56} />
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold tracking-[0.08em] text-gold">YOUR HOUSE</p>
+              <p className="eyebrow">Your house</p>
               <p className="mt-0.5 truncate text-lg font-semibold">
                 {myHouse.house.name} <span className="text-sm font-medium text-muted">[{myHouse.house.tag}]</span>
               </p>
@@ -67,10 +70,11 @@ function HousesPage() {
               <p className="text-xs text-muted">Season</p>
               <p className="text-lg font-semibold tabular-nums">{fmtPoints(myHouse.season)}</p>
             </div>
+            <IconChevronRight size={18} className="hidden shrink-0 text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-fg sm:block" />
           </Link>
         ) : null}
 
-        <div className="mt-7 overflow-hidden rounded-3xl border border-line bg-chip/85 shadow-[inset_0_1px_0_rgba(255,255,255,.04)]">
+        <div className="card mt-7 overflow-hidden">
           {loading && !houses ? (
             <div className="space-y-5 p-5">
               {Array.from({ length: 4 }, (_, i) => (
@@ -82,23 +86,28 @@ function HousesPage() {
               ))}
             </div>
           ) : scores.length === 0 ? (
-            <div className="flex flex-col items-center px-6 py-16 text-center">
-              <div className="flex -space-x-3">
-                <HouseSeal seal="龍" ink="seal" size={56} className="-rotate-6" />
-                <HouseSeal seal="福" ink="ink" size={56} className="relative z-[1] rotate-3" />
-                <HouseSeal seal="月" ink="indigo" size={56} className="rotate-[8deg]" />
+            <div className="py-4">
+              <div className="mt-8 flex justify-center -space-x-3">
+                <HouseSeal seal="龍" ink="seal" size={60} className="-rotate-6 drop-shadow-[0_10px_20px_rgba(0,0,0,.5)]" />
+                <HouseSeal seal="福" ink="ink" size={60} className="relative z-[1] rotate-3 drop-shadow-[0_10px_20px_rgba(0,0,0,.5)]" />
+                <HouseSeal seal="月" ink="indigo" size={60} className="rotate-[8deg] drop-shadow-[0_10px_20px_rgba(0,0,0,.5)]" />
               </div>
-              <p className="mt-6 text-xl font-semibold">No houses yet</p>
-              <p className="mt-2 max-w-[420px] text-[15px] text-muted">Found the first one: pick a seal, gather up to {MAX_MEMBERS} traders with a Dojang, and climb the board together.</p>
-              {writable ? (
-                <button type="button" onClick={() => setFounding(true)} className="mt-6 rounded-full bg-seal px-5 py-2.5 text-sm font-semibold text-onseal">
-                  Found the first house
-                </button>
-              ) : null}
+              <Empty
+                title="No houses yet"
+                action={
+                  writable ? (
+                    <button type="button" onClick={() => setFounding(true)} className="btn btn-primary">
+                      Found the first house
+                    </button>
+                  ) : null
+                }
+              >
+                Found the first one: pick a seal, gather up to {MAX_MEMBERS} traders with a Dojang, and climb the board together.
+              </Empty>
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-[2.25rem_minmax(0,1fr)_6rem] gap-3 border-b border-line px-4 py-3 text-xs font-medium tracking-[0.06em] text-muted sm:grid-cols-[2.5rem_minmax(0,1fr)_7rem_6rem_7rem] sm:px-5">
+              <div className="th grid grid-cols-[2.25rem_minmax(0,1fr)_6rem] gap-3 border-b border-line px-4 py-3 sm:grid-cols-[2.5rem_minmax(0,1fr)_7rem_6rem_7rem] sm:px-5">
                 <span>#</span>
                 <span>House</span>
                 <span className="hidden sm:block">Members</span>
@@ -111,15 +120,15 @@ function HousesPage() {
                     <Link
                       to="/houses/$tag"
                       params={{ tag: s.house.tag }}
-                      className={`grid grid-cols-[2.25rem_minmax(0,1fr)_6rem] items-center gap-3 border-b border-line/55 px-4 py-3.5 hover:bg-fg/4 sm:grid-cols-[2.5rem_minmax(0,1fr)_7rem_6rem_7rem] sm:px-5 ${mine?.tag === s.house.tag ? "bg-seal/8" : ""}`}
+                      className={`row-hover grid grid-cols-[2.25rem_minmax(0,1fr)_6rem] items-center gap-3 border-b border-line/70 px-4 py-3.5 sm:grid-cols-[2.5rem_minmax(0,1fr)_7rem_6rem_7rem] sm:px-5 ${mine?.tag === s.house.tag ? "bg-gold/6 shadow-[inset_3px_0_0_var(--color-gold)]" : ""}`}
                     >
-                      <span className={`text-sm tabular-nums ${s.rank <= 3 ? "font-semibold text-gold" : "text-muted"}`}>{String(s.rank).padStart(2, "0")}</span>
+                      <span className={`num text-sm ${s.rank <= 3 ? "font-semibold text-gold" : "text-faint"}`}>{s.rank}</span>
                       <span className="flex min-w-0 items-center gap-3.5">
                         <HouseSeal seal={s.house.seal} ink={s.house.ink} size={46} />
                         <span className="min-w-0">
                           <span className="flex min-w-0 items-center gap-2">
                             <span className="truncate text-base font-medium">{s.house.name}</span>
-                            <span className="shrink-0 rounded-md border border-line/90 px-1.5 py-px text-[11px] font-semibold tracking-[0.08em] text-muted">{s.house.tag}</span>
+                            <span className="shrink-0 rounded-md border border-edge bg-raise px-1.5 py-px text-[11px] font-semibold tracking-[0.08em] text-muted">{s.house.tag}</span>
                           </span>
                           <span className="block truncate text-[13px] text-muted">
                             {s.house.motto || `${s.members.length} member${s.members.length === 1 ? "" : "s"}`}
@@ -128,7 +137,7 @@ function HousesPage() {
                         </span>
                       </span>
                       <span className="hidden items-center gap-2 sm:flex">
-                        <span className="h-1.5 w-12 overflow-hidden rounded-full bg-line">
+                        <span className="h-1.5 w-12 overflow-hidden rounded-full bg-raise2">
                           <span className="block h-full rounded-full bg-gold/80" style={{ width: `${(s.members.length / MAX_MEMBERS) * 100}%` }} />
                         </span>
                         <span className="text-sm text-muted tabular-nums">
@@ -145,7 +154,7 @@ function HousesPage() {
           )}
         </div>
 
-        <div className="mt-14">
+        <div className="mt-12">
           <SectionLabel>THE RULES</SectionLabel>
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {(
@@ -156,10 +165,10 @@ function HousesPage() {
                 ["가주", "The head", "The founder heads the house, sets its seal and motto, and can remove members. If the head leaves, the longest-standing member takes over."],
               ] as const
             ).map(([ko, title, body]) => (
-              <div key={title} className="rounded-3xl border border-line bg-chip/70 p-5">
+              <div key={title} className="card p-5">
                 <p className="font-serif text-lg text-gold">{ko}</p>
                 <p className="mt-2 text-[17px] font-semibold tracking-[-0.01em]">{title}</p>
-                <p className="mt-1.5 text-sm text-muted">{body}</p>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted">{body}</p>
               </div>
             ))}
           </div>

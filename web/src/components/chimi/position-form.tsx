@@ -22,8 +22,11 @@ import {
 import { publicClient } from "@/lib/chimi/client";
 import { fmt, short, type Coin, type PoolSwap } from "@/lib/chimi/market";
 import { useTokenProfile } from "@/lib/chimi/token-image";
-import { TokenLogo } from "@/components/chimi/token-logo";
+import { IconArrowLeft, IconChevronRight } from "@/components/chimi/icons";
+import { EthLogo, TokenLogo } from "@/components/chimi/token-logo";
 import { PairMark } from "@/components/chimi/pair-mark";
+import { useChimi } from "@/components/chimi/provider";
+import { toast } from "@/components/chimi/toast";
 import {
   bandPercents,
   depositSide,
@@ -126,22 +129,22 @@ function AmountField({
   disabled?: boolean;
 }) {
   return (
-    <label className="block text-sm text-muted">
-      <span className="flex items-center justify-between">
+    <label className="block">
+      <span className="label flex items-center justify-between">
         <span>{label}</span>
-        <span className="text-xs">{balance}</span>
+        <span className="num text-xs font-normal">{balance}</span>
       </span>
-      <span className="mt-1 flex items-center gap-2 rounded-xl border border-line bg-bg px-3">
+      <span className={`field flex items-center gap-2 py-0 ${disabled ? "opacity-50" : ""}`}>
         <input
           value={value}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => onChange(event.target.value.replace(",", "."))}
           inputMode="decimal"
           placeholder="0"
           disabled={disabled}
-          className="w-full bg-transparent py-2.5 outline-none disabled:opacity-40"
+          className="num h-[42px] w-full min-w-0 bg-transparent outline-none"
         />
         {onMax && !disabled ? (
-          <button type="button" onClick={onMax} className="text-xs font-semibold text-gold">Max</button>
+          <button type="button" onClick={onMax} className="text-xs font-semibold text-gold hover:underline">Max</button>
         ) : null}
       </span>
     </label>
@@ -169,6 +172,7 @@ export function PositionDesk({
   stats?: { tvl: string; vol: string; fees: string; apr: string };
   onBack?: () => void;
 }) {
+  const { ensureChain } = useChimi();
   const [positions, setPositions] = useState<Held[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
   const [reload, setReload] = useState(0);
@@ -331,6 +335,7 @@ export function PositionDesk({
 
   async function approveAndSend(eth: bigint, tokens: bigint, asEth: boolean, range: TickRange, position?: Held) {
     if (!account) return;
+    await ensureChain();
     const wallet = clientFor(account);
     const npm = deployment.positionManager;
     const weth = deployment.weth;
@@ -390,6 +395,7 @@ export function PositionDesk({
       });
       await publicClient.waitForTransactionReceipt({ hash });
       setNote("Liquidity added. Unused tokens were returned.");
+      toast({ kind: "good", title: "Liquidity added" });
       setIncEth("");
       setIncToken("");
     } else {
@@ -416,6 +422,7 @@ export function PositionDesk({
       });
       await publicClient.waitForTransactionReceipt({ hash });
       setNote("Position created. Unused tokens were returned.");
+      toast({ kind: "good", title: "Position created", body: `Your ${coin.symbol}/ETH position is earning fees.` });
       setCreateEth("");
       setCreateToken("");
     }
@@ -483,6 +490,7 @@ export function PositionDesk({
     try {
       setBusy(true);
       setNote(pct === 100 ? "Removing all liquidity." : `Removing ${pct}%.`);
+      await ensureChain();
       const wallet = clientFor(account);
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200);
       const calls: `0x${string}`[] = [
@@ -550,6 +558,7 @@ export function PositionDesk({
     try {
       setBusy(true);
       setNote("Collecting fees.");
+      await ensureChain();
       const wallet = clientFor(account);
       const hash = await wallet.writeContract({
         account,
@@ -561,6 +570,7 @@ export function PositionDesk({
       });
       await publicClient.waitForTransactionReceipt({ hash });
       setNote("Fees collected.");
+      toast({ kind: "good", title: "Fees collected" });
       setReload((n) => n + 1);
       onChanged();
     } catch (err) {
@@ -680,33 +690,35 @@ export function PositionDesk({
   const heldInRange = selected ? currentTick >= selected.tickLower && currentTick < selected.tickUpper : false;
 
   return (
-    <section className="mx-auto max-w-[1180px] px-4 py-10 sm:px-6">
-      <nav className="flex flex-wrap items-center gap-2 text-sm">
-        <Link to="/pools" className="text-muted">Pools</Link>
-        <span className="text-[#7d6f5a]">/</span>
-        <span>{coin.symbol} / ETH</span>
+    <section className="page pt-4 pb-16">
+      <nav className="flex flex-wrap items-center gap-1.5 text-sm text-muted" aria-label="Breadcrumb">
+        <Link to="/pools" className="hover:text-fg">Pools</Link>
+        <IconChevronRight size={13} className="text-faint" />
+        <button type="button" onClick={() => onBack?.()} className="hover:text-fg">{coin.symbol} / ETH</button>
+        <IconChevronRight size={13} className="text-faint" />
+        <span className="text-fg">Position</span>
       </nav>
       <div className="mt-5 flex items-center gap-3.5">
-        <button type="button" onClick={() => onBack?.()} aria-label="Back" className="grid size-10 place-items-center rounded-full border border-line bg-chip">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden><path d="M13 8H3M7.5 3.5 3 8l4.5 4.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        <button type="button" onClick={() => onBack?.()} aria-label="Back" className="btn btn-icon btn-secondary">
+          <IconArrowLeft size={17} />
         </button>
-        <h1 className="text-[clamp(30px,4vw,42px)] leading-none font-semibold tracking-[-0.035em]">Set your position</h1>
+        <h1 className="text-[30px] leading-none font-semibold tracking-[-0.035em] sm:text-[38px]">Set your position</h1>
       </div>
 
-      <div className="mt-7 flex flex-wrap items-start gap-5">
-        <aside className="grid min-w-0 flex-[1_1_320px] gap-4">
-          <div className="rounded-[28px] border border-line bg-chip/85 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,.04)]">
+      <div className="mt-7 grid items-start gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
+        <aside className="grid min-w-0 grid-cols-1 gap-4">
+          <div className="card p-5">
             <div className="flex items-center gap-3.5">
               <PairMark symbol={coin.symbol} image={image} size={44} />
               <div>
                 <div className="text-xl font-semibold tracking-[-0.02em]">{coin.symbol} / ETH</div>
-                <div className="mt-1 inline-flex overflow-hidden rounded-md bg-fg/7 text-xs text-muted"><span className="px-2 py-0.5">v3</span><span className="border-l border-chip px-2 py-0.5">1%</span></div>
+                <span className="chip mt-1.5 h-6">v3 · 1%</span>
               </div>
             </div>
             <p className="mt-5 text-[13px] text-muted">Current price</p>
             <p className="mt-0.5 text-lg font-medium tabular-nums">1 ETH = {currentTokens > 0 ? formatTokenPrice(currentTokens) : "—"} {coin.symbol}</p>
-            <svg viewBox="0 0 300 70" className="mt-3.5 h-[70px] w-full bg-[radial-gradient(rgba(232,221,200,.09)_1px,transparent_1px)] bg-size-[14px_14px]">
-              {spark ? <path d={spark} fill="none" stroke="#e0b45a" strokeWidth="1.8" strokeLinejoin="round" /> : null}
+            <svg viewBox="0 0 300 70" preserveAspectRatio="none" className="mt-3.5 h-[70px] w-full rounded-lg bg-[radial-gradient(rgba(255,255,255,.07)_1px,transparent_1px)] bg-size-[14px_14px]">
+              {spark ? <path d={spark} fill="none" stroke="var(--color-gold)" strokeWidth="1.8" strokeLinejoin="round" vectorEffect="non-scaling-stroke" /> : null}
             </svg>
             <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-4 border-t border-line pt-4">
               <Stat label="TVL" value={stats?.tvl ?? "—"} />
@@ -717,7 +729,7 @@ export function PositionDesk({
           </div>
 
           {selected ? (
-            <div className="rounded-[28px] border border-line bg-chip/85 p-5">
+            <div className="card p-5">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-[17px] font-semibold">Your position</h2>
                 <span className={`flex items-center gap-1.5 text-[13px] ${heldInRange ? "text-ok" : "text-muted"}`}>
@@ -734,25 +746,25 @@ export function PositionDesk({
                   </div>
                   <div className="mt-2.5 grid grid-cols-4 gap-1.5">
                     {[25, 50, 75, 100].map((pct) => (
-                      <button key={pct} type="button" disabled={busy} onClick={() => void remove(pct)} className="rounded-xl border border-line bg-bg py-2 text-[13px] font-medium">
+                      <button key={pct} type="button" disabled={busy} onClick={() => void remove(pct)} className="btn btn-sm btn-secondary w-full">
                         {pct === 100 ? "All" : `${pct}%`}
                       </button>
                     ))}
                   </div>
-                  <button type="button" disabled={busy} onClick={() => void collect()} className="mt-2.5 w-full rounded-[14px] bg-fg/7 py-2.5 text-sm font-medium">
+                  <button type="button" disabled={busy} onClick={() => void collect()} className="btn btn-secondary mt-2.5 w-full">
                     Collect fees
                   </button>
                 </>
               ) : (
                 <p className="mt-3 text-sm text-muted">This position is empty. Increase it to use the same range again.</p>
               )}
-              <div className="mt-4 grid gap-2 border-t border-line pt-4">
+              <div className="mt-4 grid gap-3 border-t border-line pt-4">
                 <p className="text-sm text-muted">Increase this position. The range stays the same.</p>
                 <AmountField label={incAsEth ? "ETH" : "WETH"} value={increaseSide === "token" ? "" : incEth} onChange={(value) => fillIncrease("eth", value)} balance={account ? fmt(spendableEth(incAsEth), 4) : "—"} disabled={increaseSide === "token"} onMax={() => fillIncrease("eth", trimWei(spendableEth(incAsEth)))} />
                 <AmountField label={coin.symbol} value={increaseSide === "eth" ? "" : incToken} onChange={(value) => fillIncrease("token", value)} balance={account ? fmt(tokenBal, 2) : "—"} disabled={increaseSide === "eth"} onMax={() => fillIncrease("token", trimWei(tokenBal))} />
                 <div className="flex items-center justify-between gap-3">
                   <EthToggle on={incAsEth} onChange={setIncAsEth} label="Add as ETH" />
-                  <button type="button" disabled={busy} onClick={() => void submit("increase")} className="rounded-full bg-seal px-4 py-2 text-sm font-semibold text-onseal disabled:opacity-40">
+                  <button type="button" disabled={busy} onClick={() => void submit("increase")} className="btn btn-primary">
                     {busy ? "Confirming…" : "Increase"}
                   </button>
                 </div>
@@ -761,29 +773,29 @@ export function PositionDesk({
           ) : null}
         </aside>
 
-        <div className="min-w-0 flex-[999_1_560px] rounded-[28px] border border-line bg-chip/85 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,.04)]">
-          <h2 className="text-[22px] font-semibold tracking-[-0.02em]">Set price range</h2>
-          <div className="mt-4 grid grid-cols-2 rounded-full border border-line bg-bg p-1 text-[15px] font-semibold">
-            <button type="button" onClick={() => setRangeMode("full")} className={`rounded-full py-2.5 ${rangeMode === "full" ? "bg-seal text-onseal" : "text-muted"}`}>Full range</button>
-            <button type="button" onClick={() => (minText && maxText ? setRangeMode("custom") : applyPreset(preset ?? "wide"))} className={`rounded-full py-2.5 ${rangeMode === "custom" ? "bg-seal text-onseal" : "text-muted"}`}>Custom range</button>
+        <div className="card min-w-0 p-4 sm:p-6">
+          <h2 className="text-[20px] font-semibold tracking-[-0.02em]">Set price range</h2>
+          <div className="mt-4 grid grid-cols-2 gap-1 rounded-xl bg-bg p-1 text-[15px] font-semibold">
+            <button type="button" aria-pressed={rangeMode === "full"} onClick={() => setRangeMode("full")} className={`h-10 rounded-lg transition-colors ${rangeMode === "full" ? "bg-raise2 text-fg shadow-[inset_0_1px_0_rgba(255,255,255,.05)]" : "text-muted hover:text-fg"}`}>Full range</button>
+            <button type="button" aria-pressed={rangeMode === "custom"} onClick={() => (minText && maxText ? setRangeMode("custom") : applyPreset(preset ?? "wide"))} className={`h-10 rounded-lg transition-colors ${rangeMode === "custom" ? "bg-raise2 text-fg shadow-[inset_0_1px_0_rgba(255,255,255,.05)]" : "text-muted hover:text-fg"}`}>Custom range</button>
           </div>
           <p className="mt-3.5 text-sm text-muted">
             {full ? "Earns fees at every price. A 1% pool cannot hold a band tighter than about 2%." : "The band earns fees only while the price stays inside it."}
           </p>
 
-          <div className="mt-4 overflow-hidden rounded-[22px] border border-line bg-bg">
+          <div className="mt-4 overflow-hidden rounded-xl border border-line bg-bg">
             <div className="flex flex-wrap justify-between gap-3 px-5 pt-4">
               <div>
                 <div className="text-[13px] text-muted">Current price</div>
                 <div className="mt-0.5 text-xl font-medium tabular-nums">{currentTokens > 0 ? formatTokenPrice(currentTokens) : "—"} <span className="text-muted">{coin.symbol} per ETH</span></div>
               </div>
             </div>
-            <div ref={chartRef} className="relative mt-4 h-[280px] bg-[radial-gradient(rgba(232,221,200,.07)_1px,transparent_1px)] bg-size-[22px_22px] touch-none select-none">
+            <div ref={chartRef} className="relative mt-4 h-[280px] bg-[radial-gradient(rgba(255,255,255,.06)_1px,transparent_1px)] bg-size-[22px_22px] touch-none select-none">
               <div className="absolute right-0 left-0 border-y border-gold/60 bg-gold/12" style={{ top: `${bandTop}%`, height: `${Math.max(0.6, bandBot - bandTop)}%` }} />
               <svg viewBox="0 0 1000 280" preserveAspectRatio="none" className="absolute top-0 left-0 h-full w-[calc(100%-140px)]">
-                {line ? <path d={line} fill="none" stroke="#e0b45a" strokeWidth="2.2" strokeLinejoin="round" /> : null}
+                {line ? <path d={line} fill="none" stroke="var(--color-gold)" strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" /> : null}
               </svg>
-              <div className="absolute right-0 left-0 border-t-[1.5px] border-dashed border-seal/85" style={{ top: `${yOf(currentTokens)}%` }} />
+              <div className="absolute right-0 left-0 border-t-[1.5px] border-dashed border-fg/60" style={{ top: `${yOf(currentTokens)}%` }} />
               <div className="absolute top-0 right-[30px] bottom-0 flex w-[104px] flex-col items-end gap-0.5 py-1">
                 {depth.map((bar, i) => (
                   <span key={i} className={`min-h-0 flex-1 rounded-l-[3px] ${bar.inside ? "bg-gold/70" : "bg-fg/14"}`} style={{ width: bar.width }} />
@@ -800,17 +812,17 @@ export function PositionDesk({
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-line px-4 py-3.5">
               <div className="flex flex-wrap gap-2.5">
-                <div className="flex rounded-full border border-line bg-chip p-[3px]">
+                <div className="seg">
                   {(["1D", "1W", "1M", "1Y", "All"] as const).map((item) => (
-                    <button key={item} type="button" onClick={() => setTf(item)} className={`rounded-full px-3 py-1 text-xs font-semibold ${tf === item ? "bg-[#3a2d22] text-fg" : "text-muted"}`}>{item}</button>
+                    <button key={item} type="button" aria-pressed={tf === item} onClick={() => setTf(item)}>{item}</button>
                   ))}
                 </div>
-                <div className="flex overflow-hidden rounded-full border border-line bg-chip">
-                  <button type="button" aria-label="Zoom out" onClick={() => setZoom((value) => Math.min(3, value / 0.7))} className="px-2.5 py-1.5 text-muted">−</button>
-                  <button type="button" aria-label="Zoom in" onClick={() => setZoom((value) => Math.max(0.15, value * 0.7))} className="border-l border-line px-2.5 py-1.5 text-muted">+</button>
+                <div className="seg">
+                  <button type="button" aria-label="Zoom out" onClick={() => setZoom((value) => Math.min(3, value / 0.7))}>−</button>
+                  <button type="button" aria-label="Zoom in" onClick={() => setZoom((value) => Math.max(0.15, value * 0.7))}>+</button>
                 </div>
               </div>
-              <button type="button" onClick={() => { setZoom(1); applyPreset("wide"); }} className="rounded-full border border-line px-3.5 py-1.5 text-[13px] font-medium">Reset</button>
+              <button type="button" onClick={() => { setZoom(1); applyPreset("wide"); }} className="btn btn-sm btn-secondary">Reset</button>
             </div>
           </div>
 
@@ -819,7 +831,7 @@ export function PositionDesk({
               <p className="mt-5 text-sm text-muted">Price strategies</p>
               <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
                 {PRESETS.map((item) => (
-                  <button key={item.id} type="button" onClick={() => applyPreset(item.id)} className={`rounded-[18px] border px-4 py-4 text-left ${preset === item.id ? "border-gold bg-gold/8" : "border-line bg-bg"}`}>
+                  <button key={item.id} type="button" onClick={() => applyPreset(item.id)} className={`rounded-xl border px-4 py-4 text-left transition-colors ${preset === item.id ? "border-gold/70 bg-gold/8" : "border-line bg-bg hover:border-edge"}`}>
                     <span className="block text-[15px] font-semibold">{item.title}</span>
                     <span className="mt-1.5 block text-[17px] font-medium text-gold tabular-nums">{presetLabel(item.id, coin.sqrtPriceX96, coin.tokenIs0)}</span>
                     <span className="mt-1 block text-[13px] text-muted">{item.blurb}</span>
@@ -835,16 +847,14 @@ export function PositionDesk({
           </div>
 
           <div className="mt-8 border-t border-line pt-6">
-            <h2 className="text-[22px] font-semibold tracking-[-0.02em]">Deposit tokens</h2>
+            <h2 className="text-[20px] font-semibold tracking-[-0.02em]">Deposit tokens</h2>
             <p className="mt-1.5 text-sm text-muted">{sideCopy(createSide, coin.symbol)}</p>
-            <div className={`mt-4 overflow-hidden rounded-[22px] border border-line bg-bg ${createSide === "token" ? "opacity-45" : ""}`}>
+            <div className={`mt-4 overflow-hidden rounded-xl border border-line bg-bg ${createSide === "token" ? "opacity-45" : ""}`}>
               <label className="block px-5 py-[18px]">
                 <div className="flex items-center gap-3">
-                  <input inputMode="decimal" value={createSide === "token" ? "" : createEth} disabled={createSide === "token"} placeholder="0" onChange={(event) => fillCreate("eth", event.target.value)} className="min-w-0 flex-1 bg-transparent text-4xl font-medium tracking-[-0.02em] tabular-nums outline-none disabled:opacity-40" />
-                  <span className="flex items-center gap-2 rounded-full border border-line bg-chip py-1.5 pr-3 pl-1.5 text-base font-semibold">
-                    <span className="grid size-7 place-items-center rounded-full bg-[#2a231d]">
-                      <svg width="10" height="16" viewBox="0 0 14 22" aria-hidden><path d="M7 0 0 11.2 7 15.3l7-4.1z" fill="#e8ddc8" opacity=".9" /><path d="M7 16.6 0 12.5 7 22l7-9.5z" fill="#e8ddc8" opacity=".6" /></svg>
-                    </span>
+                  <input inputMode="decimal" autoComplete="off" value={createSide === "token" ? "" : createEth} disabled={createSide === "token"} placeholder="0" onChange={(event) => fillCreate("eth", event.target.value.replace(",", "."))} className="num min-w-0 flex-1 bg-transparent text-[34px] font-medium tracking-[-0.03em] outline-none placeholder:text-faint disabled:opacity-40" />
+                  <span className="flex shrink-0 items-center gap-2 rounded-full bg-raise2 py-1.5 pr-3 pl-1.5 text-base font-semibold">
+                    <EthLogo size={28} />
                     {createAsEth ? "ETH" : "WETH"}
                   </span>
                 </div>
@@ -852,19 +862,19 @@ export function PositionDesk({
                   <span>{usd(readAmount(createEth) ?? 0n, true)}</span>
                   <span className="flex items-center gap-2">
                     {account ? `${fmt(spendableEth(createAsEth), 4)} ${createAsEth ? "ETH" : "WETH"}` : "Connect to see balance"}
-                    {account && createSide !== "token" ? <button type="button" onClick={() => fillCreate("eth", trimWei(spendableEth(createAsEth)))} className="rounded-md bg-gold/14 px-2 py-0.5 text-xs font-semibold text-gold">Max</button> : null}
+                    {account && createSide !== "token" ? <button type="button" onClick={() => fillCreate("eth", trimWei(spendableEth(createAsEth)))} className="rounded-md bg-gold/14 px-2 py-0.5 text-xs font-semibold text-gold hover:bg-gold/20">Max</button> : null}
                   </span>
                 </div>
               </label>
-              <div className="flex items-center justify-between gap-3 border-t border-line bg-fg/2 px-5 py-3.5">
+              <div className="flex items-center justify-between gap-3 border-t border-line px-5 py-3">
                 <span className="text-sm text-muted">Add as ETH</span>
                 <EthToggle on={createAsEth} onChange={setCreateAsEth} label="" />
               </div>
             </div>
-            <label className={`mt-2.5 block rounded-[22px] border border-line bg-bg px-5 py-[18px] ${createSide === "eth" ? "opacity-45" : ""}`}>
+            <label className={`mt-2.5 block rounded-xl border border-line bg-bg px-5 py-[18px] ${createSide === "eth" ? "opacity-45" : ""}`}>
               <div className="flex items-center gap-3">
-                <input inputMode="decimal" value={createSide === "eth" ? "" : createToken} disabled={createSide === "eth"} placeholder="0" onChange={(event) => fillCreate("token", event.target.value)} className="min-w-0 flex-1 bg-transparent text-4xl font-medium tracking-[-0.02em] tabular-nums outline-none disabled:opacity-40" />
-                <span className="flex items-center gap-2 rounded-full border border-line bg-chip py-1.5 pr-3 pl-1.5 text-base font-semibold">
+                <input inputMode="decimal" autoComplete="off" value={createSide === "eth" ? "" : createToken} disabled={createSide === "eth"} placeholder="0" onChange={(event) => fillCreate("token", event.target.value.replace(",", "."))} className="num min-w-0 flex-1 bg-transparent text-[34px] font-medium tracking-[-0.03em] outline-none placeholder:text-faint disabled:opacity-40" />
+                <span className="flex shrink-0 items-center gap-2 rounded-full bg-raise2 py-1.5 pr-3 pl-1.5 text-base font-semibold">
                   <TokenLogo symbol={coin.symbol} image={image} size={28} />
                   {coin.symbol}
                 </span>
@@ -873,11 +883,11 @@ export function PositionDesk({
                 <span>{usd(readAmount(createToken) ?? 0n, false)}</span>
                 <span className="flex items-center gap-2">
                   {account ? `${fmt(tokenBal, 2)} ${coin.symbol}` : "Connect to see balance"}
-                  {account && createSide !== "eth" ? <button type="button" onClick={() => fillCreate("token", trimWei(tokenBal))} className="rounded-md bg-gold/14 px-2 py-0.5 text-xs font-semibold text-gold">Max</button> : null}
+                  {account && createSide !== "eth" ? <button type="button" onClick={() => fillCreate("token", trimWei(tokenBal))} className="rounded-md bg-gold/14 px-2 py-0.5 text-xs font-semibold text-gold hover:bg-gold/20">Max</button> : null}
                 </span>
               </div>
             </label>
-            <button type="button" disabled={busy} onClick={() => void submit("new")} className="mt-4 w-full rounded-[20px] bg-seal py-[18px] text-[17px] font-semibold text-onseal shadow-[inset_0_1px_0_rgba(255,255,255,.22),0_12px_30px_rgba(210,74,46,.25)] disabled:opacity-40">
+            <button type="button" disabled={busy} onClick={() => void submit("new")} className="btn btn-xl btn-primary mt-4 w-full">
               {busy ? "Confirming…" : account ? "Create position" : "Connect wallet"}
             </button>
             {note ? <p className="mt-3 text-center text-sm text-muted">{note}</p> : null}
@@ -917,15 +927,15 @@ function PriceStep({
   onDec: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-[20px] border border-line bg-bg px-5 py-[18px]">
+    <div className="flex items-center gap-3 rounded-xl border border-line bg-bg px-5 py-4 transition-colors focus-within:border-edge">
       <div className="min-w-0 flex-1">
         <div className="text-[13px] text-muted">{label}</div>
-        <input value={value} disabled={locked} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} inputMode="decimal" className="mt-1 w-full bg-transparent text-[26px] font-semibold tracking-[-0.02em] tabular-nums outline-none disabled:opacity-80" />
+        <input value={value} disabled={locked} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} inputMode="decimal" className="num mt-1 w-full bg-transparent text-[24px] font-semibold tracking-[-0.02em] outline-none disabled:opacity-80" />
         <div className="mt-0.5 text-[13px] text-muted tabular-nums">{sub}</div>
       </div>
       <div className={`grid gap-1.5 ${locked ? "opacity-35" : ""}`}>
-        <button type="button" aria-label={`Increase ${label}`} disabled={locked} onClick={onInc} className="grid size-8 place-items-center rounded-full bg-fg/8">+</button>
-        <button type="button" aria-label={`Decrease ${label}`} disabled={locked} onClick={onDec} className="grid size-8 place-items-center rounded-full bg-fg/8">−</button>
+        <button type="button" aria-label={`Increase ${label}`} disabled={locked} onClick={onInc} className="grid size-8 place-items-center rounded-lg bg-raise2 hover:bg-edge">+</button>
+        <button type="button" aria-label={`Decrease ${label}`} disabled={locked} onClick={onDec} className="grid size-8 place-items-center rounded-lg bg-raise2 hover:bg-edge">−</button>
       </div>
     </div>
   );
@@ -935,8 +945,8 @@ function EthToggle({ on, onChange, label }: { on: boolean; onChange: (next: bool
   return (
     <button type="button" aria-pressed={on} onClick={() => onChange(!on)} className="flex items-center gap-2 text-sm text-muted">
       {label}
-      <span className={`relative h-6 w-11 rounded-full ${on ? "bg-seal" : "bg-line"}`}>
-        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-fg ${on ? "left-5" : "left-0.5"}`} />
+      <span className={`relative h-6 w-11 rounded-full transition-colors ${on ? "bg-ok" : "bg-edge"}`}>
+        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-[left] ${on ? "left-[22px]" : "left-0.5"}`} />
       </span>
     </button>
   );
