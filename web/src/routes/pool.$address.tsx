@@ -1,14 +1,19 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { type Address } from "viem";
-import { erc20Abi } from "@/lib/chimi/chain";
+import { erc20Abi, giwaSepolia } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
-import { feeLabel, fmt, loadCoin, loadSwaps, shortAddr, wethPerToken, type Coin, type PoolSwap } from "@/lib/chimi/market";
+import { ago, compactCount, ethText } from "@/lib/chimi/format";
+import { fetchSwaps, useEthUsd } from "@/lib/chimi/live";
+import { feeLabel, fmt, loadCoin, shortAddr, wethPerToken, type Coin, type PoolSwap } from "@/lib/chimi/market";
 import { useTokenProfile } from "@/lib/chimi/token-image";
 import { tickFromSqrtPriceX96, tokensPerEthFromTick } from "@/lib/chimi/range";
+import { AreaChart, BarChart, type ChartPoint } from "@/components/chimi/charts";
+import { IconChevronRight, IconExternal, IconPlus, IconSwap } from "@/components/chimi/icons";
 import { PairMark } from "@/components/chimi/pair-mark";
 import { PositionDesk } from "@/components/chimi/position-form";
 import { useChimi } from "@/components/chimi/provider";
+import { Blockie, CopyButton, Empty, Seg } from "@/components/chimi/ui";
 
 export const Route = createFileRoute("/pool/$address")({ component: PoolPage });
 
@@ -21,11 +26,12 @@ function money(n: number) {
 
 function PoolPage() {
   const { address } = Route.useParams();
-  const { coins, deployment, account, connect } = useChimi();
+  const { coins, deployment, account, connect, loading } = useChimi();
   const listed = coins.find((coin) => !coin.preview && coin.token.toLowerCase() === address.toLowerCase());
   const [coin, setCoin] = useState<Coin | null>(listed ?? null);
-  const [swaps, setSwaps] = useState<PoolSwap[]>([]);
-  const [ethUsd, setEthUsd] = useState<number>();
+  const [missing, setMissing] = useState(false);
+  const [swaps, setSwaps] = useState<PoolSwap[]>();
+  const ethUsd = useEthUsd();
   const [wethBal, setWethBal] = useState<bigint>(0n);
   const [tokenBal, setTokenBal] = useState<bigint>(0n);
   const [reload, setReload] = useState(0);
@@ -33,23 +39,30 @@ function PoolPage() {
   const [metric, setMetric] = useState<"volume" | "price">("volume");
   const [tf, setTf] = useState<"1D" | "1W" | "All">("1D");
   const [hover, setHover] = useState(-1);
-  const [copied, setCopied] = useState(false);
+  const [hoverPrice, setHoverPrice] = useState<ChartPoint | null>(null);
   const image = useTokenProfile(coin?.token)?.image;
 
   useEffect(() => {
     if (listed) {
       setCoin(listed);
+      setMissing(false);
       return;
     }
-    if (!deployment) return;
+    if (!deployment || loading) return;
     let cancel = false;
-    void loadCoin(deployment, address as Address).then((found) => {
-      if (!cancel) setCoin(found);
-    });
+    void loadCoin(deployment, address as Address)
+      .then((found) => {
+        if (cancel) return;
+        setCoin(found);
+        setMissing(!found);
+      })
+      .catch(() => {
+        if (!cancel) setMissing(true);
+      });
     return () => {
       cancel = true;
     };
-  }, [address, deployment, listed]);
+  }, [address, deployment, listed, loading]);
 
   useEffect(() => {
     if (!coin || !deployment) return;
@@ -57,65 +70,100 @@ function PoolPage() {
     void Promise.all([
       publicClient.readContract({ address: deployment.weth, abi: erc20Abi, functionName: "balanceOf", args: [coin.pool] }),
       publicClient.readContract({ address: coin.token, abi: erc20Abi, functionName: "balanceOf", args: [coin.pool] }),
-      loadSwaps(coin.pool, coin.tokenIs0),
-      fetch("https://api.coinbase.com/v2/prices/ETH-USD/spot").then((r) => r.json()),
-    ]).then(([weth, token, rows, price]) => {
-      if (cancel) return;
-      setWethBal(weth);
-      setTokenBal(token);
-      setSwaps(rows);
-      const n = Number((price as { data?: { amount?: string } }).data?.amount);
-      if (Number.isFinite(n) && n > 0) setEthUsd(n);
-    }).catch(() => undefined);
+      fetchSwaps(coin, reload > 0),
+    ])
+      .then(([weth, token, rows]) => {
+        if (cancel) return;
+        setWethBal(weth);
+        setTokenBal(token);
+        setSwaps(rows);
+      })
+      .catch(() => {
+        if (!cancel) setSwaps((prev) => prev ?? []);
+      });
     return () => {
       cancel = true;
     };
   }, [coin, deployment, reload]);
 
+  // "#new" opens the position screen, whether the page loads with it or a link adds it later.
   useEffect(() => {
-    if (window.location.hash === "#new") setCreating(true);
+    const check = () => {
+      if (window.location.hash === "#new") setCreating(true);
+    };
+    check();
+    window.addEventListener("hashchange", check);
+    return () => window.removeEventListener("hashchange", check);
   }, [coin]);
 
   if (!coin || !deployment) {
     return (
-      <main className="mx-auto max-w-[1180px] px-5 py-16">
-        <Link to="/pools" className="text-sm text-seal">Pools</Link>
-        <h1 className="mt-6 text-4xl font-semibold">Pool not found.</h1>
+      <main className="page pt-4 pb-16">
+        {missing ? (
+          <div className="card mt-4">
+            <Empty
+              mark="없음"
+              title="Pool not found"
+              action={
+                <Link to="/pools" className="btn btn-secondary">
+                  All pools
+                </Link>
+              }
+            >
+              <span className="num">{shortAddr(address)}</span> isn’t a coin on Chimi’s factory, so it has no pool here.
+            </Empty>
+          </div>
+        ) : (
+          <div className="space-y-5" aria-busy>
+            <span className="skeleton h-24 w-full rounded-2xl" />
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+              <span className="skeleton h-[420px] rounded-2xl" />
+              <span className="skeleton h-[420px] rounded-2xl" />
+            </div>
+          </div>
+        )}
       </main>
     );
   }
 
+  const rows = swaps ?? [];
   const price = wethPerToken(coin.sqrtPriceX96, coin.tokenIs0);
   const priceEth = Number(price) / 1e18;
   const tvlUsd = ethUsd ? (Number(wethBal) / 1e18) * ethUsd + (Number(tokenBal) / 1e18) * priceEth * ethUsd : 0;
   const now = Math.floor(Date.now() / 1000);
   const windowSec = tf === "1D" ? 86_400 : tf === "1W" ? 86_400 * 7 : Infinity;
-  const shown = swaps.filter((swap) => now - swap.time <= windowSec);
+  const shown = rows.filter((swap) => now - swap.time <= windowSec);
   const volUsd = ethUsd ? shown.reduce((sum, swap) => sum + (Number(swap.ethAmount) / 1e18) * ethUsd, 0) : 0;
-  const dayVol = ethUsd ? swaps.filter((swap) => now - swap.time <= 86_400).reduce((sum, swap) => sum + (Number(swap.ethAmount) / 1e18) * ethUsd, 0) : 0;
-  const apr = tvlUsd > 0 ? ((dayVol * 0.01) / tvlUsd) * 365 * 100 : 0;
-  const fees = dayVol * 0.01;
+  const dayVol = ethUsd ? rows.filter((swap) => now - swap.time <= 86_400).reduce((sum, swap) => sum + (Number(swap.ethAmount) / 1e18) * ethUsd, 0) : 0;
+  const feeRate = (coin.fee ?? 10_000) / 1_000_000;
+  const apr = tvlUsd > 0 ? ((dayVol * feeRate) / tvlUsd) * 365 * 100 : 0;
+  const fees = dayVol * feeRate;
   const buckets = tf === "All" ? 12 : tf === "1W" ? 7 : 24;
-  const span = windowSec === Infinity ? Math.max(now - (swaps[0]?.time ?? now), 3600) : windowSec;
+  const span = windowSec === Infinity ? Math.max(now - (rows[0]?.time ?? now), 3600) : windowSec;
   const bars = Array.from({ length: buckets }, (_, i) => {
     const start = now - span + (i * span) / buckets;
     const end = start + span / buckets;
     return shown.filter((swap) => swap.time >= start && swap.time < end).reduce((sum, swap) => sum + (Number(swap.ethAmount) / 1e18) * (ethUsd ?? 0), 0);
   });
-  const maxBar = Math.max(...bars, 1);
-  const prices = shown.filter((swap) => swap.sqrtPriceX96 > 0n).map((swap) => tokensPerEthFromTick(tickFromSqrtPriceX96(swap.sqrtPriceX96), coin.tokenIs0));
-  const lo = Math.min(...prices, 1);
-  const hi = Math.max(...prices, 1);
-  const priceLine = prices.length > 1
-    ? prices.map((value, i) => `${i ? "L" : "M"}${((i / (prices.length - 1)) * 1000).toFixed(1)} ${(220 - ((value - lo) / (hi - lo || 1)) * 190).toFixed(1)}`).join(" ")
-    : "";
-  const ethShare = tvlUsd > 0 ? Math.max(6, ((Number(wethBal) / 1e18) * (ethUsd ?? 0) / tvlUsd) * 100) : 50;
+  const barLabels = Array.from({ length: buckets }, (_, i) => {
+    const start = new Date((now - span + (i * span) / buckets) * 1000);
+    return span > 86_400 * 2 ? start.toLocaleDateString("en-US", { month: "short", day: "numeric" }) : start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  });
+  const currentTokens = coin.sqrtPriceX96 > 0n ? tokensPerEthFromTick(tickFromSqrtPriceX96(coin.sqrtPriceX96), coin.tokenIs0) : 0;
+  const pricePoints: ChartPoint[] = [
+    ...shown.filter((swap) => swap.sqrtPriceX96 > 0n).map((swap) => ({ t: swap.time, v: tokensPerEthFromTick(tickFromSqrtPriceX96(swap.sqrtPriceX96), coin.tokenIs0) })),
+    { t: now, v: currentTokens },
+  ];
+  const priceFrom = windowSec === Infinity ? (pricePoints[0]?.t ?? now - 3600) : now - windowSec;
+  const perEth = (v: number) => `${compactCount(v)} ${coin.symbol}`;
+  const ethShare = tvlUsd > 0 ? Math.max(6, (((Number(wethBal) / 1e18) * (ethUsd ?? 0)) / tvlUsd) * 100) : 50;
   const stats = {
     tvl: money(tvlUsd),
     vol: money(dayVol),
     fees: money(fees),
     apr: `${apr.toFixed(2)}%`,
   };
+  const explorer = giwaSepolia.blockExplorers.default.url;
 
   if (creating) {
     return (
@@ -124,7 +172,7 @@ function PoolPage() {
         deployment={deployment}
         account={account}
         connect={connect}
-        swaps={swaps}
+        swaps={rows}
         ethUsd={ethUsd}
         stats={stats}
         onBack={() => {
@@ -137,111 +185,174 @@ function PoolPage() {
   }
 
   return (
-    <main className="mx-auto max-w-[1180px] px-4 py-10 sm:px-6">
-      <nav className="flex items-center gap-2 text-sm">
-        <Link to="/pools" className="text-muted">Pools</Link>
-        <span className="text-[#7d6f5a]">/</span>
-        <span>{coin.symbol} / ETH</span>
+    <main className="page pt-4 pb-16">
+      <nav className="flex items-center gap-1.5 text-sm text-muted" aria-label="Breadcrumb">
+        <Link to="/pools" className="hover:text-fg">
+          Pools
+        </Link>
+        <IconChevronRight size={13} className="text-faint" />
+        <span className="text-fg">{coin.symbol} / ETH</span>
       </nav>
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-5 border-b border-line pb-7">
+
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-5">
         <div className="flex min-w-0 items-center gap-4">
-          <PairMark symbol={coin.symbol} image={image} size={60} />
-          <div>
-            <h1 className="text-[clamp(30px,4vw,42px)] leading-none font-semibold tracking-[-0.035em]">{coin.symbol} / ETH</h1>
-            <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[13px]">
-              <span className="flex items-center gap-1.5 rounded-lg bg-ok/10 px-2.5 py-1 text-ok"><span className="size-1.5 rounded-full bg-ok" />GIWA Sepolia</span>
-              <span className="overflow-hidden rounded-lg bg-fg/7 text-muted"><span className="px-2 py-1">v3</span><span className="border-l border-bg px-2 py-1">{feeLabel(coin.fee)}</span></span>
-              <button type="button" onClick={() => { void navigator.clipboard.writeText(coin.pool); setCopied(true); setTimeout(() => setCopied(false), 1400); }} className="rounded-lg bg-fg/7 px-2.5 py-1 text-muted tabular-nums">
-                {shortAddr(coin.pool)} {copied ? "Copied" : ""}
-              </button>
+          <PairMark symbol={coin.symbol} image={image} size={56} />
+          <div className="min-w-0">
+            <h1 className="text-[30px] leading-none font-semibold tracking-[-0.035em] sm:text-[38px]">{coin.symbol} / ETH</h1>
+            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+              <span className="chip border-ok/25 bg-ok/10 text-ok">
+                <span className="size-1.5 rounded-full bg-ok" />
+                GIWA Sepolia
+              </span>
+              <span className="chip">v3 · {feeLabel(coin.fee)}</span>
+              <span className="chip gap-1 pr-0.5">
+                <span className="num">{shortAddr(coin.pool)}</span>
+                <CopyButton text={coin.pool} label="Copy pool address" className="btn btn-icon btn-ghost size-6 rounded-md" size={12} />
+              </span>
+              <a href={`${explorer}/address/${coin.pool}`} target="_blank" rel="noreferrer" aria-label="Pool on the explorer" className="chip hover:text-fg">
+                <IconExternal size={12} />
+              </a>
             </div>
           </div>
         </div>
         <div className="flex gap-2.5">
-          <Link to="/swap" className="rounded-full border border-line bg-chip/60 px-5 py-3 text-[15px] font-medium">Swap</Link>
-          <button type="button" onClick={() => setCreating(true)} className="rounded-full bg-seal px-5 py-3 text-[15px] font-semibold text-onseal">+ New position</button>
+          <Link to="/coin/$address" params={{ address: coin.token }} className="btn btn-lg btn-secondary">
+            <IconSwap size={17} />
+            Trade
+          </Link>
+          <button type="button" onClick={() => setCreating(true)} className="btn btn-lg btn-primary">
+            <IconPlus size={18} />
+            New position
+          </button>
         </div>
       </div>
 
-      <div className="mt-7 flex flex-wrap items-start gap-5">
-        <section className="min-w-0 flex-[999_1_560px] rounded-[28px] border border-line bg-chip/85 p-6">
+      <div className="mt-7 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <section className="card min-w-0 p-4 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex gap-1">
-              {(["volume", "price"] as const).map((item) => (
-                <button key={item} type="button" onClick={() => { setMetric(item); setHover(-1); }} className={`rounded-full px-3.5 py-1.5 text-[15px] font-medium capitalize ${metric === item ? "bg-fg/9" : "text-muted"}`}>{item}</button>
-              ))}
-            </div>
-            <div className="flex rounded-full border border-line bg-bg p-[3px]">
-              {(["1D", "1W", "All"] as const).map((item) => (
-                <button key={item} type="button" onClick={() => { setTf(item); setHover(-1); }} className={`rounded-full px-3 py-1 text-xs font-semibold ${tf === item ? "bg-[#3a2d22] text-fg" : "text-muted"}`}>{item}</button>
-              ))}
-            </div>
+            <Seg
+              label="Chart"
+              value={metric}
+              onChange={(v) => {
+                setMetric(v);
+                setHover(-1);
+              }}
+              options={[
+                ["volume", "Volume"],
+                ["price", "Price"],
+              ]}
+            />
+            <Seg
+              label="Range"
+              value={tf}
+              onChange={(v) => {
+                setTf(v);
+                setHover(-1);
+              }}
+              options={[
+                ["1D", "1D"],
+                ["1W", "1W"],
+                ["All", "All"],
+              ]}
+            />
           </div>
-          <div className="mt-5 text-[40px] leading-none font-semibold tracking-[-0.035em] tabular-nums">
-            {metric === "volume" ? money(hover >= 0 ? bars[hover] : volUsd) : `${fmt(price, 8)} ETH`}
+          <div className="num mt-5 text-[34px] leading-none font-semibold tracking-[-0.035em] sm:text-[40px]">
+            {metric === "volume" ? money(hover >= 0 ? (bars[hover] ?? 0) : volUsd) : hoverPrice ? perEth(hoverPrice.v) : `${fmt(price, 8)} ETH`}
           </div>
-          <p className="mt-1.5 text-sm text-muted">{metric === "volume" ? (tf === "1D" ? "Past day" : tf === "1W" ? "Past week" : "Trades we can read") : "Tokens per ETH, from recent trades"}</p>
-          <div className="relative mt-6 h-60 bg-[radial-gradient(rgba(232,221,200,.09)_1px,transparent_1px)] bg-size-[22px_22px]" onMouseLeave={() => setHover(-1)}>
-            {metric === "volume" ? (
-              <div className="absolute inset-0 flex items-end gap-1">
-                {bars.map((value, i) => (
-                  <button key={i} type="button" onMouseEnter={() => setHover(i)} className="flex h-full flex-1 items-end">
-                    <span className="w-full rounded-t-[5px]" style={{ height: `${Math.max(2, (value / maxBar) * 100)}%`, background: hover === -1 || hover === i ? "#e0b45a" : "rgba(224,180,90,.35)" }} />
-                  </button>
-                ))}
-              </div>
-            ) : priceLine ? (
-              <svg viewBox="0 0 1000 240" preserveAspectRatio="none" className="absolute inset-0 h-full w-full">
-                <path d={`${priceLine} L1000 240 L0 240 Z`} fill="rgba(224,180,90,.18)" />
-                <path d={priceLine} fill="none" stroke="#e0b45a" strokeWidth="2.5" strokeLinejoin="round" />
-              </svg>
+          <p className="mt-2 text-sm text-muted">
+            {metric === "volume"
+              ? hover >= 0
+                ? `From ${barLabels[hover]}`
+                : tf === "1D"
+                  ? "Past day"
+                  : tf === "1W"
+                    ? "Past week, as far back as we can read"
+                    : "Every trade we can read"
+              : hoverPrice
+                ? "per ETH, at that trade"
+                : `per ${coin.symbol} · the chart shows ${coin.symbol} per ETH`}
+          </p>
+          <div className="mt-6">
+            {!swaps ? (
+              <span className="skeleton h-[264px] w-full rounded-xl" />
+            ) : metric === "volume" ? (
+              <BarChart values={bars} labels={barLabels} format={money} height={240} onHover={(i) => setHover(i ?? -1)} />
             ) : (
-              <p className="absolute inset-0 grid place-items-center text-sm text-muted">No trades in this window.</p>
+              <AreaChart points={pricePoints} from={priceFrom} to={now} format={perEth} height={240} onHover={setHoverPrice} empty="No trades in this window." />
             )}
           </div>
         </section>
-        <section className="min-w-0 flex-[1_1_300px] rounded-[28px] border border-line bg-chip/85 p-6">
-          <h2 className="text-xl font-semibold tracking-[-0.02em]">Stats</h2>
-          <p className="mt-5 text-sm text-muted">Pool balances</p>
-          <div className="mt-2 flex justify-between gap-3 text-sm font-medium tabular-nums">
-            <span>{fmt(wethBal, 4)} ETH</span><span>{fmt(tokenBal, 2)} {coin.symbol}</span>
+
+        <section className="card min-w-0 p-5 sm:p-6">
+          <h2 className="text-[17px] font-semibold tracking-[-0.01em]">Stats</h2>
+          <p className="mt-5 text-[13px] text-muted">Pool balances</p>
+          <div className="num mt-2 flex justify-between gap-3 text-sm font-medium">
+            <span>{fmt(wethBal, 4)} ETH</span>
+            <span>
+              {compactCount(Number(tokenBal) / 1e18)} {coin.symbol}
+            </span>
           </div>
           <div className="mt-2.5 flex h-2 gap-0.5">
-            <span className="rounded-full bg-fg" style={{ width: `${ethShare}%` }} />
-            <span className="flex-1 rounded-full bg-seal" />
+            <span className="rounded-full bg-indigo" style={{ width: `${ethShare}%` }} />
+            <span className="flex-1 rounded-full bg-gold" />
           </div>
-          <div className="mt-6 grid gap-5">
-            <div><div className="text-sm text-muted">Fee APR</div><div className="text-[34px] leading-none font-semibold text-ok tabular-nums">{apr.toFixed(2)}%</div></div>
-            <div><div className="text-sm text-muted">TVL</div><div className="text-[28px] leading-none font-semibold tabular-nums">{money(tvlUsd)}</div></div>
-            <div><div className="text-sm text-muted">24h volume</div><div className="text-[28px] leading-none font-semibold tabular-nums">{money(dayVol)}</div></div>
-            <div><div className="text-sm text-muted">24h fees</div><div className="text-[28px] leading-none font-semibold tabular-nums">{money(fees)}</div></div>
-          </div>
+          <dl className="mt-6 grid gap-5">
+            <Big label="Fee APR" value={`${apr.toFixed(2)}%`} tone="text-ok" />
+            <Big label="TVL" value={money(tvlUsd)} />
+            <Big label="24h volume" value={money(dayVol)} />
+            <Big label="24h fees" value={money(fees)} />
+          </dl>
         </section>
       </div>
 
-      <section className="mt-5 overflow-hidden rounded-[28px] border border-line bg-chip/85">
-        <h2 className="px-6 pt-6 pb-3.5 text-xl font-semibold tracking-[-0.02em]">Recent swaps</h2>
-        <div className="grid grid-cols-[4.5rem_3.5rem_minmax(0,1fr)_minmax(0,1fr)_6.5rem] gap-2.5 border-y border-line px-6 py-2.5 text-xs text-muted">
-          <span>Time</span><span>Type</span><span className="text-right">ETH</span><span className="text-right">{coin.symbol}</span><span className="text-right">Wallet</span>
-        </div>
-        {swaps.slice(-8).reverse().map((swap) => (
-          <div key={`${swap.tx}-${swap.block}`} className="grid grid-cols-[4.5rem_3.5rem_minmax(0,1fr)_minmax(0,1fr)_6.5rem] gap-2.5 border-b border-line/55 px-6 py-3 text-sm tabular-nums">
-            <span className="text-muted">{ago(now - swap.time)}</span>
-            <span className={`font-medium ${swap.buy ? "text-ok" : "text-seal"}`}>{swap.buy ? "Buy" : "Sell"}</span>
-            <span className="text-right">{fmt(swap.ethAmount, 4)}</span>
-            <span className="truncate text-right">{(Number(swap.tokenAmount) / 1e18).toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
-            <span className="text-right text-muted">{shortAddr(swap.recipient)}</span>
+      <section className="card mt-5 overflow-hidden">
+        <h2 className="px-5 pt-5 pb-3.5 text-[17px] font-semibold tracking-[-0.01em] sm:px-6">Recent swaps</h2>
+        {!swaps ? (
+          <div className="space-y-3 px-6 pb-6">
+            {Array.from({ length: 4 }, (_, i) => (
+              <span key={i} className="skeleton h-5 w-full" />
+            ))}
           </div>
-        ))}
-        {swaps.length === 0 ? <p className="px-6 py-8 text-sm text-muted">No swaps in the window we can read.</p> : null}
+        ) : rows.length === 0 ? (
+          <Empty mark="첫 거래" title="No swaps in the last day" />
+        ) : (
+          <>
+            <div className={`${SWAP_GRID} th border-y border-line py-2.5`}>
+              <span>Time</span>
+              <span>Type</span>
+              <span className="text-right">ETH</span>
+              <span className="text-right">{coin.symbol}</span>
+              <span className="hidden text-right sm:block">Wallet</span>
+            </div>
+            {rows
+              .slice(-10)
+              .reverse()
+              .map((swap) => (
+                <a key={`${swap.tx}:${swap.index ?? 0}`} href={`${explorer}/tx/${swap.tx}`} target="_blank" rel="noreferrer" className={`${SWAP_GRID} row-hover num border-b border-line/70 py-3 text-sm last:border-0`}>
+                  <span className="text-muted">{ago(now - swap.time)}</span>
+                  <span className={`font-semibold ${swap.buy ? "text-ok" : "text-down"}`}>{swap.buy ? "Buy" : "Sell"}</span>
+                  <span className="text-right">{ethText(Number(swap.ethAmount) / 1e18)}</span>
+                  <span className="truncate text-right">{compactCount(Number(swap.tokenAmount) / 1e18)}</span>
+                  <span className="hidden items-center justify-end gap-2 text-muted sm:flex">
+                    <Blockie address={swap.recipient} size={16} />
+                    {shortAddr(swap.recipient)}
+                  </span>
+                </a>
+              ))}
+          </>
+        )}
       </section>
     </main>
   );
 }
 
-function ago(seconds: number) {
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h`;
-  return `${Math.floor(seconds / 86_400)}d`;
+const SWAP_GRID = "grid items-center gap-3 px-5 sm:px-6 grid-cols-[2.75rem_2.75rem_minmax(0,1fr)_minmax(0,1fr)] sm:grid-cols-[4rem_3.5rem_minmax(0,1fr)_minmax(0,1fr)_9rem]";
+
+function Big({ label, value, tone = "" }: { label: string; value: ReactNode; tone?: string }) {
+  return (
+    <div>
+      <dt className="text-[13px] text-muted">{label}</dt>
+      <dd className={`num mt-1 text-[26px] leading-none font-semibold tracking-[-0.03em] ${tone}`}>{value}</dd>
+    </div>
+  );
 }

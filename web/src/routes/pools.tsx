@@ -1,17 +1,24 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createWalletClient, custom, encodeFunctionData, type Address, type EIP1193Provider } from "viem";
 import { erc20Abi, giwaSepolia, positionManagerAbi } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { feeLabel, loadSwapWindow, wethPerToken, type Coin } from "@/lib/chimi/market";
 import { compactUsd, pct } from "@/lib/chimi/format";
+import { useEthUsd } from "@/lib/chimi/live";
 import { useTokenImages } from "@/lib/chimi/token-image";
 import { POOL_FEE } from "@/lib/chimi/chain";
 import { tickFromSqrtPriceX96 } from "@/lib/chimi/range";
+import { IconArrowDown, IconChevronLeft, IconChevronRight, IconPlus, IconSearch } from "@/components/chimi/icons";
 import { PairMark } from "@/components/chimi/pair-mark";
 import { useChimi } from "@/components/chimi/provider";
+import { toast } from "@/components/chimi/toast";
+import { Empty, PageHead } from "@/components/chimi/ui";
 
-export const Route = createFileRoute("/pools")({ component: PoolsPage });
+export const Route = createFileRoute("/pools")({
+  head: () => ({ meta: [{ title: "Pools · Chimi" }] }),
+  component: PoolsPage,
+});
 
 type Row = {
   coin: Coin;
@@ -59,9 +66,9 @@ function money(n: number) {
 }
 
 function PoolsPage() {
-  const { coins, deployment, account, connect } = useChimi();
+  const { coins, deployment, account, connect, ensureChain, loading } = useChimi();
   const live = coins.filter((coin) => !coin.preview);
-  const [ethUsd, setEthUsd] = useState<number>();
+  const ethUsd = useEthUsd();
   const [rows, setRows] = useState<Row[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [query, setQuery] = useState("");
@@ -73,20 +80,6 @@ function PoolsPage() {
   const [edges, setEdges] = useState({ left: false, right: false });
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    let cancel = false;
-    void fetch("https://api.coinbase.com/v2/prices/ETH-USD/spot")
-      .then((r) => r.json())
-      .then((body: { data?: { amount?: string } }) => {
-        const n = Number(body.data?.amount);
-        if (!cancel && Number.isFinite(n) && n > 0) setEthUsd(n);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancel = true;
-    };
-  }, []);
 
   useEffect(() => {
     const listed = coins.filter((coin) => !coin.preview);
@@ -233,6 +226,7 @@ function PoolsPage() {
     const wallet = createWalletClient({ account, chain: giwaSepolia, transport: custom(ethereum) });
     try {
       setBusy(true);
+      await ensureChain();
       for (const position of due) {
         const calls = [
           encodeFunctionData({
@@ -254,6 +248,7 @@ function PoolsPage() {
         await publicClient.waitForTransactionReceipt({ hash });
       }
       setNote("Fees collected.");
+      toast({ kind: "good", title: "Fees collected", body: "They’re in your wallet as ETH and tokens." });
     } catch (err) {
       setNote(err instanceof Error ? err.message : "Could not collect fees.");
     } finally {
@@ -262,73 +257,94 @@ function PoolsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-[1180px] px-4 pt-14 pb-24 sm:px-6">
-      <div className="flex flex-wrap items-end justify-between gap-6">
-        <div className="max-w-xl">
-          <p className="text-[13px] font-semibold tracking-[0.14em] text-gold">YOUR DEX</p>
-          <h1 className="mt-2 text-[clamp(36px,5vw,56px)] leading-none font-semibold tracking-[-0.04em]">Supply liquidity to collect fees</h1>
-          <p className="mt-3.5 text-[17px] text-muted">Add a position on a Chimi pool and earn a share of the 1% swap fee. Launch liquidity stays locked.</p>
-        </div>
-        <div className="flex flex-wrap gap-2.5">
-          {first ? (
-            <Link to="/pool/$address" params={{ address: first.coin.token }} hash="new" className="flex items-center gap-2 rounded-full bg-seal px-5 py-3 text-[15px] font-semibold text-onseal shadow-[inset_0_1px_0_rgba(255,255,255,.22),0_10px_30px_rgba(210,74,46,.3)]">
-              + New position
+    <main className="page pt-4 pb-16">
+      <PageHead
+        eyebrow="Liquidity"
+        title="Supply liquidity, collect fees"
+        actions={
+          <>
+            <Link to="/launch" className="btn btn-lg btn-secondary">
+              Launch a coin
             </Link>
-          ) : null}
-          <Link to="/launch" className="rounded-full border border-line bg-chip/60 px-5 py-3 text-[15px] font-medium">Launch token</Link>
-        </div>
-      </div>
+            {first ? (
+              <Link to="/pool/$address" params={{ address: first.coin.token }} hash="new" className="btn btn-lg btn-primary">
+                <IconPlus size={18} />
+                New position
+              </Link>
+            ) : null}
+          </>
+        }
+      >
+        Add a position on a Chimi pool and earn a share of the 1% swap fee. The launch liquidity itself stays locked.
+      </PageHead>
 
-      <div className="mt-10 grid gap-3.5 sm:grid-cols-3">
-        <Metric label="Total liquidity" value={account ? money(liqUsd) : "$0.00"} dim={!account} />
-        <div className="rounded-3xl border border-line bg-chip/85 px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,.04)]">
-          <div className="flex h-7 items-center justify-between text-sm text-muted">
-            <span>Unclaimed fees</span>
-            <button type="button" disabled={!account || feeUsd <= 0 || busy} onClick={() => void collectAll()} className="rounded-full bg-fg/9 px-3.5 py-1.5 text-[13px] text-fg disabled:opacity-45">
+      <div className="mt-8 grid gap-4 sm:grid-cols-3">
+        <Metric label="Your liquidity" value={account ? money(liqUsd) : "$0.00"} dim={!account} />
+        <Metric
+          label="Unclaimed fees"
+          value={account ? money(feeUsd) : "$0.00"}
+          dim={!account}
+          gold={feeUsd > 0}
+          action={
+            <button type="button" disabled={!account || feeUsd <= 0 || busy} onClick={() => void collectAll()} className="btn btn-sm btn-secondary">
               {busy ? "Collecting…" : "Collect"}
             </button>
-          </div>
-          <div className={`mt-3.5 text-[40px] leading-none font-semibold tracking-[-0.035em] tabular-nums ${account ? "" : "text-[#7d6f5a]"}`}>{account ? money(feeUsd) : "$0.00"}</div>
-        </div>
+          }
+        />
         <Metric label="Open positions" value={String(held.length)} dim={!account} />
       </div>
 
       {held.length === 0 ? (
-        <div className="relative mt-3.5 overflow-hidden rounded-[28px] border border-gold/20 bg-[#1e1712] px-6 py-14 text-center">
-          <img src="/seal.jpg" alt="" className="absolute -bottom-10 -left-8 size-[150px] rotate-[-14deg] rounded-full object-cover opacity-15" />
-          <div className="relative flex flex-col items-center">
-            <h3 className="text-[26px] font-semibold tracking-[-0.025em]">No positions</h3>
-            <p className="mt-2 max-w-md text-[15px] text-muted">
-              {account ? "You don’t have any liquidity positions. Add one to a Chimi pool to start earning the 1% swap fee." : "Connect a wallet to see positions you can collect from."}
-            </p>
-            {account ? null : (
-              <button type="button" onClick={() => void connect()} className="mt-5 rounded-full border border-line bg-chip px-5 py-2.5 text-sm font-medium">Connect wallet</button>
-            )}
-          </div>
+        <div className="card relative mt-4 overflow-hidden">
+          <div className="pointer-events-none absolute -bottom-24 -left-10 size-72 rounded-full bg-[radial-gradient(closest-side,rgba(227,184,102,.1),transparent)]" />
+          <Empty
+            mark="유동성"
+            title="No positions yet"
+            action={
+              account ? null : (
+                <button type="button" onClick={() => void connect().catch(() => undefined)} className="btn btn-secondary">
+                  Connect wallet
+                </button>
+              )
+            }
+          >
+            {account ? "You don’t have any liquidity positions. Add one to a Chimi pool to start earning the 1% swap fee." : "Connect a wallet to see positions you can collect from."}
+          </Empty>
         </div>
       ) : (
-        <div className="mt-3.5 grid gap-2.5">
+        <div className="mt-4 grid gap-3">
           {held.map((position) => {
             const coin = position.coin!;
             const row = rowByToken.get(coin.token.toLowerCase());
             const tick = tickFromSqrtPriceX96(coin.sqrtPriceX96);
             const inside = tick >= position.tickLower && tick < position.tickUpper;
             return (
-              <div key={position.id.toString()} className="flex flex-wrap items-center gap-5 rounded-3xl border border-line bg-chip/85 px-6 py-5">
+              <div key={position.id.toString()} className="card flex flex-wrap items-center gap-x-6 gap-y-4 p-4 sm:px-6 sm:py-5">
                 <PairMark symbol={coin.symbol} image={images[coin.token.toLowerCase()]} />
                 <div className="min-w-0 flex-[1_1_180px]">
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    <span className="text-lg font-semibold">{coin.symbol} / ETH</span>
-                    <span className="rounded-md bg-fg/7 px-2 py-0.5 text-xs text-muted">v3 · 1%</span>
-                    <span className={`flex items-center gap-1.5 text-[13px] ${inside ? "text-ok" : "text-muted"}`}><span className={`size-1.5 rounded-full ${inside ? "bg-ok" : "bg-muted"}`} />{inside ? "In range" : "Out of range"}</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[17px] font-semibold">{coin.symbol} / ETH</span>
+                    <span className="chip h-6">v3 · {feeLabel(coin.fee)}</span>
+                    <span className={`chip h-6 ${inside ? "border-ok/25 bg-ok/10 text-ok" : ""}`}>
+                      <span className={`size-1.5 rounded-full ${inside ? "bg-ok" : "bg-muted"}`} />
+                      {inside ? "In range" : "Out of range"}
+                    </span>
                   </div>
-                  <div className="mt-1 text-[13px] text-muted">Position #{position.id.toString()}</div>
+                  <div className="num mt-1 text-[13px] text-muted">Position #{position.id.toString()}</div>
                 </div>
-                <div className="flex gap-7">
-                  <div><div className="text-xs text-muted">Value</div><div className="text-[17px] font-semibold tabular-nums">{money(liquidityValue(position, row))}</div></div>
-                  <div><div className="text-xs text-muted">Fees</div><div className="text-[17px] font-semibold text-gold tabular-nums">{money(feeValue(position, row, ethUsd))}</div></div>
+                <div className="flex gap-8">
+                  <div>
+                    <div className="text-xs text-muted">Value</div>
+                    <div className="num text-[17px] font-semibold">{money(liquidityValue(position, row))}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted">Fees</div>
+                    <div className="num text-[17px] font-semibold text-gold">{money(feeValue(position, row, ethUsd))}</div>
+                  </div>
                 </div>
-                <Link to="/pool/$address" params={{ address: coin.token }} hash="new" className="rounded-full bg-seal px-4 py-2.5 text-sm font-semibold text-onseal">Manage</Link>
+                <Link to="/pool/$address" params={{ address: coin.token }} hash="new" className="btn btn-secondary">
+                  Manage
+                </Link>
               </div>
             );
           })}
@@ -336,15 +352,12 @@ function PoolsPage() {
       )}
       {note ? <p className="mt-3 text-sm text-muted">{note}</p> : null}
 
-      <div className="mt-14 flex flex-wrap items-end justify-between gap-4">
-        <h2 className="text-[28px] font-semibold tracking-[-0.03em]">Top pools</h2>
+      <div className="mt-12 flex flex-wrap items-end justify-between gap-4">
+        <h2 className="text-[26px] leading-none font-semibold tracking-[-0.03em]">Top pools</h2>
         <div className="flex w-full items-center gap-2 sm:w-auto">
-          <label className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl border border-line bg-chip px-3.5 py-2 sm:w-[260px] sm:flex-none">
-            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" className="shrink-0 text-muted" aria-hidden>
-              <circle cx="7" cy="7" r="4.75" stroke="currentColor" strokeWidth="1.5" />
-              <path d="m10.5 10.5 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search pools" aria-label="Search pools" className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
+          <label className="field flex min-h-0 min-w-0 flex-1 items-center gap-2.5 bg-chip py-0 sm:w-[260px] sm:flex-none">
+            <IconSearch size={16} className="shrink-0 text-faint" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search pools" aria-label="Search pools" className="h-[38px] min-w-0 flex-1 bg-transparent text-sm outline-none" />
           </label>
           {edges.left || edges.right ? (
             <div className="flex shrink-0 gap-1.5">
@@ -355,49 +368,38 @@ function PoolsPage() {
                   aria-label={dir === "left" ? "Scroll table left" : "Scroll table right"}
                   disabled={!edges[dir]}
                   onClick={() => scroller.current?.scrollBy({ left: dir === "left" ? -180 : 180, behavior: "smooth" })}
-                  className="grid size-9 place-items-center rounded-full border border-line bg-chip text-fg disabled:opacity-35"
+                  className="btn btn-icon btn-secondary"
                 >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-                    <path d={dir === "left" ? "M10 3.5 5.5 8l4.5 4.5" : "M6 3.5 10.5 8 6 12.5"} stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
+                  {dir === "left" ? <IconChevronLeft size={16} /> : <IconChevronRight size={16} />}
                 </button>
               ))}
             </div>
           ) : null}
         </div>
       </div>
-      <div className="mt-4 overflow-hidden rounded-3xl border border-line bg-chip">
-        <div ref={scroller} className="overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="card mt-4 overflow-hidden">
+        <div ref={scroller} className="no-scrollbar overflow-x-auto overscroll-x-contain">
           <div className="min-w-max">
-            <div className={`${POOL_GRID} border-b border-line bg-[#261d16] text-[13px] text-muted`}>
-              <span className="hidden py-3.5 pl-5 sm:block">#</span>
-              <span className={`${STICKY} bg-[#261d16] py-3.5 pl-4 sm:pl-2 ${edges.left ? STICKY_SHADOW : ""}`}>Pool</span>
+            <div className={`${POOL_GRID} th border-b border-line`}>
+              <span className="hidden py-3 pl-5 sm:block">#</span>
+              <span className={`${STICKY} bg-chip py-3 pl-4 sm:pl-2 ${edges.left ? STICKY_SHADOW : ""}`}>Pool</span>
               {COLUMNS.map(([key, label]) => (
                 <button
                   key={key}
                   type="button"
                   onClick={() => sortBy(key)}
                   aria-sort={sort === key ? (desc ? "descending" : "ascending") : "none"}
-                  className={`flex items-center justify-end gap-1 py-3.5 pr-4 text-right text-[13px] whitespace-nowrap last:pr-5 ${sort === key ? "font-semibold text-fg" : ""}`}
+                  className={`flex items-center justify-end gap-1 py-3 pr-4 text-right whitespace-nowrap transition-colors last:pr-5 hover:text-fg ${sort === key ? "font-semibold text-fg" : ""}`}
                 >
-                  {sort === key ? (
-                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden className={desc ? "" : "rotate-180"}>
-                      <path d="M8 2.5v11M3.5 9 8 13.5 12.5 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  ) : null}
+                  {sort === key ? <IconArrowDown size={11} className={desc ? "" : "rotate-180"} /> : null}
                   {label}
                 </button>
               ))}
             </div>
             {filtered.map((row, i) => (
-              <Link
-                key={row.coin.token}
-                to="/pool/$address"
-                params={{ address: row.coin.token }}
-                className={`${POOL_GRID} group border-b border-line/55 text-[15px] last:border-0`}
-              >
-                <span className="hidden py-4 pl-5 text-muted tabular-nums sm:block">{i + 1}</span>
-                <span className={`${STICKY} flex items-center gap-3 bg-chip py-3.5 pl-4 transition-colors group-hover:bg-[#2a2019] sm:pl-2 ${edges.left ? STICKY_SHADOW : ""}`}>
+              <Link key={row.coin.token} to="/pool/$address" params={{ address: row.coin.token }} className={`${POOL_GRID} group border-b border-line/70 text-[15px] last:border-0`}>
+                <span className="num hidden py-4 pl-5 text-faint sm:block">{i + 1}</span>
+                <span className={`${STICKY} flex items-center gap-3 bg-chip py-3.5 pl-4 transition-colors group-hover:bg-raise sm:pl-2 ${edges.left ? STICKY_SHADOW : ""}`}>
                   <PairMark symbol={row.coin.symbol} image={images[row.coin.token.toLowerCase()]} size={32} />
                   <span className="min-w-0">
                     <span className="block truncate font-semibold">{row.coin.symbol}/ETH</span>
@@ -412,16 +414,25 @@ function PoolsPage() {
               </Link>
             ))}
             {filtered.length === 0 ? (
-              <p className="px-6 py-10 text-center text-[15px] text-muted">
-                {loadingRows && live.length > 0 ? "Reading pools…" : query ? `No pool matches “${query}”.` : "No Chimi pools yet."}
-              </p>
+              (loading || loadingRows) && (loading || live.length > 0) ? (
+                <div className="divide-y divide-line/70">
+                  {Array.from({ length: 4 }, (_, i) => (
+                    <div key={i} className="flex items-center gap-4 px-5 py-4">
+                      <span className="skeleton size-8 rounded-full" />
+                      <span className="skeleton h-4 w-32" />
+                      <span className="skeleton ml-auto h-4 w-40" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="px-6 py-12 text-center text-[15px] text-muted">{query ? `No pool matches “${query}”.` : "No Chimi pools yet."}</p>
+              )
             ) : null}
           </div>
         </div>
       </div>
-      <p className="mt-3 text-xs text-muted">
-        TVL is each pool’s ETH and token reserves at the pool price. Volume is the ETH side of on-chain swaps, read from the GIWA explorer.
-        Pool APR is 1D fees × 365 ÷ TVL at the pool’s fee tier.
+      <p className="mt-3 max-w-4xl text-xs leading-relaxed text-faint">
+        TVL is each pool’s ETH and token reserves at the pool price. Volume is the ETH side of on-chain swaps, read from the GIWA explorer. Pool APR is 1D fees × 365 ÷ TVL at the pool’s fee tier.
         {noPrice ? " The ETH price didn’t load, so USD columns show —." : ""}
         {missing30d ? " The explorer couldn’t be reached, so 30D volume shows — (the chain RPC only returns about a day of swaps)." : ""}
       </p>
@@ -429,23 +440,22 @@ function PoolsPage() {
   );
 }
 
-const POOL_GRID = "grid grid-cols-[minmax(11.5rem,1fr)_repeat(5,6.5rem)] items-center sm:grid-cols-[3rem_minmax(14rem,1fr)_repeat(5,7.25rem)]";
+const POOL_GRID = "grid grid-cols-[minmax(11.5rem,1fr)_repeat(5,6.5rem)] items-center sm:grid-cols-[3rem_minmax(14rem,1fr)_repeat(5,7.25rem)] row-hover";
 const STICKY = "sticky left-0 z-10 min-w-0 pr-3";
 const STICKY_SHADOW = "shadow-[8px_0_12px_-8px_rgba(0,0,0,.6)]";
 
 function Cell({ value, strong, muted, tone, last }: { value: string; strong?: boolean; muted?: boolean; tone?: string; last?: boolean }) {
-  return (
-    <span className={`py-4 pr-4 text-right tabular-nums whitespace-nowrap ${last ? "pr-5" : ""} ${strong ? "font-medium" : ""} ${muted ? "text-muted" : ""} ${tone ?? ""}`}>
-      {value}
-    </span>
-  );
+  return <span className={`num py-4 pr-4 text-right whitespace-nowrap ${last ? "pr-5" : ""} ${strong ? "font-medium" : ""} ${muted ? "text-muted" : ""} ${tone ?? ""}`}>{value}</span>;
 }
 
-function Metric({ label, value, dim }: { label: string; value: string; dim?: boolean }) {
+function Metric({ label, value, dim, gold, action }: { label: string; value: string; dim?: boolean; gold?: boolean; action?: ReactNode }) {
   return (
-    <div className="rounded-3xl border border-line bg-chip/85 px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,.04)]">
-      <div className="flex h-7 items-center text-sm text-muted">{label}</div>
-      <div className={`mt-3.5 text-[40px] leading-none font-semibold tracking-[-0.035em] tabular-nums ${dim ? "text-[#7d6f5a]" : ""}`}>{value}</div>
+    <div className="card px-5 py-5 sm:px-6">
+      <div className="flex h-8 items-center justify-between text-sm text-muted">
+        <span>{label}</span>
+        {action}
+      </div>
+      <div className={`num mt-3 text-[34px] leading-none font-semibold tracking-[-0.035em] ${dim ? "text-faint" : gold ? "text-gold" : ""}`}>{value}</div>
     </div>
   );
 }

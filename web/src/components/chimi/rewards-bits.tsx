@@ -6,7 +6,7 @@ import { fmtPoints, shortWallet } from "@/lib/chimi/rewards";
 import { HouseSeal } from "@/components/chimi/house-seal";
 
 export function SectionLabel({ children }: { children: ReactNode }) {
-  return <p className="text-[13px] font-semibold tracking-[0.14em] text-gold">{children}</p>;
+  return <p className="eyebrow">{children}</p>;
 }
 
 /** A wallet's up.id name when it has one, else its short address. */
@@ -22,7 +22,7 @@ export function WalletName({ wallet, profile, you }: { wallet: string; profile?:
       ) : (
         <span className="truncate font-medium tabular-nums">{shortWallet(wallet)}</span>
       )}
-      {you ? <span className="shrink-0 rounded-full bg-seal/15 px-1.5 py-px text-[11px] font-semibold text-seal">you</span> : null}
+      {you ? <span className="shrink-0 rounded-md bg-gold/15 px-1.5 py-px text-[11px] font-semibold text-gold">you</span> : null}
     </span>
   );
 }
@@ -32,7 +32,7 @@ export function WalletMark({ house, size = 34 }: { house?: House; size?: number 
   if (house) return <HouseSeal seal={house.seal} ink={house.ink} size={size} title={`${house.name} [${house.tag}]`} />;
   return (
     <span
-      className="grid shrink-0 place-items-center rounded-[9px] border border-dashed border-line bg-bg/40"
+      className="grid shrink-0 place-items-center rounded-[9px] border border-dashed border-edge bg-bg/40"
       style={{ width: size, height: size }}
       aria-hidden
     />
@@ -44,7 +44,7 @@ export function HouseTag({ house }: { house: House }) {
     <Link
       to="/houses/$tag"
       params={{ tag: house.tag }}
-      className="shrink-0 rounded-md border border-line/90 bg-bg/50 px-1.5 py-px text-[11px] font-semibold tracking-[0.08em] text-muted hover:text-fg"
+      className="shrink-0 rounded-md border border-edge bg-raise px-1.5 py-px text-[11px] font-semibold tracking-[0.08em] text-muted transition-colors hover:text-fg"
     >
       {house.tag}
     </Link>
@@ -68,7 +68,7 @@ export function Movement({ rank, prev }: { rank: number; prev: number | null }) 
   const d = prev - rank;
   if (d === 0) return <span className="text-[11px] text-muted">–</span>;
   return (
-    <span className={`text-[11px] font-semibold tabular-nums ${d > 0 ? "text-ok" : "text-seal"}`}>
+    <span className={`text-[11px] font-semibold tabular-nums ${d > 0 ? "text-ok" : "text-down"}`}>
       {d > 0 ? "▲" : "▼"}
       {Math.abs(d)}
     </span>
@@ -76,7 +76,7 @@ export function Movement({ rank, prev }: { rank: number; prev: number | null }) 
 }
 
 /** Points per day as bars, oldest first; the last `highlight` bar is the open day's estimate. */
-export function DayBars({ days, live, color = "#d24a2e", height = 64 }: { days: { day: string; points: number }[]; live?: { day: string; points: number } | null; color?: string; height?: number }) {
+export function DayBars({ days, live, color = "#e4563d", height = 64 }: { days: { day: string; points: number }[]; live?: { day: string; points: number } | null; color?: string; height?: number }) {
   const all = [...days.slice(-13), ...(live ? [live] : [])];
   const max = Math.max(1, ...all.map((d) => d.points));
   const [hover, setHover] = useState<number | null>(null);
@@ -141,16 +141,9 @@ export function duration(ms: number) {
 
 export function Segmented<T extends string>({ value, options, onChange }: { value: T; options: readonly (readonly [T, string])[]; onChange: (v: T) => void }) {
   return (
-    <div className="flex rounded-[10px] border border-line bg-chip p-[3px]" role="tablist">
+    <div className="seg" role="tablist">
       {options.map(([key, label]) => (
-        <button
-          key={key}
-          type="button"
-          role="tab"
-          aria-selected={value === key}
-          onClick={() => onChange(key)}
-          className={`rounded-[7px] px-3.5 py-1.5 text-[13px] font-medium whitespace-nowrap ${value === key ? "bg-[#3a2d22] text-fg shadow-[0_1px_3px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.06)]" : "text-muted hover:text-fg"}`}
-        >
+        <button key={key} type="button" role="tab" aria-selected={value === key} onClick={() => onChange(key)}>
           {label}
         </button>
       ))}
@@ -162,14 +155,14 @@ export function Stat({ label, value, sub }: { label: string; value: ReactNode; s
   return (
     <div className="min-w-0">
       <div className="text-xs text-muted">{label}</div>
-      <div className="mt-0.5 truncate text-[22px] font-semibold tracking-[-0.02em] tabular-nums">{value}</div>
+      <div className="num mt-0.5 truncate text-[22px] font-semibold tracking-[-0.02em]">{value}</div>
       {sub ? <div className="truncate text-xs text-muted">{sub}</div> : null}
     </div>
   );
 }
 
 export function Skeleton({ className = "" }: { className?: string }) {
-  return <span className={`block animate-pulse rounded-md bg-fg/8 ${className}`} />;
+  return <span className={`skeleton ${className}`} />;
 }
 
 /** The Dojang check mark next to a verified name. */

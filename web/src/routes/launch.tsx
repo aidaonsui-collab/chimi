@@ -1,19 +1,27 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { formatEther, parseEther } from "viem";
-import { factoryAbi } from "@/lib/chimi/chain";
+import { factoryAbi, giwaSepolia } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
+import { ethText, money } from "@/lib/chimi/format";
+import { useEthUsd } from "@/lib/chimi/live";
 import { fmt, short } from "@/lib/chimi/market";
 import { saveTokenMeta, shrinkImage } from "@/lib/chimi/meta";
 import { publishTokenProfile, refreshTokenProfiles } from "@/lib/chimi/token-image";
+import { IconCheck, IconClose, IconImage, IconLock, IconPlus, IconTelegram, IconX } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
-import { TokenLogo } from "@/components/chimi/token-logo";
+import { toast } from "@/components/chimi/toast";
+import { TokenArt } from "@/components/chimi/token-logo";
+import { Note, PageHead } from "@/components/chimi/ui";
 
-export const Route = createFileRoute("/launch")({ component: LaunchPage });
+export const Route = createFileRoute("/launch")({
+  head: () => ({ meta: [{ title: "Launch a coin · Chimi" }] }),
+  component: LaunchPage,
+});
 
-const field = "mt-1 w-full rounded-xl border border-line bg-bg px-3 py-2.5 outline-none";
 const VIRTUAL_TOKEN = 1_066_666_666_666_666_666_666_666_666n;
 const SUPPLY = 1_000_000_000n * 10n ** 18n;
+const GAS_RESERVE = 300_000_000_000_000n;
 
 function tokensOut(ethIn: bigint, virtualQuote: bigint): bigint {
   if (ethIn === 0n || virtualQuote === 0n) return 0n;
@@ -27,21 +35,22 @@ function compactTokens(raw: bigint): string {
 }
 
 function LaunchPage() {
-  const { account, connect, deployment, live, createCoin, signMessage } = useChimi();
+  const { account, connect, deployment, live, createCoin, signMessage, loading } = useChimi();
   const navigate = useNavigate();
+  const ethUsd = useEthUsd();
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
   const [description, setDescription] = useState("");
   const [image, setImage] = useState<string>();
+  const [dragging, setDragging] = useState(false);
   const [twitter, setTwitter] = useState("");
   const [telegram, setTelegram] = useState("");
   const [website, setWebsite] = useState("");
-  const [devBuy, setDevBuy] = useState("0");
+  const [devBuy, setDevBuy] = useState("");
   const [balance, setBalance] = useState<bigint>();
   const [fee, setFee] = useState<bigint>();
   const [virtualQuote, setVirtualQuote] = useState<bigint>();
-  const [ethUsd, setEthUsd] = useState<number>();
-  const [advanced, setAdvanced] = useState(false);
+  const [tried, setTried] = useState(false);
   const [note, setNote] = useState("");
   const [kind, setKind] = useState<"" | "bad" | "good">("");
   const [busy, setBusy] = useState(false);
@@ -52,9 +61,12 @@ function LaunchPage() {
       return;
     }
     let cancel = false;
-    void publicClient.getBalance({ address: account }).then((wei) => {
-      if (!cancel) setBalance(wei);
-    });
+    void publicClient
+      .getBalance({ address: account })
+      .then((wei) => {
+        if (!cancel) setBalance(wei);
+      })
+      .catch(() => undefined);
     return () => {
       cancel = true;
     };
@@ -67,12 +79,7 @@ function LaunchPage() {
     }
     let cancel = false;
     void publicClient
-      .readContract({
-        address: deployment.factory,
-        abi: factoryAbi,
-        functionName: "creationFeeDue",
-        args: [account],
-      })
+      .readContract({ address: deployment.factory, abi: factoryAbi, functionName: "creationFeeDue", args: [account] })
       .then((due) => {
         if (!cancel) setFee(due);
       })
@@ -96,24 +103,16 @@ function LaunchPage() {
     };
   }, [deployment, live]);
 
-  useEffect(() => {
-    let cancel = false;
-    void fetch("https://api.coinbase.com/v2/prices/ETH-USD/spot")
-      .then((r) => r.json())
-      .then((body: { data?: { amount?: string } }) => {
-        const n = Number(body.data?.amount);
-        if (!cancel && Number.isFinite(n) && n > 0) setEthUsd(n);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancel = true;
-    };
-  }, []);
-
   async function onImage(file: File | undefined) {
     if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setKind("bad");
+      setNote("That file isn’t an image.");
+      return;
+    }
     try {
       setImage(await shrinkImage(file));
+      setNote("");
     } catch (err) {
       setKind("bad");
       setNote(short(err));
@@ -121,6 +120,7 @@ function LaunchPage() {
   }
 
   async function submit() {
+    setTried(true);
     if (!name.trim() || !symbol.trim()) {
       setKind("bad");
       setNote("Name and symbol are required.");
@@ -162,6 +162,7 @@ function LaunchPage() {
       }
       setKind("good");
       setNote(`${symbol.trim()} is in its pool.`);
+      toast({ kind: "good", title: `${symbol.trim()} is live`, body: "Its pool is open and locked. Trading starts now.", href: `${giwaSepolia.blockExplorers.default.url}/address/${token}`, linkLabel: "View contract" });
       await navigate({ to: "/coin/$address", params: { address: token } });
     } catch (err) {
       setKind("bad");
@@ -184,130 +185,169 @@ function LaunchPage() {
   const mark = symbol.trim() || "TICKER";
   const quote = virtualQuote ?? 0n;
   const received = buyOk ? tokensOut(buy, quote) : 0n;
-  const shareBps = received === 0n || SUPPLY === 0n ? 0 : Number((received * 10_000n) / SUPPLY) / 100;
+  const share = received === 0n ? 0 : Number((received * 10_000n) / SUPPLY) / 100;
   const fdvEth = quote === 0n ? 0 : Number((quote * SUPPLY) / VIRTUAL_TOKEN) / 1e18;
-  const fdvUsd = ethUsd && fdvEth ? fdvEth * ethUsd : undefined;
+  const opensAt = fdvEth ? (ethUsd ? money(fdvEth * ethUsd) : `${ethText(fdvEth)} ETH`) : undefined;
+  const broke = !!account && balance !== undefined && total > balance;
+  const missing = tried && (!name.trim() || !symbol.trim());
+  const ready = !!name.trim() && !!symbol.trim();
 
   return (
-    <main className="mx-auto grid max-w-5xl items-start gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[1fr_300px] lg:py-12">
-      <section className="rounded-3xl border border-line bg-chip">
-        <header className="border-b border-line px-5 py-5">
-          <p className="text-xs font-semibold tracking-[0.22em] text-gold">GIWA SEPOLIA</p>
-          <h1 className="mt-1 font-display text-4xl leading-none sm:text-5xl">Launch token</h1>
-        </header>
-        <div className="grid gap-4 px-5 py-5">
-          <label className="block text-sm text-muted">
-            Name
-            <input value={name} maxLength={32} onChange={(e) => setName(e.target.value)} placeholder="Ridge Coin" className={field} />
-          </label>
-          <label className="block text-sm text-muted">
-            Symbol
-            <input
-              value={symbol}
-              maxLength={8}
-              onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-              placeholder="RIDGE"
-              className={`${field} tracking-[0.14em]`}
-            />
-          </label>
-          <label className="block text-sm text-muted">
-            Description
-            <textarea
-              value={description}
-              maxLength={280}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="A short description of the token"
-              rows={3}
-              className={field}
-            />
-          </label>
-          <div>
-            <p className="text-sm text-muted">Token image</p>
-            <label className="mt-1 flex cursor-pointer items-center gap-4 rounded-xl border border-dashed border-line bg-bg px-3 py-3">
-              {image ? (
-                <img src={image} alt="" className="size-16 rounded-full object-cover" />
-              ) : (
-                <span className="grid size-16 place-items-center rounded-full border border-line text-xs text-muted">IMG</span>
-              )}
-              <span className="text-sm">Choose image</span>
-              <input
-                type="file"
-                accept="image/*"
-                className="sr-only"
-                onChange={(e) => void onImage(e.target.files?.[0])}
-              />
-            </label>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <label className="block text-sm text-muted">
-              X
-              <span className="mt-1 flex items-center rounded-xl border border-line bg-bg px-3">
-                <span className="text-xs text-muted">x.com/</span>
-                <input value={twitter} onChange={(e) => setTwitter(e.target.value.replace(/^@/, ""))} className="w-full bg-transparent py-2.5 pl-1 outline-none" />
-              </span>
-            </label>
-            <label className="block text-sm text-muted">
-              Telegram
-              <span className="mt-1 flex items-center rounded-xl border border-line bg-bg px-3">
-                <span className="text-xs text-muted">t.me/</span>
-                <input value={telegram} onChange={(e) => setTelegram(e.target.value)} className="w-full bg-transparent py-2.5 pl-1 outline-none" />
-              </span>
-            </label>
-            <label className="block text-sm text-muted">
-              Website
-              <input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" className={field} />
-            </label>
-          </div>
+    <main className="page pt-4 pb-16">
+      <PageHead eyebrow="GIWA Sepolia" title="Launch a coin">
+        One transaction mints a billion tokens straight into a locked pool against ETH. No bonding curve, nothing to graduate, tradable from the first block.
+      </PageHead>
 
-          <div className="rounded-2xl border border-line bg-bg px-4 py-3">
-            <p className="text-xs tracking-[0.16em] text-muted uppercase">Paired asset</p>
-            <p className="mt-1 font-display text-2xl">ETH</p>
-            <p className="mt-1 text-sm text-muted">
-              The full supply opens in a locked pool. No bonding curve. The pool fee is 1%, and the position stays locked for 100 years.
-            </p>
-          </div>
+      {!loading && !live ? (
+        <p className="mt-6 rounded-xl border border-gold/25 bg-gold/8 px-4 py-3 text-sm">The factory isn’t on this chain yet, so launching is switched off. You can still fill the form to see how it looks.</p>
+      ) : null}
 
-          <div>
-            <div className="flex items-baseline justify-between">
-              <p className="text-sm text-muted">Developer buy</p>
-              <p className="text-xs text-muted">
-                {balance === undefined ? "Balance unavailable" : `${fmt(balance, 4)} ETH`}
-              </p>
+      <div className="mt-8 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="grid min-w-0 gap-5">
+          <Panel step="1" title="The coin" sub="The name and ticker are written on-chain and can’t be changed.">
+            <div className="grid gap-5 sm:grid-cols-[168px_minmax(0,1fr)]">
+              <div>
+                <span className="label">Picture</span>
+                <label
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragging(true);
+                  }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragging(false);
+                    void onImage(e.dataTransfer.files?.[0]);
+                  }}
+                  className={`group relative grid aspect-square w-full max-w-[168px] cursor-pointer place-items-center overflow-hidden rounded-2xl border border-dashed transition-colors ${
+                    dragging ? "border-gold bg-gold/8" : image ? "border-transparent" : "border-edge bg-bg hover:border-muted"
+                  }`}
+                >
+                  {image ? (
+                    <>
+                      <img src={image} alt="" className="size-full object-cover" />
+                      <span className="absolute inset-0 grid place-items-center bg-black/55 text-sm font-medium opacity-0 transition-opacity group-hover:opacity-100">Replace</span>
+                    </>
+                  ) : (
+                    <span className="flex flex-col items-center gap-2 px-3 text-center">
+                      <span className="grid size-10 place-items-center rounded-xl bg-raise2 text-muted">
+                        <IconImage size={20} />
+                      </span>
+                      <span className="text-[13px] font-medium">Add a picture</span>
+                      <span className="text-[11px] leading-tight text-faint">Drop it here or click. Square works best.</span>
+                    </span>
+                  )}
+                  <input type="file" accept="image/*" className="sr-only" onChange={(e) => void onImage(e.target.files?.[0])} />
+                </label>
+                {image ? (
+                  <button type="button" onClick={() => setImage(undefined)} className="mt-2 flex items-center gap-1 text-xs text-muted hover:text-fg">
+                    <IconClose size={12} />
+                    Remove
+                  </button>
+                ) : null}
+              </div>
+              <div className="grid content-start gap-4">
+                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_150px]">
+                  <label>
+                    <span className="label">Name</span>
+                    <input value={name} maxLength={32} onChange={(e) => setName(e.target.value)} placeholder="Ridge Coin" aria-invalid={missing && !name.trim()} className={`field ${missing && !name.trim() ? "!border-down/70" : ""}`} />
+                  </label>
+                  <label>
+                    <span className="label">Ticker</span>
+                    <input
+                      value={symbol}
+                      maxLength={8}
+                      onChange={(e) => setSymbol(e.target.value.toUpperCase().replace(/\s/g, ""))}
+                      placeholder="RIDGE"
+                      aria-invalid={missing && !symbol.trim()}
+                      className={`field font-semibold tracking-[0.08em] ${missing && !symbol.trim() ? "!border-down/70" : ""}`}
+                    />
+                  </label>
+                </div>
+                <label>
+                  <span className="label flex justify-between">
+                    <span>
+                      Description <span className="font-normal text-faint">· optional</span>
+                    </span>
+                    <span className="num font-normal text-faint">{description.length}/280</span>
+                  </span>
+                  <textarea value={description} maxLength={280} onChange={(e) => setDescription(e.target.value)} placeholder="What is it, in a sentence or two?" rows={3} className="field resize-none" />
+                </label>
+              </div>
             </div>
-            <div className="mt-1 flex items-center gap-2 rounded-xl border border-line bg-bg px-3">
+          </Panel>
+
+          <Panel step="2" title="Links" sub="Optional. They show on the coin’s page.">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <label>
+                <span className="label">X</span>
+                <span className="field flex items-center gap-2 py-0">
+                  <IconX size={14} className="shrink-0 text-faint" />
+                  <input value={twitter} onChange={(e) => setTwitter(e.target.value.replace(/^@/, ""))} placeholder="handle" className="h-[42px] w-full min-w-0 bg-transparent outline-none" />
+                </span>
+              </label>
+              <label>
+                <span className="label">Telegram</span>
+                <span className="field flex items-center gap-2 py-0">
+                  <IconTelegram size={15} className="shrink-0 text-faint" />
+                  <input value={telegram} onChange={(e) => setTelegram(e.target.value)} placeholder="group" className="h-[42px] w-full min-w-0 bg-transparent outline-none" />
+                </span>
+              </label>
+              <label>
+                <span className="label">Website</span>
+                <input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" className="field" />
+              </label>
+            </div>
+          </Panel>
+
+          <Panel step="3" title="First buy" sub="Optional. Buy some of your own coin in the same transaction, before anyone else can.">
+            <div className="flex items-center justify-between">
+              <span className="label mb-0">Amount</span>
+              {balance !== undefined ? (
+                <button type="button" onClick={() => setDevBuy(formatEther(balance > due + GAS_RESERVE ? balance - due - GAS_RESERVE : 0n))} className="num text-xs text-muted hover:text-fg">
+                  Balance {fmt(balance, 4)} ETH · <span className="font-semibold text-gold">Max</span>
+                </button>
+              ) : null}
+            </div>
+            <div className={`field mt-1.5 flex items-center gap-3 py-0 ${!buyOk || broke ? "!border-down/70" : ""}`}>
               <input
                 inputMode="decimal"
                 value={devBuy}
-                onChange={(e) => setDevBuy(e.target.value)}
-                className="w-full bg-transparent py-3 text-lg outline-none"
+                placeholder="0"
+                autoComplete="off"
+                onChange={(e) => setDevBuy(e.target.value.replace(",", "."))}
+                aria-label="First buy in ETH"
+                className="num h-14 w-full min-w-0 bg-transparent text-2xl font-medium tracking-[-0.02em] outline-none placeholder:text-faint"
               />
-              <span className="text-sm">ETH</span>
-              <button
-                type="button"
-                disabled={balance === undefined}
-                onClick={() => balance !== undefined && setDevBuy(formatEther(balance > due ? balance - due : 0n))}
-                className="rounded-full border border-line px-2 py-1 text-xs text-muted"
-              >
-                Max
-              </button>
+              <span className="shrink-0 text-[15px] font-semibold">ETH</span>
             </div>
-            <p className="mt-2 text-sm tabular-nums">
-              {buyOk && buy > 0n && quote > 0n
-                ? `≈ ${compactTokens(received)} ${mark} · ${shareBps.toFixed(2)}% of supply`
-                : "Enter ETH to see the token estimate"}
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {["0.01", "0.05", "0.1", "0.5"].map((v) => (
+                <button key={v} type="button" onClick={() => setDevBuy(v)} className="btn btn-sm btn-secondary">
+                  {v} ETH
+                </button>
+              ))}
+            </div>
+            <p className="num mt-3 text-sm">
+              {!buyOk ? (
+                <span className="text-down">Enter a number, like 0.05.</span>
+              ) : buy > 0n && quote > 0n ? (
+                <>
+                  ≈ <span className="font-semibold">{compactTokens(received)}</span> {mark} <span className="text-muted">· {share.toFixed(2)}% of supply</span>
+                </>
+              ) : (
+                <span className="text-muted">Leave it empty to launch without buying.</span>
+              )}
             </p>
-            <p className="text-xs text-muted">
-              {fdvUsd
-                ? `Opens at about $${Math.round(fdvUsd).toLocaleString("en-US")} market cap. Estimate is the spot price after the 1% pool fee.`
-                : "Opens at a $3,000 market cap. Estimate is the spot price after the 1% pool fee."}
-            </p>
-          </div>
+            {buy > 0n && quote > 0n ? <p className="mt-1 text-xs text-faint">An estimate at the opening price, after the 1% pool fee.</p> : null}
+          </Panel>
 
-          <button type="button" onClick={() => setAdvanced((v) => !v)} className="text-left text-sm text-gold">
-            {advanced ? "Hide advanced" : "Advanced"}
-          </button>
-          {advanced ? (
-            <dl className="divide-y divide-line rounded-2xl border border-line">
+          <details className="card group px-5 py-4 sm:px-6">
+            <summary className="flex cursor-pointer list-none items-center justify-between text-[15px] font-semibold [&::-webkit-details-marker]:hidden">
+              What every Chimi coin gets
+              <IconPlus size={16} className="text-muted transition-transform group-open:rotate-45" />
+            </summary>
+            <dl className="mt-4 grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
               {[
                 ["Supply", "1,000,000,000"],
                 ["Quote", "Wrapped ETH"],
@@ -316,62 +356,95 @@ function LaunchPage() {
                 ["Creator share", "70% of the wrapped-ETH trading fees"],
                 ["Token-side fees", "Burned"],
                 ["Buy tax", "None"],
+                ["Opens at", opensAt ? `About ${opensAt} market cap` : "—"],
               ].map(([label, value]) => (
-                <div key={label} className="flex items-baseline justify-between gap-4 px-4 py-2.5 text-sm">
+                <div key={label} className="flex items-baseline justify-between gap-4 border-b border-line/70 pb-3">
                   <dt className="text-muted">{label}</dt>
                   <dd className="text-right">{value}</dd>
                 </div>
               ))}
             </dl>
-          ) : null}
-          <p className="text-xs text-muted">
-            Name and symbol are written on-chain. After launch you sign once (no gas) to share the image, description, and links with everyone.
-          </p>
+          </details>
         </div>
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-4">
-          <p className="text-sm text-muted">
-            ETH pair · {due === 0n ? "no creation fee" : `${fmt(due, 4)} ETH fee`} · {fmt(total, 4)} ETH due
-          </p>
-          <button
-            type="button"
-            disabled={!live || busy}
-            onClick={() => void submit()}
-            className="rounded-full bg-seal px-5 py-2.5 text-sm font-semibold text-onseal disabled:opacity-40"
-          >
-            {busy ? "Launching…" : account ? "Launch token" : "Connect wallet"}
-          </button>
-        </footer>
-        {note ? (
-          <p className={`px-5 pb-4 text-sm ${kind === "bad" ? "text-seal" : kind === "good" ? "text-ok" : "text-muted"}`}>
-            {note}
-          </p>
-        ) : null}
-      </section>
 
-      <aside className="rounded-3xl border border-line bg-chip p-5 lg:sticky lg:top-24">
-        <h2 className="font-display text-2xl">Your token</h2>
-        <div className="mt-4 flex items-center gap-3">
-          <TokenLogo symbol={mark} image={image} size={56} />
-          <div>
-            <p className="font-display text-xl leading-none">{name.trim() || "Untitled"}</p>
-            <p className="mt-1 text-sm text-muted">${mark}</p>
-          </div>
-        </div>
-        {description.trim() ? <p className="mt-4 text-sm text-muted">{description.trim()}</p> : null}
-        <dl className="mt-4 divide-y divide-line text-sm">
-          {[
-            ["Pair", "ETH"],
-            ["Supply", "1B"],
-            ["Developer buy", buy > 0n && quote > 0n ? `${compactTokens(received)} ${mark}` : `${devBuy || "0"} ETH`],
-            ["You pay", `${fmt(total, 4)} ETH`],
-          ].map(([label, value]) => (
-            <div key={label} className="flex justify-between gap-3 py-2">
-              <dt className="text-muted">{label}</dt>
-              <dd>{value}</dd>
+        <aside className="grid min-w-0 grid-cols-1 gap-4 lg:sticky lg:top-20">
+          <div className="card overflow-hidden">
+            <div className="relative aspect-[16/10] overflow-hidden bg-raise [container-type:inline-size]">
+              <TokenArt symbol={mark} image={image} />
+              <span className="glass absolute top-3 left-3 rounded-lg px-2 py-1 text-[11px] font-medium tracking-wide uppercase">Preview</span>
             </div>
-          ))}
-        </dl>
-      </aside>
+            <div className="p-5">
+              <p className="truncate text-xl font-semibold tracking-[-0.02em]">{name.trim() || "Your coin"}</p>
+              <p className="text-sm text-muted">${mark}</p>
+              {description.trim() ? <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-muted">{description.trim()}</p> : null}
+              <dl className="mt-4 space-y-2.5 border-t border-line pt-4 text-sm">
+                <Row label="Opens at" value={opensAt ? `${opensAt} cap` : "—"} />
+                <Row label="Creation fee" value={!account ? "Connect to see" : due === 0n ? "None" : `${fmt(due, 4)} ETH`} />
+                <Row label="First buy" value={buy > 0n ? `${fmt(buy, 4)} ETH${quote > 0n ? ` · ${share.toFixed(2)}%` : ""}` : "None"} />
+                <div className="flex items-baseline justify-between gap-4 border-t border-line pt-3">
+                  <dt className="font-medium">You pay</dt>
+                  <dd className="num text-right text-lg font-semibold tracking-[-0.01em]">
+                    {fmt(total, 4)} ETH
+                    {ethUsd && total > 0n ? <span className="block text-xs font-normal text-muted">{money((Number(total) / 1e18) * ethUsd)} + gas</span> : null}
+                  </dd>
+                </div>
+              </dl>
+              <button type="button" disabled={!live || busy || broke || !buyOk} onClick={() => void submit()} className="btn btn-xl btn-primary mt-5 w-full">
+                {busy ? "Launching…" : !account ? "Connect wallet" : broke ? "Not enough ETH" : `Launch ${symbol.trim() || "coin"}`}
+              </button>
+              <Note kind={kind} className="mt-3 text-center">
+                {note}
+              </Note>
+            </div>
+          </div>
+
+          <ul className="card grid gap-3 p-5 text-sm">
+            <Check on={ready}>Name and ticker go on-chain in the launch transaction.</Check>
+            <Check on>
+              <span className="inline-flex items-center gap-1.5">
+                <IconLock size={13} className="text-gold" />
+                The launch liquidity is locked for 100 years.
+              </span>
+            </Check>
+            <Check on={!!image || !!description.trim()}>After launching you sign once, with no gas, to share the picture and links with everyone.</Check>
+          </ul>
+        </aside>
+      </div>
     </main>
+  );
+}
+
+function Panel({ step, title, sub, children }: { step: string; title: string; sub: string; children: ReactNode }) {
+  return (
+    <section className="card p-5 sm:p-6">
+      <div className="flex items-start gap-3.5">
+        <span className="num grid size-7 shrink-0 place-items-center rounded-lg bg-raise2 text-[13px] font-semibold text-gold">{step}</span>
+        <div className="min-w-0">
+          <h2 className="text-[17px] leading-7 font-semibold tracking-[-0.01em]">{title}</h2>
+          <p className="text-sm text-muted">{sub}</p>
+        </div>
+      </div>
+      <div className="mt-5">{children}</div>
+    </section>
+  );
+}
+
+function Row({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4">
+      <dt className="text-muted">{label}</dt>
+      <dd className="num text-right">{value}</dd>
+    </div>
+  );
+}
+
+function Check({ on, children }: { on: boolean; children: ReactNode }) {
+  return (
+    <li className="flex items-start gap-3">
+      <span className={`mt-0.5 grid size-[18px] shrink-0 place-items-center rounded-full ${on ? "bg-ok/15 text-ok" : "bg-raise2 text-faint"}`}>
+        <IconCheck size={11} />
+      </span>
+      <span className="leading-snug text-muted">{children}</span>
+    </li>
   );
 }

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import {
   createWalletClient,
   custom,
+  getAddress,
   parseEther,
   parseEventLogs,
   type Address,
@@ -26,12 +27,16 @@ type ChimiContext = {
   deployment: Deployment | null;
   live: boolean;
   coins: Coin[];
+  /** True until the factory has answered once. Pages show placeholders instead of an empty board. */
+  loading: boolean;
   preview: boolean;
   note: string;
   account?: Address;
-  pressOpen: boolean;
-  setPressOpen: (open: boolean) => void;
   connect: () => Promise<{ who: Address; client: WalletClient } | undefined>;
+  /** Forgets the wallet on this site until Connect is pressed again. */
+  disconnect: () => void;
+  /** Asks the wallet to move to GIWA Sepolia if it is on another network. */
+  ensureChain: () => Promise<void>;
   refresh: () => Promise<void>;
   createCoin: (name: string, symbol: string, firstBuy: string) => Promise<Address>;
   trade: (coin: Coin, side: "buy" | "sell", amount: string, minOut?: bigint) => Promise<string>;
@@ -43,16 +48,39 @@ type ChimiContext = {
 const Ctx = createContext<ChimiContext | null>(null);
 
 function ethereum(): EIP1193Provider | undefined {
+  if (typeof window === "undefined") return undefined;
   return (window as Window & { ethereum?: EIP1193Provider }).ethereum;
+}
+
+/** Set when the user disconnects, so the next visit doesn't quietly pick the wallet back up. */
+const SIGNED_OUT = "chimi.wallet.off";
+
+async function moveToGiwa(client: WalletClient, eth: EIP1193Provider) {
+  try {
+    await client.switchChain({ id: giwaSepolia.id });
+  } catch {
+    await eth.request({
+      method: "wallet_addEthereumChain",
+      params: [
+        {
+          chainId: "0x164ce",
+          chainName: "GIWA Sepolia",
+          nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+          rpcUrls: ["https://sepolia-rpc.giwa.io"],
+          blockExplorerUrls: ["https://sepolia-explorer.giwa.io"],
+        },
+      ],
+    });
+  }
 }
 
 export function ChimiProvider({ children }: { children: ReactNode }) {
   const [deployment, setDeployment] = useState<Deployment | null>(null);
-  const [coins, setCoins] = useState<Coin[]>(previewCoins);
-  const [preview, setPreview] = useState(true);
+  const [coins, setCoins] = useState<Coin[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [preview, setPreview] = useState(false);
   const [note, setNote] = useState("");
   const [account, setAccount] = useState<Address | undefined>();
-  const [pressOpen, setPressOpen] = useState(false);
   const walletRef = useRef<WalletClient | undefined>(undefined);
   const accountRef = useRef<Address | undefined>(undefined);
   const loadGen = useRef(0);
@@ -109,10 +137,58 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
         setNote("");
       } catch (err) {
         if (!cancel) setNote(short(err));
+      } finally {
+        if (!cancel) setLoading(false);
       }
     })();
     return () => {
       cancel = true;
+    };
+  }, []);
+
+  // A wallet that already trusts this site is picked up again on load, without a prompt.
+  useEffect(() => {
+    const eth = ethereum();
+    if (!eth) return;
+    let cancel = false;
+    const adopt = (accounts: readonly string[]) => {
+      const first = accounts[0];
+      if (!first) {
+        walletRef.current = undefined;
+        accountRef.current = undefined;
+        setAccount(undefined);
+        return;
+      }
+      const who = getAddress(first);
+      walletRef.current = createWalletClient({ chain: giwaSepolia, transport: custom(eth) });
+      accountRef.current = who;
+      setAccount(who);
+    };
+    let off = false;
+    try {
+      off = localStorage.getItem(SIGNED_OUT) === "1";
+    } catch {
+      /* private mode */
+    }
+    if (!off) {
+      void (eth.request({ method: "eth_accounts" }) as Promise<string[]>)
+        .then((accounts) => {
+          if (!cancel && accounts.length > 0) adopt(accounts);
+        })
+        .catch(() => undefined);
+    }
+    // Follow the wallet when the user switches account in it, or locks it.
+    const onAccounts = (accounts: string[]) => {
+      if (accountRef.current) adopt(accounts);
+    };
+    const events = eth as EIP1193Provider & {
+      on?: (event: string, fn: (accounts: string[]) => void) => void;
+      removeListener?: (event: string, fn: (accounts: string[]) => void) => void;
+    };
+    events.on?.("accountsChanged", onAccounts);
+    return () => {
+      cancel = true;
+      events.removeListener?.("accountsChanged", onAccounts);
     };
   }, []);
 
@@ -123,21 +199,11 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
     const accounts = await next.requestAddresses();
     const who = accounts[0];
     if (!who) return;
+    await moveToGiwa(next, eth);
     try {
-      await next.switchChain({ id: giwaSepolia.id });
+      localStorage.removeItem(SIGNED_OUT);
     } catch {
-      await eth.request({
-        method: "wallet_addEthereumChain",
-        params: [
-          {
-            chainId: "0x164ce",
-            chainName: "GIWA Sepolia",
-            nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-            rpcUrls: ["https://sepolia-rpc.giwa.io"],
-            blockExplorerUrls: ["https://sepolia-explorer.giwa.io"],
-          },
-        ],
-      });
+      /* private mode */
     }
     walletRef.current = next;
     accountRef.current = who;
@@ -145,8 +211,29 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
     return { who, client: next };
   }, []);
 
-  async function ready() {
+  const disconnect = useCallback(() => {
+    walletRef.current = undefined;
+    accountRef.current = undefined;
+    setAccount(undefined);
+    try {
+      localStorage.setItem(SIGNED_OUT, "1");
+    } catch {
+      /* private mode */
+    }
+  }, []);
+
+  const ensureChain = useCallback(async () => {
+    const eth = ethereum();
+    const client = walletRef.current;
+    if (!eth || !client) return;
+    const id = await client.getChainId().catch(() => undefined);
+    if (id !== giwaSepolia.id) await moveToGiwa(client, eth);
+  }, []);
+
+  /** The connected wallet, connecting first if needed. Transactions also make sure it is on GIWA. */
+  async function ready(forTransaction = true) {
     if (accountRef.current && walletRef.current) {
+      if (forTransaction) await ensureChain();
       return { who: accountRef.current, client: walletRef.current };
     }
     const got = await connect();
@@ -286,7 +373,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
   }, [deployment]);
 
   const signMessage = useCallback(async (message: string) => {
-    const { who, client } = await ready();
+    const { who, client } = await ready(false);
     return client.signMessage({ account: who, message });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -296,19 +383,20 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       deployment,
       live,
       coins,
+      loading,
       preview,
       note,
       account,
-      pressOpen,
-      setPressOpen,
       connect,
+      disconnect,
+      ensureChain,
       refresh,
       createCoin,
       trade,
       unwrap,
       signMessage,
     }),
-    [deployment, live, coins, preview, note, account, pressOpen, connect, refresh, createCoin, trade, unwrap, signMessage],
+    [deployment, live, coins, loading, preview, note, account, connect, disconnect, ensureChain, refresh, createCoin, trade, unwrap, signMessage],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -1,106 +1,319 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { giwaSepolia } from "@/lib/chimi/chain";
+import { useBlockNumber, useEthUsd } from "@/lib/chimi/live";
 import { shortAddr } from "@/lib/chimi/market";
+import { CommandPalette } from "@/components/chimi/command";
+import {
+  ChimiMark,
+  IconBoard,
+  IconChart,
+  IconExternal,
+  IconHouse,
+  IconMenu,
+  IconPlus,
+  IconPoints,
+  IconPools,
+  IconSearch,
+  IconSwap,
+} from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
+import { Toaster } from "@/components/chimi/toast";
+import { Modal } from "@/components/chimi/ui";
+import { WalletButton } from "@/components/chimi/wallet-menu";
 
-const tabs = [
-  { to: "/", label: "Board" },
-  { to: "/swap", label: "Swap" },
-  { to: "/analytics", label: "Analytics" },
-  { to: "/pools", label: "Pools" },
-  { to: "/points", label: "Points" },
-  { to: "/houses", label: "Houses" },
-] as const;
+type NavItem = {
+  to: "/" | "/swap" | "/pools" | "/analytics" | "/points" | "/houses" | "/launch";
+  label: string;
+  icon: ComponentType<{ size?: number; className?: string }>;
+  on: (path: string) => boolean;
+};
 
-function TabPill({ here }: { here: string }) {
-  const bar = useRef<HTMLDivElement>(null);
-  // On a phone the tabs scroll sideways; keep the current one in view.
-  useEffect(() => {
-    bar.current?.querySelector<HTMLElement>("[data-on]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [here]);
+const NAV: NavItem[] = [
+  { to: "/", label: "Board", icon: IconBoard, on: (p) => p === "/" || p.startsWith("/coin/") },
+  { to: "/swap", label: "Swap", icon: IconSwap, on: (p) => p === "/swap" },
+  { to: "/pools", label: "Pools", icon: IconPools, on: (p) => p === "/pools" || p.startsWith("/pool/") },
+  { to: "/analytics", label: "Analytics", icon: IconChart, on: (p) => p === "/analytics" },
+  { to: "/points", label: "Points", icon: IconPoints, on: (p) => p === "/points" },
+  { to: "/houses", label: "Houses", icon: IconHouse, on: (p) => p.startsWith("/houses") },
+];
+
+const LAUNCH: NavItem = { to: "/launch", label: "Launch", icon: IconPlus, on: (p) => p === "/launch" };
+
+/** The side rail: icons only, opening to show labels when the pointer or keyboard is on it. */
+function Rail({ path }: { path: string }) {
+  const explorer = giwaSepolia.blockExplorers.default.url;
+  const label = "ml-3.5 whitespace-nowrap opacity-0 transition-opacity duration-150 group-hover/rail:opacity-100 group-focus-within/rail:opacity-100";
   return (
-    <div ref={bar} className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-line/80 bg-chip/80 p-1 [scrollbar-width:none]">
-      {tabs.map((tab) => {
-        const on =
-          tab.to === "/pools"
-            ? here === "/pools" || here.startsWith("/pool/")
-            : tab.to === "/houses"
-              ? here.startsWith("/houses")
-              : here === tab.to;
-        return (
-          <Link
-            key={tab.to}
-            to={tab.to}
-            data-on={on || undefined}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-medium sm:px-4 ${on ? "bg-fg/10 text-fg shadow-[inset_0_1px_0_rgba(255,255,255,.06)]" : "text-muted"}`}
-          >
-            {tab.label}
-          </Link>
-        );
-      })}
+    <aside className="group/rail fixed inset-y-0 left-0 z-40 hidden w-[68px] flex-col overflow-hidden border-r border-line bg-bg transition-[width,box-shadow] duration-200 ease-out hover:w-[224px] hover:shadow-[24px_0_60px_-20px_rgba(0,0,0,.8)] focus-within:w-[224px] lg:flex">
+      <Link to="/" className="flex h-16 shrink-0 items-center pl-[16px]" aria-label="Chimi home">
+        <ChimiMark size={36} />
+        <span className={`${label} flex items-baseline gap-2`}>
+          <span className="text-[19px] font-bold tracking-[0.02em]">Chimi</span>
+          <span className="font-serif text-[15px] text-gold">치미</span>
+        </span>
+      </Link>
+      <nav className="mt-2 flex flex-1 flex-col gap-1 px-3" aria-label="Main">
+        {NAV.map((item) => (
+          <RailLink key={item.to} item={item} on={item.on(path)} label={label} />
+        ))}
+        <div className="mx-1 my-2 h-px bg-line" />
+        <RailLink item={LAUNCH} on={LAUNCH.on(path)} label={label} accent />
+      </nav>
+      <div className="px-3 pb-12">
+        <a href={explorer} target="_blank" rel="noreferrer" className="flex h-11 items-center rounded-xl pl-[11px] text-muted hover:bg-raise hover:text-fg">
+          <IconExternal size={20} className="shrink-0" />
+          <span className={`${label} text-sm font-medium`}>GIWA explorer</span>
+        </a>
+      </div>
+    </aside>
+  );
+}
+
+function RailLink({ item, on, label, accent }: { item: NavItem; on: boolean; label: string; accent?: boolean }) {
+  const Icon = item.icon;
+  return (
+    <Link
+      to={item.to}
+      aria-current={on ? "page" : undefined}
+      className={`relative flex h-11 items-center rounded-xl pl-[11px] transition-colors ${on ? "bg-raise text-fg" : "text-muted hover:bg-raise hover:text-fg"}`}
+    >
+      {accent ? (
+        <span className="grid size-[22px] shrink-0 place-items-center rounded-md bg-seal text-onseal">
+          <Icon size={15} />
+        </span>
+      ) : (
+        <Icon size={21} className={`shrink-0 ${on ? "text-fg" : ""}`} />
+      )}
+      <span className={`${label} text-[15px] font-medium ${accent ? "!ml-[13px]" : ""}`}>{item.label}</span>
+      {on ? <span className="absolute top-2.5 bottom-2.5 -left-3 w-[3px] rounded-r-full bg-seal" /> : null}
+    </Link>
+  );
+}
+
+/** Phone: a tab bar along the bottom, with Launch in the middle and the rest behind More. */
+function TabBar({ path }: { path: string }) {
+  const [more, setMore] = useState(false);
+  useEffect(() => setMore(false), [path]);
+  const tabs = [NAV[0]!, NAV[1]!];
+  const after = [NAV[4]!];
+  const hidden = [NAV[2]!, NAV[3]!, NAV[5]!];
+  const moreOn = hidden.some((h) => h.on(path));
+  const tab = (item: NavItem) => {
+    const Icon = item.icon;
+    const on = item.on(path);
+    return (
+      <Link key={item.to} to={item.to} aria-current={on ? "page" : undefined} className={`flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium ${on ? "text-fg" : "text-faint"}`}>
+        <Icon size={21} />
+        {item.label}
+      </Link>
+    );
+  };
+  return (
+    <>
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex h-[64px] items-stretch border-t border-line bg-bg/92 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden" aria-label="Main">
+        {tabs.map(tab)}
+        <Link to="/launch" aria-label="Launch a coin" className="flex flex-1 items-center justify-center">
+          <span className="grid size-11 place-items-center rounded-2xl bg-seal text-onseal shadow-seal">
+            <IconPlus size={22} />
+          </span>
+        </Link>
+        {after.map(tab)}
+        <button type="button" onClick={() => setMore(true)} className={`flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium ${moreOn ? "text-fg" : "text-faint"}`}>
+          <IconMenu size={21} />
+          More
+        </button>
+      </nav>
+      {more ? (
+        <Modal title="More" onClose={() => setMore(false)}>
+          <div className="mt-4 grid gap-1.5">
+            {hidden.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link key={item.to} to={item.to} onClick={() => setMore(false)} className="flex items-center gap-3.5 rounded-xl bg-raise px-4 py-3.5 text-[15px] font-medium">
+                  <Icon size={20} className="text-muted" />
+                  {item.label}
+                </Link>
+              );
+            })}
+            <a href={giwaSepolia.blockExplorers.default.url} target="_blank" rel="noreferrer" className="flex items-center gap-3.5 rounded-xl bg-raise px-4 py-3.5 text-[15px] font-medium">
+              <IconExternal size={20} className="text-muted" />
+              GIWA explorer
+            </a>
+          </div>
+        </Modal>
+      ) : null}
+    </>
+  );
+}
+
+/** Desktop: a thin line along the bottom saying the chain is live, like a trading terminal. */
+function StatusBar() {
+  const { deployment, note, loading, coins } = useChimi();
+  const block = useBlockNumber();
+  const ethUsd = useEthUsd();
+  const explorer = giwaSepolia.blockExplorers.default.url;
+  const down = !loading && !!note && coins.length === 0;
+  return (
+    <div className="fixed right-0 bottom-0 left-[68px] z-30 hidden h-9 items-center justify-between gap-4 border-t border-line bg-bg/92 px-5 text-xs text-muted backdrop-blur-xl lg:flex">
+      <div className="flex min-w-0 items-center gap-4">
+        <span className={`flex items-center gap-2 font-medium ${down ? "text-down" : "text-ok"}`}>
+          <span className="live-dot" />
+          {down ? "Offline" : "Live"}
+        </span>
+        <span className="h-3.5 w-px bg-line" />
+        <span>GIWA Sepolia</span>
+        {block !== undefined ? (
+          <a href={`${explorer}/block/${block}`} target="_blank" rel="noreferrer" className="num hover:text-fg">
+            Block {block.toLocaleString("en-US")}
+          </a>
+        ) : null}
+        {ethUsd ? <span className="num">ETH ${ethUsd.toLocaleString("en-US", { maximumFractionDigits: 2 })}</span> : null}
+      </div>
+      <div className="flex shrink-0 items-center gap-4">
+        {deployment ? (
+          <a href={`${explorer}/address/${deployment.factory}`} target="_blank" rel="noreferrer" className="num hover:text-fg">
+            Factory {shortAddr(deployment.factory)}
+          </a>
+        ) : null}
+        <span className="rounded-md border border-line px-1.5 py-0.5 text-[11px] font-medium tracking-wide text-faint uppercase">Testnet</span>
+      </div>
     </div>
   );
 }
 
 export function Shell({ children }: { children: ReactNode }) {
-  const { account, connect, deployment } = useChimi();
   const location = useLocation();
-  const explorer = giwaSepolia.blockExplorers.default.url;
+  const path = location.pathname;
+  const [search, setSearch] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  // "/" or Cmd/Ctrl+K opens search from anywhere, unless the user is typing in a field.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const typing = !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      if ((e.key === "k" && (e.metaKey || e.ctrlKey)) || (e.key === "/" && !typing && !e.metaKey && !e.ctrlKey && !e.altKey)) {
+        e.preventDefault();
+        setSearch(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => setSearch(false), [path]);
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-30 border-b border-line/70 bg-bg/70 backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-[1180px] items-center justify-between gap-2 px-3 py-3 sm:h-16 sm:gap-3 sm:px-6 sm:py-0">
-          <Link to="/" className="flex min-w-0 items-center gap-2 text-fg sm:gap-3">
-            <img
-              src="/seal.jpg"
-              alt=""
-              className="size-9 rounded-full object-cover shadow-[0_0_0_1px_rgba(210,74,46,.8),0_4px_14px_rgba(210,74,46,.25)]"
-            />
-            <span className="hidden items-baseline gap-2 leading-none sm:flex">
-              <span className="font-display text-lg tracking-[0.06em]">CHIMI</span>
-              <span className="font-serif text-[15px] text-gold">치미</span>
-            </span>
+    <div className="flex min-h-dvh flex-col lg:pl-[68px]">
+      <Rail path={path} />
+      <header className={`sticky top-0 z-30 border-b transition-colors duration-200 ${scrolled ? "border-line bg-bg/85 backdrop-blur-xl" : "border-transparent bg-transparent"}`}>
+        <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
+          <Link to="/" className="flex items-center gap-2.5 lg:hidden" aria-label="Chimi home">
+            <ChimiMark size={34} />
+            <span className="hidden text-[18px] font-bold tracking-[0.02em] min-[400px]:inline">Chimi</span>
           </Link>
-          <nav className="hidden lg:block">
-            <TabPill here={location.pathname} />
-          </nav>
-          <div className="flex items-center gap-2">
-            <Link
-              to="/launch"
-              className="shrink-0 rounded-full bg-seal px-3 py-1.5 text-sm font-semibold text-onseal shadow-[inset_0_1px_0_rgba(255,255,255,.22),0_6px_20px_rgba(210,74,46,.35)] sm:px-4 sm:py-2"
-            >
+          <button
+            type="button"
+            onClick={() => setSearch(true)}
+            className="hidden h-10 w-full max-w-[440px] items-center gap-2.5 rounded-xl border border-line bg-chip/70 px-3.5 text-left text-sm text-faint transition-colors hover:border-edge hover:text-muted md:flex"
+          >
+            <IconSearch size={17} />
+            <span className="flex-1 truncate">Search coins, houses or an address</span>
+            <span className="kbd">/</span>
+          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <button type="button" onClick={() => setSearch(true)} aria-label="Search" className="btn btn-icon btn-secondary md:hidden">
+              <IconSearch size={18} />
+            </button>
+            <span className="chip hidden h-10 rounded-xl px-3 text-[13px] xl:inline-flex">
+              <span className="live-dot text-ok" />
+              GIWA Sepolia
+            </span>
+            <Link to="/launch" className="btn btn-primary hidden sm:inline-flex">
+              <IconPlus size={17} />
               Launch
             </Link>
-            <button
-              type="button"
-              onClick={() => void connect().catch(() => undefined)}
-              className="flex shrink-0 items-center gap-2 rounded-full border border-line bg-chip px-3 py-1.5 text-sm font-medium tabular-nums sm:px-4 sm:py-2"
-            >
-              {account ? <span className="size-1.5 rounded-full bg-ok shadow-[0_0_8px_#8fbfae]" /> : null}
-              {account ? shortAddr(account) : "Connect"}
-            </button>
+            <WalletButton />
           </div>
         </div>
-        <nav className="flex justify-center px-3 pb-3 lg:hidden">
-          <TabPill here={location.pathname} />
-        </nav>
       </header>
+
       <div className="flex-1">{children}</div>
-      <footer className="border-t border-line">
-        <div className="mx-auto flex max-w-[1180px] flex-wrap items-center justify-between gap-3 px-4 py-7 text-sm text-muted sm:px-6">
-          <p className="flex items-center gap-2.5">
-            <span className="font-serif text-base text-gold">치미</span>
-            <span>GIWA Sepolia · the pool is the market</span>
-          </p>
-          {deployment ? (
-            <a href={`${explorer}/address/${deployment.factory}`}>Factory {shortAddr(deployment.factory)}</a>
-          ) : (
-            <span>Factory not deployed</span>
-          )}
-        </div>
-      </footer>
+
+      <Footer />
+      <StatusBar />
+      <TabBar path={path} />
+      <Toaster />
+      {search ? <CommandPalette onClose={() => setSearch(false)} /> : null}
     </div>
+  );
+}
+
+function Footer() {
+  const { deployment } = useChimi();
+  const explorer = giwaSepolia.blockExplorers.default.url;
+  const link = "text-muted transition-colors hover:text-fg";
+  return (
+    <footer className="mt-10 border-t border-line pb-[64px] lg:pb-9">
+      <div className="page grid gap-8 py-10 sm:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <ChimiMark size={30} />
+            <span className="text-[17px] font-bold tracking-[0.02em]">Chimi</span>
+            <span className="font-serif text-sm text-gold">치미</span>
+          </div>
+          <p className="mt-3 max-w-xs text-sm leading-relaxed text-muted">The pool is the market. Every coin opens straight into a locked pool on GIWA, with no bonding curve.</p>
+        </div>
+        <div className="grid content-start gap-2.5 text-sm">
+          <p className="th uppercase">Trade</p>
+          <Link to="/" className={link}>
+            Board
+          </Link>
+          <Link to="/swap" className={link}>
+            Swap
+          </Link>
+          <Link to="/pools" className={link}>
+            Pools
+          </Link>
+          <Link to="/analytics" className={link}>
+            Analytics
+          </Link>
+        </div>
+        <div className="grid content-start gap-2.5 text-sm">
+          <p className="th uppercase">Earn</p>
+          <Link to="/launch" className={link}>
+            Launch a coin
+          </Link>
+          <Link to="/points" className={link}>
+            Points
+          </Link>
+          <Link to="/houses" className={link}>
+            Houses
+          </Link>
+        </div>
+        <div className="grid content-start gap-2.5 text-sm">
+          <p className="th uppercase">Chain</p>
+          <a href={explorer} target="_blank" rel="noreferrer" className={link}>
+            GIWA explorer
+          </a>
+          {deployment ? (
+            <a href={`${explorer}/address/${deployment.factory}`} target="_blank" rel="noreferrer" className={`${link} num`}>
+              Factory {shortAddr(deployment.factory)}
+            </a>
+          ) : (
+            <span className="text-faint">Factory not deployed</span>
+          )}
+          <span className="text-faint">GIWA Sepolia testnet</span>
+        </div>
+      </div>
+    </footer>
   );
 }

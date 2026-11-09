@@ -3,7 +3,7 @@ import { EthLogo, TokenLogo } from "@/components/chimi/token-logo";
 /** Overlapping pair logos (token over ETH), like a DEX pool row. */
 export function PairMark({ symbol, image, size = 42 }: { symbol: string; image?: string; size?: number }) {
   const overlap = Math.round(size * 0.62);
-  const gap = size >= 40 ? 2 : 1.5;
+  const gap = size >= 40 ? 2.5 : 2;
   return (
     <span className="relative block shrink-0" style={{ width: size + overlap, height: size }}>
       <EthLogo size={size} className="absolute top-0" style={{ left: overlap }} />

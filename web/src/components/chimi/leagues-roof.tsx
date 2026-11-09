@@ -22,7 +22,7 @@ export function LeaguesRoof({ active }: { active?: string }) {
         </clipPath>
       </defs>
       {/* ground */}
-      <path d="M40 252H560" stroke="#3f3325" strokeWidth="2" strokeLinecap="round" />
+      <path d="M40 252H560" stroke="var(--color-edge)" strokeWidth="2" strokeLinecap="round" />
 
       {/* 주춧돌: foundation stones under the pillars */}
       <g opacity={dim("Juchutdol")} fill={JUCHUTDOL}>
@@ -31,7 +31,7 @@ export function LeaguesRoof({ active }: { active?: string }) {
         ))}
       </g>
       {/* pillars and the beam */}
-      <g fill="#2c2219" stroke="#3f3325" strokeWidth="1.5">
+      <g fill="var(--color-raise2)" stroke="var(--color-edge)" strokeWidth="1.5">
         <rect x="170" y="158" width="20" height="74" rx="2" />
         <rect x="410" y="158" width="20" height="74" rx="2" />
         <rect x="146" y="154" width="308" height="10" rx="2" />
@@ -59,7 +59,7 @@ export function LeaguesRoof({ active }: { active?: string }) {
         {Array.from({ length: 24 }, (_, i) => {
           const x = 48 + i * 22;
           const t = Math.abs(x - 300) / 252;
-          return <circle key={x} cx={x} cy={136 - 22 * t ** 3} r="5.5" fill="#17120e" stroke={GIWA} strokeWidth="2" />;
+          return <circle key={x} cx={x} cy={136 - 22 * t ** 3} r="5.5" fill="var(--color-chip)" stroke={GIWA} strokeWidth="2" />;
         })}
       </g>
 

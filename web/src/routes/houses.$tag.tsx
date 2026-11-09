@@ -7,6 +7,8 @@ import { fmtPoints, useHouseAction, useHouses, useMyProfile, usePoints, useProfi
 import { useChimi } from "@/components/chimi/provider";
 import { EditSealDialog } from "@/components/chimi/found-house";
 import { HouseSeal } from "@/components/chimi/house-seal";
+import { IconChevronRight } from "@/components/chimi/icons";
+import { Empty } from "@/components/chimi/ui";
 import { DayBars, DojangMark, SectionLabel, Skeleton, Stat, WalletName } from "@/components/chimi/rewards-bits";
 
 export const Route = createFileRoute("/houses/$tag")({
@@ -33,20 +35,26 @@ function HousePage() {
 
   if (loading && !houses) {
     return (
-      <main className="mx-auto max-w-[1180px] px-4 pt-9 pb-20 sm:px-6">
-        <Skeleton className="h-40 w-full rounded-[28px]" />
+      <main className="page pt-4 pb-16">
+        <Skeleton className="h-64 w-full rounded-2xl" />
       </main>
     );
   }
   const house = houses?.state.houses[tag];
   if (!houses || !house || !score) {
     return (
-      <main className="mx-auto max-w-[1180px] px-4 pt-16 pb-24 text-center sm:px-6">
-        <p className="font-serif text-3xl text-gold">없음</p>
-        <p className="mt-3 text-lg font-semibold">{house?.closedAt ? `[${tag}] has closed.` : `There’s no house called [${tag}].`}</p>
-        <Link to="/houses" className="mt-6 inline-flex rounded-full border border-line px-4 py-2 text-sm text-muted hover:text-fg">
-          All houses
-        </Link>
+      <main className="page pt-4 pb-16">
+        <div className="card mt-4">
+          <Empty
+            mark="없음"
+            title={house?.closedAt ? `[${tag}] has closed` : `There’s no house called [${tag}]`}
+            action={
+              <Link to="/houses" className="btn btn-secondary">
+                All houses
+              </Link>
+            }
+          />
+        </div>
       </main>
     );
   }
@@ -73,22 +81,27 @@ function HousePage() {
 
   return (
     <main>
-      <section className="mx-auto max-w-[1180px] px-4 pt-7 pb-20 sm:px-6">
-        <Link to="/houses" className="text-sm text-muted hover:text-fg">
-          ← Houses
-        </Link>
+      <section className="page pt-4 pb-16">
+        <nav className="flex items-center gap-1.5 text-sm text-muted" aria-label="Breadcrumb">
+          <Link to="/houses" className="hover:text-fg">
+            Houses
+          </Link>
+          <IconChevronRight size={13} className="text-faint" />
+          <span className="text-fg">{house.name}</span>
+        </nav>
 
-        <div className="relative mt-4 overflow-hidden rounded-[28px] border border-gold/35 bg-gradient-to-br from-[#2a1f17] to-[#1d1611] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,.06),0_30px_60px_-30px_rgba(0,0,0,.8)] sm:p-8">
-          <div className="pointer-events-none absolute -top-24 -right-16 size-72 rounded-full bg-[radial-gradient(closest-side,rgba(210,74,46,.24),transparent)]" />
+        <div className="card relative mt-4 overflow-hidden p-5 sm:p-8">
+          <img src="/banner-960.webp" alt="" decoding="async" className="pointer-events-none absolute inset-0 size-full object-cover object-[center_30%] opacity-25 [mask-image:linear-gradient(to_bottom,black,transparent_70%)]" />
+          <div className="pointer-events-none absolute -top-24 -right-16 size-72 rounded-full bg-[radial-gradient(closest-side,rgba(212,67,43,.18),transparent)]" />
           <div className="relative flex flex-col gap-6 sm:flex-row sm:items-start">
             <HouseSeal seal={house.seal} ink={house.ink} size={128} className="-rotate-3 drop-shadow-[0_14px_30px_rgba(0,0,0,.45)]" title={`${SEALS[house.seal]} seal`} />
             <div className="min-w-0 flex-1">
               <SectionLabel>
                 HOUSE #{score.rank} · {SEALS[house.seal].toUpperCase()}
               </SectionLabel>
-              <h1 className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[36px] leading-none font-semibold tracking-[-0.03em] sm:text-[44px]">
+              <h1 className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[32px] leading-none font-semibold tracking-[-0.03em] sm:text-[42px]">
                 <span className="min-w-0 break-words">{house.name}</span>
-                <span className="rounded-lg border border-line px-2 py-0.5 text-base font-semibold tracking-[0.1em] text-muted">{house.tag}</span>
+                <span className="rounded-lg border border-edge bg-raise px-2 py-0.5 text-base font-semibold tracking-[0.1em] text-muted">{house.tag}</span>
               </h1>
               {editing === "motto" ? (
                 <form
@@ -98,11 +111,11 @@ function HousePage() {
                     void act({ type: "motto", motto: motto.trim() });
                   }}
                 >
-                  <input autoFocus maxLength={80} value={motto} onChange={(e) => setMotto(e.target.value)} className="min-w-0 flex-1 rounded-xl border border-line bg-bg px-3 py-2 font-serif" placeholder="A line for the house" />
-                  <button type="submit" disabled={!!action.pending || !!checkMotto(motto.trim())} className="rounded-full bg-seal px-4 text-sm font-semibold text-onseal disabled:opacity-40">
+                  <input autoFocus maxLength={80} value={motto} onChange={(e) => setMotto(e.target.value)} className="field min-w-0 flex-1 font-serif" placeholder="A line for the house" />
+                  <button type="submit" disabled={!!action.pending || !!checkMotto(motto.trim())} className="btn btn-primary h-11">
                     {action.pending ? "Signing…" : "Save"}
                   </button>
-                  <button type="button" onClick={() => setEditing(null)} className="px-2 text-sm text-muted">
+                  <button type="button" onClick={() => setEditing(null)} className="btn btn-ghost h-11">
                     Cancel
                   </button>
                 </form>
@@ -121,17 +134,17 @@ function HousePage() {
             <div className="flex shrink-0 flex-wrap gap-2 sm:flex-col sm:items-stretch">
               {member ? (
                 confirm === "leave" ? (
-                  <div className="rounded-2xl border border-line bg-bg/60 p-3 text-sm sm:w-56">
+                  <div className="glass rounded-xl p-3.5 text-sm sm:w-60">
                     <p className="text-muted">
                       {head && score.members.length === 1
                         ? `Leave [${tag}]? It closes with nobody in it${lock ? `, and you can’t join or found another house until ${when(lock)}` : ""}.`
                         : `Leave [${tag}]? ${lock ? `You can come back, but can’t join or found another house until ${when(lock)}.` : "You can come back any time."}${head ? " The longest-standing member becomes head." : ""}`}
                     </p>
                     <div className="mt-2.5 flex gap-2">
-                      <button type="button" disabled={!!action.pending} onClick={() => void act({ type: "leave" })} className="rounded-full bg-seal px-3.5 py-1.5 font-semibold text-onseal disabled:opacity-40">
+                      <button type="button" disabled={!!action.pending} onClick={() => void act({ type: "leave" })} className="btn btn-sm btn-primary">
                         {action.pending ? "Signing…" : "Leave"}
                       </button>
-                      <button type="button" onClick={() => setConfirm(null)} className="px-2 text-muted">
+                      <button type="button" onClick={() => setConfirm(null)} className="btn btn-sm btn-ghost">
                         Stay
                       </button>
                     </div>
@@ -140,7 +153,7 @@ function HousePage() {
                   <>
                     {head ? (
                       <>
-                        <button type="button" onClick={() => setEditing("seal")} className="rounded-full border border-line bg-chip px-4 py-2 text-sm font-medium hover:border-muted/60">
+                        <button type="button" onClick={() => setEditing("seal")} className="btn btn-secondary">
                           Change seal
                         </button>
                         <button
@@ -149,13 +162,13 @@ function HousePage() {
                             setMotto(house.motto);
                             setEditing("motto");
                           }}
-                          className="rounded-full border border-line bg-chip px-4 py-2 text-sm font-medium hover:border-muted/60"
+                          className="btn btn-secondary"
                         >
                           Edit motto
                         </button>
                       </>
                     ) : null}
-                    <button type="button" onClick={() => setConfirm("leave")} className="rounded-full px-4 py-2 text-sm text-muted hover:text-fg">
+                    <button type="button" onClick={() => setConfirm("leave")} className="btn btn-ghost">
                       Leave house
                     </button>
                   </>
@@ -166,7 +179,7 @@ function HousePage() {
                     type="button"
                     disabled={!!action.pending || full || lockedOut || noDojang}
                     onClick={() => void act({ type: "join", tag })}
-                    className="w-full rounded-full bg-seal px-5 py-2.5 text-sm font-semibold text-onseal shadow-[inset_0_1px_0_rgba(255,255,255,.22),0_6px_20px_rgba(210,74,46,.35)] disabled:opacity-40 disabled:shadow-none"
+                    className="btn btn-lg btn-primary w-full"
                   >
                     {action.pending ? "Sign in your wallet…" : full ? "House is full" : myStint ? `Move to [${tag}]` : `Join [${tag}]`}
                   </button>
@@ -190,9 +203,9 @@ function HousePage() {
               )}
             </div>
           </div>
-          {action.error ? <p className="relative mt-4 text-sm text-seal">{action.error}</p> : null}
+          {action.error ? <p role="alert" className="relative mt-4 text-sm text-down">{action.error}</p> : null}
 
-          <div className="relative mt-7 grid grid-cols-2 gap-4 border-t border-line/90 pt-5 sm:grid-cols-4">
+          <div className="relative mt-7 grid grid-cols-2 gap-4 border-t border-line pt-5 sm:grid-cols-4">
             <Stat label="Season" value={fmtPoints(score.season)} sub="points" />
             <Stat label="Today so far" value={fmtPoints(score.live)} sub={today ? dayLabel(today) : "estimate"} />
             <Stat label="Rank" value={`#${score.rank}`} sub={`of ${scores.length} house${scores.length === 1 ? "" : "s"}`} />
@@ -200,9 +213,9 @@ function HousePage() {
           </div>
         </div>
 
-        <div className="mt-6 grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="min-w-0 overflow-hidden rounded-3xl border border-line bg-chip/85">
-            <div className="grid grid-cols-[2.25rem_minmax(0,1fr)_6rem] gap-3 border-b border-line px-4 py-3 text-xs font-medium tracking-[0.06em] text-muted sm:grid-cols-[2.5rem_minmax(0,1fr)_6rem_7rem_5.5rem] sm:px-5">
+        <div className="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="card min-w-0 overflow-hidden">
+            <div className="th grid grid-cols-[2.25rem_minmax(0,1fr)_6rem] gap-3 border-b border-line px-4 py-3 sm:grid-cols-[2.5rem_minmax(0,1fr)_6rem_7rem_5.5rem] sm:px-5">
               <span>#</span>
               <span>Member</span>
               <span className="hidden text-right sm:block">Today</span>
@@ -214,13 +227,13 @@ function HousePage() {
                 const p = profiles[m.wallet];
                 const isHead = m.wallet === house.head;
                 return (
-                  <li key={m.wallet} className={`grid grid-cols-[2.25rem_minmax(0,1fr)_6rem] items-center gap-3 border-b border-line/50 px-4 py-3 last:border-0 sm:grid-cols-[2.5rem_minmax(0,1fr)_6rem_7rem_5.5rem] sm:px-5 ${m.wallet === me ? "bg-seal/8" : ""}`}>
-                    <span className="text-sm text-muted tabular-nums">{String(i + 1).padStart(2, "0")}</span>
+                  <li key={m.wallet} className={`row-hover grid grid-cols-[2.25rem_minmax(0,1fr)_6rem] items-center gap-3 border-b border-line/70 px-4 py-3 last:border-0 sm:grid-cols-[2.5rem_minmax(0,1fr)_6rem_7rem_5.5rem] sm:px-5 ${m.wallet === me ? "bg-gold/6 shadow-[inset_3px_0_0_var(--color-gold)]" : ""}`}>
+                    <span className="num text-sm text-faint">{i + 1}</span>
                     <span className="min-w-0">
                       <span className="flex min-w-0 items-center gap-1.5 text-[15px]">
                         <WalletName wallet={m.wallet} profile={p} you={m.wallet === me} />
                         <DojangMark verified={p?.verified} />
-                        {isHead ? <span className="shrink-0 rounded-full bg-gold/12 px-1.5 py-px text-[11px] font-semibold text-gold">head</span> : null}
+                        {isHead ? <span className="shrink-0 rounded-md bg-gold/15 px-1.5 py-px text-[11px] font-semibold text-gold">head</span> : null}
                       </span>
                       <span className="block text-xs text-muted">since {when(m.since)}</span>
                     </span>
@@ -229,11 +242,11 @@ function HousePage() {
                     <span className="hidden justify-end sm:flex">
                       {head && !isHead ? (
                         confirm === m.wallet ? (
-                          <button type="button" disabled={!!action.pending} onClick={() => void act({ type: "remove", wallet: m.wallet })} className="rounded-full bg-seal px-2.5 py-1 text-xs font-semibold text-onseal disabled:opacity-40">
+                          <button type="button" disabled={!!action.pending} onClick={() => void act({ type: "remove", wallet: m.wallet })} className="btn btn-sm btn-primary h-7 px-2.5 text-xs">
                             {action.pending ? "…" : "Confirm"}
                           </button>
                         ) : (
-                          <button type="button" onClick={() => setConfirm(m.wallet)} className="rounded-full px-2.5 py-1 text-xs text-muted hover:bg-fg/6 hover:text-fg">
+                          <button type="button" onClick={() => setConfirm(m.wallet)} className="btn btn-sm btn-ghost h-7 px-2.5 text-xs">
                             Remove
                           </button>
                         )
@@ -245,11 +258,11 @@ function HousePage() {
             </ol>
           </div>
 
-          <div className="rounded-3xl border border-line bg-chip/70 p-5">
+          <div className="card p-5">
             <SectionLabel>DAY BY DAY</SectionLabel>
             {score.daily.length > 0 || score.live > 0 ? (
               <div className="mt-4">
-                <DayBars days={score.daily} live={today ? { day: today, points: score.live } : null} color={INK_FOR_BARS[house.ink] ?? "#d24a2e"} height={96} />
+                <DayBars days={score.daily} live={today ? { day: today, points: score.live } : null} color={INK_FOR_BARS[house.ink] ?? "#e4563d"} height={96} />
               </div>
             ) : (
               <p className="mt-3 text-sm text-muted">No points yet. Members’ trades count from the day they join.</p>
@@ -265,12 +278,12 @@ function HousePage() {
 
 /** Bar colors for each ink, lifted so they read on the dark page. */
 const INK_FOR_BARS: Record<string, string> = {
-  seal: "#d24a2e",
-  ink: "#b6a68a",
+  seal: "#e4563d",
+  ink: "#b9bcc8",
   indigo: "#6f8fc9",
   jade: "#5fb3a6",
   pine: "#7fae6f",
   plum: "#c06a9e",
-  gold: "#e0b45a",
+  gold: "#e3b866",
   rust: "#d07a3e",
 };

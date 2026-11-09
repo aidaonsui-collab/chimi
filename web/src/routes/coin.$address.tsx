@@ -1,58 +1,43 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { formatEther, parseEther, type Address } from "viem";
 import { POOL_FEE, erc20Abi, giwaSepolia } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
-import {
-  estimatedOut,
-  feeLabel,
-  fmt,
-  loadCoin,
-  loadHolders,
-  loadSwaps,
-  short,
-  shortAddr,
-  wethPerToken,
-  type Coin,
-  type Holder,
-  type PoolSwap,
-} from "@/lib/chimi/market";
+import { ago, amountText, compactCount, ethText, money, tokenUsd } from "@/lib/chimi/format";
+import { SUPPLY, coinStats, fetchSwaps, openingCap, useEthUsd } from "@/lib/chimi/live";
+import { estimatedOut, feeLabel, loadCoin, loadHolders, short, shortAddr, wethPerToken, type Coin, type Holder, type PoolSwap } from "@/lib/chimi/market";
 import { saveTokenMeta, shrinkImage } from "@/lib/chimi/meta";
-import { tokenUsd } from "@/lib/chimi/format";
 import { publishTokenProfile, refreshTokenProfiles, sharedStorageEnabled, useTokenProfile } from "@/lib/chimi/token-image";
+import { AreaChart, type ChartPoint } from "@/components/chimi/charts";
+import {
+  IconArrowDown,
+  IconChevronRight,
+  IconExternal,
+  IconGlobe,
+  IconImage,
+  IconLock,
+  IconSliders,
+  IconTelegram,
+  IconX,
+} from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
+import { toast } from "@/components/chimi/toast";
 import { EthLogo, TokenLogo } from "@/components/chimi/token-logo";
+import { Blockie, Change, CopyButton, Empty, Modal, Note, Seg } from "@/components/chimi/ui";
 
 export const Route = createFileRoute("/coin/$address")({ component: CoinPage });
 
 const SLIPPAGE = [100, 200, 500];
 const RANGES = [
-  ["5M", 5 * 60],
   ["1H", 60 * 60],
   ["6H", 6 * 60 * 60],
   ["1D", 24 * 60 * 60],
   ["ALL", 0],
 ] as const;
+type Range = (typeof RANGES)[number][0];
 
-function chartPath(values: number[]) {
-  const series = values.length === 1 ? [values[0], values[0]] : values;
-  if (series.length === 0) return { line: "", area: "" };
-  const min = Math.min(...series);
-  const max = Math.max(...series);
-  const span = max - min || Math.abs(max) * 0.04 || 1;
-  const lo = min - span * 0.2;
-  const hi = max + span * 0.2;
-  const width = 640;
-  const height = 280;
-  const step = width / (series.length - 1);
-  const pts = series.map((value, i) => {
-    const x = i * step;
-    const y = height - ((value - lo) / (hi - lo)) * (height - 28) - 14;
-    return [x, y] as const;
-  });
-  const line = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
-  return { line, area: `${line} L${width},${height} L0,${height} Z` };
-}
+/** Left in the wallet when buying with everything, so the swap can still pay for gas. */
+const GAS_RESERVE = 200_000_000_000_000n;
 
 function tinyEth(wei: bigint) {
   const s = formatEther(wei);
@@ -61,18 +46,10 @@ function tinyEth(wei: bigint) {
   return s.slice(0, Math.min(s.length, hit + 4));
 }
 
-function money(n: number) {
-  if (!Number.isFinite(n)) return "—";
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 10_000) return `$${Math.round(n).toLocaleString("en-US")}`;
-  if (n >= 1) return `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
-  return `$${n.toFixed(4)}`;
-}
-
 function CoinPage() {
   const { address } = Route.useParams();
-  const { coins, deployment, account, connect, trade, unwrap, signMessage } = useChimi();
-  const listed = coins.find((c) => !c.preview && c.token.toLowerCase() === address.toLowerCase());
+  const { coins, deployment, account, connect, trade, unwrap, signMessage, loading } = useChimi();
+  const listed = coins.find((c) => c.token.toLowerCase() === address.toLowerCase());
   const [coin, setCoin] = useState<Coin | null>(listed ?? null);
   const [phase, setPhase] = useState<"loading" | "ready" | "missing">(listed ? "ready" : "loading");
   const [side, setSide] = useState<"buy" | "sell">("buy");
@@ -84,13 +61,17 @@ function CoinPage() {
   const [busy, setBusy] = useState(false);
   const meta = useTokenProfile(address);
   const [editing, setEditing] = useState(false);
-  const [ethUsd, setEthUsd] = useState<number>();
+  const ethUsd = useEthUsd();
   const [payBal, setPayBal] = useState<bigint>();
+  const [wethBal, setWethBal] = useState<bigint>();
   const [poolEth, setPoolEth] = useState<bigint>();
-  const [swaps, setSwaps] = useState<PoolSwap[]>([]);
-  const [holders, setHolders] = useState<Holder[]>([]);
-  const [range, setRange] = useState<(typeof RANGES)[number][0]>("1H");
+  const [swaps, setSwaps] = useState<PoolSwap[]>();
+  const [holders, setHolders] = useState<Holder[]>();
+  const [range, setRange] = useState<Range>("ALL");
   const [panel, setPanel] = useState<"trades" | "holders">("trades");
+  const [shown, setShown] = useState(25);
+  const [hover, setHover] = useState<ChartPoint | null>(null);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     if (listed) {
@@ -98,7 +79,7 @@ function CoinPage() {
       setPhase("ready");
       return;
     }
-    if (!deployment) return;
+    if (!deployment || loading) return;
     let cancel = false;
     setPhase("loading");
     void loadCoin(deployment, address as Address)
@@ -113,77 +94,116 @@ function CoinPage() {
     return () => {
       cancel = true;
     };
-  }, [address, deployment, listed]);
+  }, [address, deployment, listed, loading]);
 
+  const tradable = !!coin && !coin.preview;
+
+  // The tab's title follows the coin, so several coins open at once can be told apart.
   useEffect(() => {
+    if (!coin) return;
+    const before = document.title;
+    document.title = `${coin.name} ($${coin.symbol}) · Chimi`;
+    return () => {
+      document.title = before;
+    };
+  }, [coin?.name, coin?.symbol]);
+
+  // The wallet's balance of whatever it would pay with, and any wrapped ETH left over from selling.
+  useEffect(() => {
+    if (!coin || !deployment || !account || coin.preview) {
+      setPayBal(undefined);
+      setWethBal(undefined);
+      return;
+    }
     let cancel = false;
-    void fetch("https://api.coinbase.com/v2/prices/ETH-USD/spot")
-      .then((r) => r.json())
-      .then((body: { data?: { amount?: string } }) => {
-        const n = Number(body.data?.amount);
-        if (!cancel && Number.isFinite(n) && n > 0) setEthUsd(n);
+    setPayBal(undefined);
+    const read =
+      side === "buy"
+        ? publicClient.getBalance({ address: account })
+        : publicClient.readContract({ address: coin.token, abi: erc20Abi, functionName: "balanceOf", args: [account] });
+    void read
+      .then((wei) => {
+        if (!cancel) setPayBal(wei);
+      })
+      .catch(() => undefined);
+    void publicClient
+      .readContract({ address: deployment.weth, abi: erc20Abi, functionName: "balanceOf", args: [account] })
+      .then((wei) => {
+        if (!cancel) setWethBal(wei);
       })
       .catch(() => undefined);
     return () => {
       cancel = true;
     };
-  }, []);
+  }, [account, coin, deployment, side, reload]);
 
   useEffect(() => {
-    if (!coin || !deployment || !account) {
-      setPayBal(undefined);
+    if (!coin || !deployment || coin.preview) {
+      if (coin?.preview) {
+        setSwaps([]);
+        setHolders([]);
+      }
       return;
     }
     let cancel = false;
-    const read =
-      side === "buy"
-        ? publicClient.getBalance({ address: account })
-        : publicClient.readContract({
-            address: coin.token,
-            abi: erc20Abi,
-            functionName: "balanceOf",
-            args: [account],
-          });
-    void read.then((wei) => {
-      if (!cancel) setPayBal(wei);
-    });
-    return () => {
-      cancel = true;
-    };
-  }, [account, coin, deployment, side]);
-
-  useEffect(() => {
-    if (!coin || !deployment) return;
-    let cancel = false;
     void publicClient
-      .readContract({
-        address: deployment.weth,
-        abi: erc20Abi,
-        functionName: "balanceOf",
-        args: [coin.pool],
-      })
+      .readContract({ address: deployment.weth, abi: erc20Abi, functionName: "balanceOf", args: [coin.pool] })
       .then((wei) => {
         if (!cancel) setPoolEth(wei);
       })
       .catch(() => undefined);
-    void loadSwaps(coin.pool, coin.tokenIs0)
+    void fetchSwaps(coin, reload > 0)
       .then(async (rows) => {
         if (cancel) return;
         setSwaps(rows);
-        const found = await loadHolders(coin.token, coin.pool, rows.map((row) => row.recipient));
+        const found = await loadHolders(coin.token, coin.pool, [coin.creator, ...rows.map((row) => row.recipient)]);
         if (!cancel) setHolders(found);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancel) {
+          setSwaps((prev) => prev ?? []);
+          setHolders((prev) => prev ?? []);
+        }
+      });
     return () => {
       cancel = true;
     };
-  }, [coin, deployment]);
+    // Reads again when the pool or its price changes, and after each trade made here.
+  }, [coin?.pool, coin?.sqrtPriceX96, deployment, reload]);
 
   const explorer = giwaSepolia.blockExplorers.default.url;
   const price = coin ? wethPerToken(coin.sqrtPriceX96, coin.tokenIs0) : 0n;
-  const fdvEth = Number(price * 1_000_000_000n) / 1e18;
-  const fdvUsd = ethUsd ? fdvEth * ethUsd : undefined;
-  const liqUsd = ethUsd && poolEth !== undefined ? (Number(poolEth) / 1e18) * ethUsd : undefined;
+  const priceEth = Number(price) / 1e18;
+  const capEth = priceEth * SUPPLY;
+  const now = Math.floor(Date.now() / 1000);
+
+  const market = useMemo(() => {
+    const list = swaps ?? [];
+    const is0 = coin?.tokenIs0 ?? true;
+    const capOf = (sqrt: bigint) => (Number(wethPerToken(sqrt, is0)) / 1e18) * SUPPLY;
+    const priced = list.filter((s) => s.sqrtPriceX96 > 0n);
+    const windowSec = RANGES.find((item) => item[0] === range)?.[1] ?? 0;
+    const from = windowSec === 0 ? (priced[0]?.time ?? now - 3600) : now - windowSec;
+    const inside = priced.filter((s) => s.time >= from);
+    const points: ChartPoint[] = [];
+    // The cap the window opened at: where the trade before it left the price, or what its first trade started from.
+    const opened = coin ? openingCap(list, coin, from) : undefined;
+    if (opened !== undefined) points.push({ t: inside.length && windowSec === 0 ? Math.max(from - 60, inside[0]!.time - 60) : from, v: opened });
+    for (const s of inside) points.push({ t: s.time, v: capOf(s.sqrtPriceX96) });
+    if (points.length === 0) points.push({ t: from, v: capEth });
+    points.push({ t: now, v: capEth });
+    const first = points[0]!.v;
+    const day = list.filter((s) => now - s.time <= 86_400);
+    return {
+      points,
+      from: Math.min(from, points[0]!.t),
+      change: first > 0 && inside.length > 0 ? ((capEth - first) / first) * 100 : undefined,
+      volEth: day.reduce((sum, s) => sum + Number(s.ethAmount) / 1e18, 0),
+      trades: day.length,
+      athEth: Math.max(capEth, ...priced.map((s) => capOf(s.sqrtPriceX96))),
+    };
+    // `now` moves every render; the numbers only need to follow the trades, the range and the price.
+  }, [swaps, range, capEth, coin?.tokenIs0]);
 
   let parsed = 0n;
   let badAmount = false;
@@ -194,23 +214,7 @@ function CoinPage() {
   }
   const quote = coin && !badAmount ? estimatedOut(parsed, price, side === "buy") : 0n;
   const minOut = (quote * BigInt(10_000 - slippageBps)) / 10_000n;
-  const now = Math.floor(Date.now() / 1000);
-  const windowSec = RANGES.find((item) => item[0] === range)?.[1] ?? 0;
-  const inRange = swaps.filter((swap) => windowSec === 0 || now - swap.time <= windowSec);
-  const dayAgo = swaps.filter((swap) => now - swap.time <= 24 * 60 * 60);
-  const volumeUsd = ethUsd ? dayAgo.reduce((sum, swap) => sum + (Number(swap.ethAmount) / 1e18) * ethUsd, 0) : undefined;
-  const capOf = (sqrt: bigint) => {
-    const eth = (Number(wethPerToken(sqrt, coin?.tokenIs0 ?? true)) / 1e18) * 1_000_000_000;
-    return ethUsd ? eth * ethUsd : eth;
-  };
-  const series = [...inRange.map((swap) => capOf(swap.sqrtPriceX96)), fdvUsd ?? fdvEth];
-  const ath = Math.max(fdvUsd ?? fdvEth, ...swaps.map((swap) => capOf(swap.sqrtPriceX96)));
-  const first = series[0] || 0;
-  const last = series[series.length - 1] || 0;
-  const change = first > 0 ? ((last - first) / first) * 100 : 0;
-  const chart = chartPath(series);
-  const clock = (unix: number) =>
-    new Date(unix * 1000).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const short_ = account && payBal !== undefined && parsed > payBal;
 
   async function go() {
     if (!coin) return;
@@ -231,14 +235,20 @@ function CoinPage() {
     try {
       setBusy(true);
       setKind("");
-      setTradeNote("Confirm in your wallet.");
-      await trade(coin, side, amount.trim(), minOut);
+      setTradeNote(side === "sell" ? "Approve, then confirm the sale in your wallet." : "Confirm in your wallet.");
+      const hash = await trade(coin, side, amount.trim(), minOut);
       setKind("good");
       setTradeNote(side === "buy" ? "Bought." : "Sold for wrapped ETH.");
+      toast({
+        kind: "good",
+        title: side === "buy" ? `Bought ${coin.symbol}` : `Sold ${coin.symbol}`,
+        body: side === "buy" ? `${amount.trim()} ETH in.` : "You received wrapped ETH. Unwrap it below the trade button.",
+        href: `${explorer}/tx/${hash}`,
+      });
       setAmount("");
       const fresh = deployment ? await loadCoin(deployment, coin.token) : null;
       if (fresh) setCoin(fresh);
-      setSwaps(await loadSwaps(coin.pool, coin.tokenIs0));
+      setReload((n) => n + 1);
     } catch (err) {
       setKind("bad");
       setTradeNote(short(err));
@@ -250,9 +260,13 @@ function CoinPage() {
   async function doUnwrap() {
     try {
       setBusy(true);
-      await unwrap();
+      setKind("");
+      setTradeNote("Confirm the unwrap in your wallet.");
+      const hash = await unwrap();
       setKind("good");
       setTradeNote("Unwrapped.");
+      toast({ kind: "good", title: "Unwrapped to ETH", href: `${explorer}/tx/${hash}` });
+      setReload((n) => n + 1);
     } catch (err) {
       setKind("bad");
       setTradeNote(short(err));
@@ -263,12 +277,30 @@ function CoinPage() {
 
   if (!coin) {
     return (
-      <main className="mx-auto max-w-[1180px] px-5 py-16">
-        <Link to="/" className="text-sm text-seal">Board</Link>
-        <h1 className="mt-6 font-display text-6xl leading-none">
-          {phase === "loading" ? "Reading the factory…" : "Not on this factory."}
-        </h1>
-        <p className="mt-3 max-w-md text-muted">{phase === "loading" ? "Checking this coin." : shortAddr(address)}</p>
+      <main className="page pt-2 pb-16">
+        {phase === "missing" ? (
+          <div className="card mt-6">
+            <Empty
+              mark="없음"
+              title="This coin isn’t on Chimi’s factory"
+              action={
+                <Link to="/" className="btn btn-secondary">
+                  Back to the board
+                </Link>
+              }
+            >
+              <span className="num">{shortAddr(address)}</span> wasn’t launched here, so there is no pool to show.
+            </Empty>
+          </div>
+        ) : (
+          <div className="space-y-5" aria-busy>
+            <span className="skeleton h-[280px] w-full rounded-2xl" />
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+              <span className="skeleton h-[420px] rounded-2xl" />
+              <span className="skeleton h-[420px] rounded-2xl" />
+            </div>
+          </div>
+        )}
       </main>
     );
   }
@@ -277,339 +309,422 @@ function CoinPage() {
   const recvSymbol = side === "buy" ? coin.symbol : "ETH";
   const coinLogo = (size: number) => <TokenLogo symbol={coin.symbol} image={meta?.image} size={size} />;
   const isCreator = Boolean(account && coin.creator && account.toLowerCase() === coin.creator.toLowerCase() && !coin.preview);
-  const priceUsd = ethUsd ? (Number(price) / 1e18) * ethUsd : undefined;
-  const links = [
-    { label: "Contract", href: `${explorer}/address/${coin.token}` },
-    { label: "Pool", href: `${explorer}/address/${coin.pool}` },
-    meta?.twitter ? { label: "X", href: `https://x.com/${meta.twitter}` } : null,
-    meta?.telegram ? { label: "Telegram", href: `https://t.me/${meta.telegram}` } : null,
-    meta?.website ? { label: "Website", href: meta.website } : null,
-  ].filter((link): link is { label: string; href: string } => Boolean(link));
+  const cash = (eth: number | undefined) => (eth === undefined ? "—" : ethUsd ? money(eth * ethUsd) : `${ethText(eth)} ETH`);
+  const liqEth = poolEth === undefined ? undefined : Number(poolEth) / 1e18;
+  const headline = hover ? hover.v : capEth;
+  const tone = market.change === undefined || Math.abs(market.change) < 0.005 ? "gold" : market.change > 0 ? "up" : "down";
+  const list = swaps ? [...swaps].reverse() : [];
+  const supplyWei = BigInt(SUPPLY) * 10n ** 18n;
 
   return (
-    <main className="mx-auto max-w-[1180px] px-4 pt-5 pb-16 sm:px-6 sm:pt-7">
+    <main className="page pt-2 pb-16">
       <nav className="flex items-center gap-1.5 text-sm text-muted" aria-label="Breadcrumb">
-        <Link to="/" className="hover:text-fg">Board</Link>
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden><path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        <span className="text-fg">{coin.symbol}</span>
-        <span className="ml-1 truncate tabular-nums">{shortAddr(coin.token)}</span>
+        <Link to="/" className="hover:text-fg">
+          Board
+        </Link>
+        <IconChevronRight size={13} className="text-faint" />
+        <span className="truncate text-fg">{coin.name}</span>
       </nav>
 
-      <header className="mt-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-3.5">
-          {coinLogo(56)}
-          <div className="min-w-0">
-            <h1 className="truncate text-[28px] leading-tight font-semibold tracking-[-0.03em] sm:text-[32px]">{coin.name}</h1>
-            <p className="text-[15px] text-muted">{coin.symbol}</p>
-          </div>
+      <header className="card relative mt-3 overflow-hidden">
+        <div className="relative h-[112px] overflow-hidden sm:h-[152px]">
+          <img src="/banner-960.webp" alt="" decoding="async" className="absolute inset-0 size-full object-cover object-[center_40%]" />
+          {meta?.image ? <img src={meta.image} alt="" referrerPolicy="no-referrer" className="absolute inset-0 size-full scale-125 object-cover opacity-55 blur-3xl saturate-150" /> : null}
+          <div className="absolute inset-0 bg-gradient-to-t from-chip via-chip/35 to-transparent" />
         </div>
-        <div className="flex flex-wrap gap-2">
-          {links.map((link) => (
-            <a key={link.label} href={link.href} target="_blank" rel="noreferrer" className="rounded-full border border-line bg-chip px-3.5 py-1.5 text-sm text-muted hover:text-fg">
-              {link.label}
-            </a>
-          ))}
-          {isCreator ? (
-            <button type="button" onClick={() => setEditing((v) => !v)} className="rounded-full border border-gold/40 bg-gold/10 px-3.5 py-1.5 text-sm font-medium text-gold">
-              {meta?.shared ? "Edit profile" : "Set picture"}
-            </button>
-          ) : null}
+        <div className="relative px-4 pb-5 sm:px-7 sm:pb-6">
+          <div className="-mt-11 flex flex-wrap items-end justify-between gap-x-6 gap-y-4 sm:-mt-12">
+            <div className="flex min-w-0 items-end gap-4">
+              <span className="rounded-[20px] bg-chip p-1">
+                <TokenLogo symbol={coin.symbol} image={meta?.image} size={88} shape="rounded" />
+              </span>
+              <div className="min-w-0 pb-1">
+                <h1 className="truncate text-[28px] leading-tight font-semibold tracking-[-0.03em] sm:text-[34px]">{coin.name}</h1>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <span className="chip text-fg">${coin.symbol}</span>
+                  {coin.preview ? (
+                    <span className="chip border-gold/30 bg-gold/10 text-gold">Preview</span>
+                  ) : (
+                    <span className="chip" title="The launch liquidity is locked for 100 years">
+                      <IconLock size={12} />
+                      Locked pool
+                    </span>
+                  )}
+                  <a href={`${explorer}/address/${coin.creator}`} target="_blank" rel="noreferrer" className="chip hover:text-fg">
+                    <Blockie address={coin.creator} size={14} />
+                    <span className="num">{shortAddr(coin.creator)}</span>
+                  </a>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="chip h-9 gap-1 rounded-xl pr-1 pl-3">
+                <span className="num text-[13px]">{shortAddr(coin.token)}</span>
+                <CopyButton text={coin.token} label="Copy contract address" className="btn btn-icon btn-sm btn-ghost size-7" size={14} />
+              </span>
+              <IconLink href={`${explorer}/address/${coin.token}`} label="Contract on the explorer">
+                <IconExternal size={16} />
+              </IconLink>
+              {meta?.twitter ? (
+                <IconLink href={`https://x.com/${meta.twitter}`} label="X">
+                  <IconX size={15} />
+                </IconLink>
+              ) : null}
+              {meta?.telegram ? (
+                <IconLink href={`https://t.me/${meta.telegram}`} label="Telegram">
+                  <IconTelegram size={16} />
+                </IconLink>
+              ) : null}
+              {meta?.website ? (
+                <IconLink href={meta.website} label="Website">
+                  <IconGlobe size={16} />
+                </IconLink>
+              ) : null}
+              <CopyButton text={typeof window === "undefined" ? "" : window.location.href} label="Copy link to this coin" className="btn btn-icon btn-sm btn-secondary size-9 rounded-xl" size={16} />
+              {isCreator ? (
+                <button type="button" onClick={() => setEditing(true)} className="btn btn-sm h-9 rounded-xl border-gold/35 bg-gold/10 text-gold hover:bg-gold/15">
+                  <IconImage size={15} />
+                  {meta?.shared ? "Edit profile" : "Set picture"}
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          {meta?.description ? <p className="mt-4 max-w-3xl text-[15px] leading-relaxed text-muted">{meta.description}</p> : null}
+
+          <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-line pt-5 sm:grid-cols-3 lg:grid-cols-6">
+            <Stat label="Market cap" value={cash(capEth)} />
+            <Stat label="Price" value={ethUsd ? tokenUsd(priceEth * ethUsd) : `${tinyEth(price)} ETH`} />
+            <Stat label="24h" value={<Change value={swaps ? coinStats(coin, swaps, now).change : undefined} />} wait={!swaps} />
+            <Stat label="24h volume" value={cash(market.volEth)} wait={!swaps} />
+            <Stat label="Liquidity" value={coin.preview ? "—" : cash(liqEth)} wait={!coin.preview && liqEth === undefined} />
+            <Stat label="Holders" value={holders ? holders.length.toLocaleString("en-US") : "—"} wait={!holders} />
+          </dl>
         </div>
       </header>
 
-      {isCreator && editing ? (
-        <ProfileEditor
-          token={coin.token}
-          symbol={coin.symbol}
-          initial={meta}
-          sign={signMessage}
-          onDone={() => setEditing(false)}
-        />
-      ) : null}
-
-      <div className="mt-6 grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <section className="min-w-0 lg:col-start-1">
-          <p className="text-[40px] leading-none font-semibold tracking-[-0.04em] tabular-nums sm:text-[44px]">
-            {fdvUsd ? money(fdvUsd) : `${fmt(price * 1_000_000_000n, 4)} ETH`}
-          </p>
-          <p className="mt-1.5 text-sm">
-            <span className={change < 0 ? "text-seal" : "text-ok"}>
-              {change < 0 ? "▼" : "▲"} {Math.abs(change).toFixed(2)}%
-            </span>
-            <span className="ml-1.5 text-muted">{range === "ALL" ? "all time" : range} · market cap</span>
-          </p>
-          <div className="relative mt-5 h-[240px] sm:h-[300px]">
-            <svg viewBox="0 0 640 280" preserveAspectRatio="none" className="h-full w-full">
-              <defs>
-                <linearGradient id="chimi-fill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#e0b45a" stopOpacity="0.35" />
-                  <stop offset="100%" stopColor="#e0b45a" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              {[70, 140, 210].map((y) => (
-                <line key={y} x1="0" y1={y} x2="640" y2={y} stroke="#3f3325" strokeDasharray="3 6" vectorEffect="non-scaling-stroke" />
-              ))}
-              {chart.area ? <path d={chart.area} fill="url(#chimi-fill)" /> : null}
-              {chart.line ? <path d={chart.line} fill="none" stroke="#e0b45a" strokeWidth="2" vectorEffect="non-scaling-stroke" /> : null}
-            </svg>
-            <div className="pointer-events-none absolute inset-y-2 right-0 flex flex-col justify-between text-[11px] text-muted">
-              <span>{money(Math.max(...series))}</span>
-              <span>{money(series.reduce((a, b) => a + b, 0) / series.length || 0)}</span>
-              <span>{money(Math.min(...series))}</span>
+      <div className="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <section className="card min-w-0 p-4 sm:p-6 lg:col-start-1">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[13px] text-muted">Market cap</p>
+              <p className="num mt-1 text-[34px] leading-none font-semibold tracking-[-0.035em] sm:text-[40px]">{cash(headline)}</p>
+              <p className="mt-2 flex items-center gap-2 text-sm">
+                {hover ? (
+                  <span className="num text-muted">{new Date(hover.t * 1000).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+                ) : (
+                  <>
+                    <Change value={market.change} className="font-medium" />
+                    <span className="text-muted">{range === "ALL" ? "since the first trade we can read" : `past ${range === "1H" ? "hour" : range === "6H" ? "6 hours" : "day"}`}</span>
+                  </>
+                )}
+              </p>
             </div>
-            <div className="absolute right-10 bottom-0 left-0 flex justify-between text-[11px] text-muted">
-              <span>{inRange[0] ? clock(inRange[0].time) : ""}</span>
-              <span>{inRange.length > 2 ? clock(inRange[Math.floor(inRange.length / 2)].time) : ""}</span>
-              <span>{inRange.length ? clock(inRange[inRange.length - 1].time) : "now"}</span>
-            </div>
+            <Seg label="Chart range" value={range} onChange={setRange} options={RANGES.map(([label]) => [label, label] as const)} />
           </div>
-          <div className="mt-4 flex justify-between gap-3">
-            <div className="flex rounded-full border border-line bg-chip p-1">
-              {RANGES.map(([label]) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => setRange(label)}
-                  className={`rounded-full px-3 py-1 text-xs font-medium ${range === label ? "bg-fg/10 text-fg" : "text-muted"}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="min-w-0 rounded-[28px] border border-line bg-chip p-3 shadow-[inset_0_1px_0_rgba(255,255,255,.05),0_30px_60px_-30px_rgba(0,0,0,.8)] lg:sticky lg:top-24 lg:col-start-2 lg:row-span-4 lg:row-start-1">
-          <div className="flex items-center justify-between px-2 pt-1 pb-3">
-            <div className="flex rounded-[10px] border border-line bg-bg p-[3px]">
-              {(["buy", "sell"] as const).map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => {
-                    setSide(key);
-                    setAmount("");
-                  }}
-                  className={`rounded-[7px] px-4 py-1.5 text-[13px] font-medium capitalize ${side === key ? "bg-[#3a2d22] text-fg shadow-[inset_0_1px_0_rgba(255,255,255,.06)]" : "text-muted"}`}
-                >
-                  {key}
-                </button>
-              ))}
-            </div>
-            <button type="button" onClick={() => setAdjust((v) => !v)} className="rounded-full border border-line px-3 py-1.5 text-[13px] font-medium text-muted tabular-nums">
-              {slippageBps / 100}% slippage
-            </button>
-          </div>
-          {adjust ? (
-            <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-line bg-bg px-4 py-3">
-              <span className="text-sm text-muted">Max slippage</span>
-              <div className="flex gap-1.5">
-                {SLIPPAGE.map((bps) => (
-                  <button
-                    key={bps}
-                    type="button"
-                    onClick={() => setSlippageBps(bps)}
-                    className={`rounded-full border px-3 py-1 text-xs font-medium ${slippageBps === bps ? "border-fg bg-fg text-bg" : "border-line text-muted"}`}
-                  >
-                    {bps / 100}%
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          <div className="relative flex flex-col gap-1.5">
-            <TradeField
-              label={side === "buy" ? "You pay" : "You sell"}
-              symbol={paySymbol}
-              logo={side === "buy" ? <EthLogo size={26} /> : coinLogo(26)}
-              value={amount}
-              onChange={setAmount}
-              balance={payBal}
-              usd={ethUsd && parsed > 0n ? money((Number(parsed) / 1e18) * (side === "buy" ? 1 : Number(price) / 1e18) * ethUsd) : undefined}
-            />
-            <button
-              type="button"
-              aria-label="Flip direction"
-              onClick={() => {
-                setSide((v) => (v === "buy" ? "sell" : "buy"));
-                setAmount("");
-              }}
-              className="absolute top-1/2 left-1/2 z-10 grid size-10 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-[14px] border-4 border-chip bg-chip text-fg shadow-[0_0_0_1px_#3f3325]"
-            >
-              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden>
-                <path d="M8 2.5v11M3.5 9 8 13.5 12.5 9" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-            <TradeField
-              label="You receive"
-              symbol={recvSymbol}
-              logo={side === "buy" ? coinLogo(26) : <EthLogo size={26} />}
-              value={quote === 0n ? "0" : fmt(quote)}
-              readOnly
-              usd={ethUsd && quote > 0n ? money((Number(quote) / 1e18) * (side === "buy" ? Number(price) / 1e18 : 1) * ethUsd) : undefined}
-            />
-          </div>
-
-          <div className="mt-2.5 flex gap-1.5">
-            {[25, 50, 75, 100].map((pct) => (
-              <button
-                key={pct}
-                type="button"
-                disabled={payBal === undefined}
-                onClick={() => payBal !== undefined && setAmount(formatEther((payBal * BigInt(pct)) / 100n))}
-                className="flex-1 rounded-full border border-line py-1.5 text-xs text-muted disabled:opacity-40"
-              >
-                {pct === 100 ? "Max" : `${pct}%`}
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-2.5 rounded-[20px] border border-line/70 px-4 text-sm">
-            <div className="flex justify-between gap-3 border-b border-line/55 py-2.5">
-              <span className="text-muted">Rate</span>
-              <span className="text-right tabular-nums">1 {coin.symbol} = {tinyEth(price)} ETH</span>
-            </div>
-            <div className="flex justify-between gap-3 py-2.5">
-              <span className="text-muted">Minimum received</span>
-              <span className="text-right tabular-nums">{quote === 0n ? "—" : `${fmt(minOut)} ${recvSymbol}`}</span>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void go()}
-            className="mt-3 w-full rounded-[20px] bg-seal py-4 text-base font-semibold text-onseal shadow-[inset_0_1px_0_rgba(255,255,255,.22),0_10px_30px_rgba(210,74,46,.28)] disabled:opacity-40"
-          >
-            {busy ? "Confirming…" : account ? (side === "buy" ? `Buy ${coin.symbol}` : `Sell ${coin.symbol}`) : "Connect wallet"}
-          </button>
-          <button type="button" onClick={() => void doUnwrap()} className="mt-2 w-full text-center text-xs text-muted">
-            Unwrap WETH
-          </button>
-          {tradeNote ? (
-            <p className={`mt-2 text-center text-sm ${kind === "bad" ? "text-seal" : kind === "good" ? "text-ok" : "text-muted"}`}>{tradeNote}</p>
-          ) : null}
-        </section>
-
-        <section className="min-w-0 lg:col-start-1">
-          <h2 className="text-xl font-semibold tracking-[-0.02em]">Stats</h2>
-          <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-5 rounded-3xl border border-line bg-chip px-5 py-5 sm:grid-cols-3">
-            <Stat label="Market cap" value={fdvUsd ? money(fdvUsd) : `${fmt(price * 1_000_000_000n, 4)} ETH`} />
-            <Stat label="FDV" value={fdvUsd ? money(fdvUsd) : `${fmt(price * 1_000_000_000n, 4)} ETH`} />
-            <Stat label="Liquidity" value={liqUsd ? money(liqUsd) : poolEth !== undefined ? `${fmt(poolEth, 4)} ETH` : "—"} />
-            <Stat label="1 day volume" value={volumeUsd === undefined ? "—" : money(volumeUsd)} />
-            <Stat label="All-time high" value={fdvUsd || ath ? money(ath) : "—"} />
-            <Stat label="Price" value={priceUsd !== undefined ? tokenUsd(priceUsd) : `${tinyEth(price)} ETH`} />
-          </div>
-        </section>
-
-        <section className="min-w-0 lg:col-start-1">
-          <h2 className="text-xl font-semibold tracking-[-0.02em]">About</h2>
-          <div className="mt-3 rounded-3xl border border-line bg-chip px-5 py-5">
-            <p className="text-[15px] text-muted">{meta?.description || "The full supply sits in a locked pool. No bonding curve."}</p>
-            <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-muted">
-              <span>Creator <a className="text-fg tabular-nums" href={`${explorer}/address/${coin.creator}`} target="_blank" rel="noreferrer">{shortAddr(coin.creator)}</a></span>
-              <span>Supply <span className="text-fg">1B</span></span>
-              <span>Pool <span className="text-fg">{coin.symbol}/ETH · v3 · {feeLabel(coin.fee ?? POOL_FEE)}</span></span>
-              <span>Launch liquidity <span className="text-fg">locked 100 years</span></span>
-            </div>
-          </div>
-        </section>
-
-        <section className="min-w-0 lg:col-start-1">
-          <div className="flex items-center gap-2">
-            {(["trades", "holders"] as const).map((key) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setPanel(key)}
-                className={`rounded-full px-3.5 py-1.5 text-[15px] font-semibold ${panel === key ? "bg-fg/10 text-fg" : "text-muted"}`}
-              >
-                {key === "trades" ? "Transactions" : "Holders"}
-              </button>
-            ))}
-            <span className="ml-auto text-xs text-muted">{panel === "trades" ? swaps.length : holders.length}</span>
-          </div>
-          <div className="mt-3 overflow-hidden rounded-3xl border border-line bg-chip">
-            {panel === "trades" ? (
-              <>
-                <div className="grid grid-cols-[3.5rem_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-b border-line bg-[#261d16] px-5 py-3 text-[13px] text-muted sm:grid-cols-[4rem_3.5rem_minmax(0,1fr)_minmax(0,1fr)_7rem]">
-                  <span>Time</span>
-                  <span className="hidden sm:block">Type</span>
-                  <span className="text-right">{coin.symbol}</span>
-                  <span className="text-right">ETH</span>
-                  <span className="hidden text-right sm:block">Tx</span>
-                </div>
-                {swaps.length === 0 ? <p className="px-5 py-6 text-sm text-muted">No swaps in the last few thousand blocks.</p> : null}
-                {[...swaps].reverse().map((swap) => (
-                  <a
-                    key={`${swap.tx}-${swap.block}`}
-                    href={`${explorer}/tx/${swap.tx}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="grid grid-cols-[3.5rem_minmax(0,1fr)_minmax(0,1fr)] items-center gap-3 border-b border-line/55 px-5 py-3 text-sm tabular-nums last:border-0 sm:grid-cols-[4rem_3.5rem_minmax(0,1fr)_minmax(0,1fr)_7rem]"
-                  >
-                    <span className="text-muted">{ago(now - swap.time)}</span>
-                    <span className={`hidden font-medium sm:block ${swap.buy ? "text-ok" : "text-seal"}`}>{swap.buy ? "Buy" : "Sell"}</span>
-                    <span className="truncate text-right">
-                      <span className={`mr-1.5 sm:hidden ${swap.buy ? "text-ok" : "text-seal"}`}>{swap.buy ? "Buy" : "Sell"}</span>
-                      {fmt(swap.tokenAmount, 2)}
-                    </span>
-                    <span className="text-right">
-                      {fmt(swap.ethAmount, 6)}
-                      {ethUsd ? <span className="block text-xs text-muted">{money((Number(swap.ethAmount) / 1e18) * ethUsd)}</span> : null}
-                    </span>
-                    <span className="hidden text-right text-muted sm:block">{shortAddr(swap.tx)}</span>
-                  </a>
-                ))}
-              </>
+          <div className="mt-5">
+            {swaps ? (
+              <AreaChart points={market.points} from={market.from} to={now} format={(v) => cash(v)} tone={tone} height={280} onHover={setHover} />
             ) : (
-              <>
-                {holders.length === 0 ? <p className="px-5 py-6 text-sm text-muted">No holder balances yet.</p> : null}
-                {holders.map((holder) => {
-                  const share = Number((holder.balance * 10_000n) / (1_000_000_000n * 10n ** 18n)) / 100;
-                  const isPool = holder.address.toLowerCase() === coin.pool.toLowerCase();
-                  return (
-                    <a
-                      key={holder.address}
-                      href={`${explorer}/address/${holder.address}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center justify-between gap-3 border-b border-line/55 px-5 py-3 text-sm last:border-0"
-                    >
-                      <span className="tabular-nums">
-                        {shortAddr(holder.address)}
-                        {isPool ? <span className="ml-2 text-xs text-muted">Pool</span> : null}
-                      </span>
-                      <span className="text-right tabular-nums">
-                        {fmt(holder.balance, 2)} {coin.symbol}
-                        <span className="mt-0.5 block text-xs text-muted">{share.toFixed(2)}%</span>
-                      </span>
-                    </a>
-                  );
-                })}
-              </>
+              <span className="skeleton h-[304px] w-full rounded-xl" />
             )}
           </div>
         </section>
+
+        <aside className="grid min-w-0 grid-cols-1 gap-5 lg:sticky lg:top-20 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+          <section className="card p-3 shadow-[0_30px_60px_-30px_rgba(0,0,0,.8)]">
+            <div className="flex items-center gap-2">
+              <div className="grid flex-1 grid-cols-2 gap-1 rounded-xl bg-bg p-1">
+                {(["buy", "sell"] as const).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={side === key}
+                    onClick={() => {
+                      setSide(key);
+                      setAmount("");
+                      setTradeNote("");
+                    }}
+                    className={`h-9 rounded-lg text-sm font-semibold capitalize transition-colors ${
+                      side === key ? (key === "buy" ? "bg-ok/15 text-ok" : "bg-down/15 text-down") : "text-muted hover:text-fg"
+                    }`}
+                  >
+                    {key}
+                  </button>
+                ))}
+              </div>
+              <button type="button" aria-expanded={adjust} aria-label="Slippage" onClick={() => setAdjust((v) => !v)} className={`btn btn-secondary h-11 gap-1.5 px-3 ${adjust ? "border-edge bg-raise2" : ""}`}>
+                <IconSliders size={16} />
+                <span className="num text-[13px]">{slippageBps / 100}%</span>
+              </button>
+            </div>
+            {adjust ? (
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-bg px-3.5 py-3">
+                <span className="text-sm text-muted">Max slippage</span>
+                <div className="flex gap-1.5">
+                  {SLIPPAGE.map((bps) => (
+                    <button
+                      key={bps}
+                      type="button"
+                      aria-pressed={slippageBps === bps}
+                      onClick={() => setSlippageBps(bps)}
+                      className={`num h-8 rounded-lg border px-3 text-[13px] font-medium ${slippageBps === bps ? "border-fg bg-fg text-bg" : "border-line text-muted hover:text-fg"}`}
+                    >
+                      {bps / 100}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="relative mt-2 flex flex-col gap-1">
+              <TradeField
+                label={side === "buy" ? "You pay" : "You sell"}
+                symbol={paySymbol}
+                logo={side === "buy" ? <EthLogo size={24} /> : coinLogo(24)}
+                value={amount}
+                onChange={setAmount}
+                balance={payBal}
+                onBalance={payBal !== undefined ? () => setAmount(formatEther(side === "buy" ? (payBal > GAS_RESERVE ? payBal - GAS_RESERVE : 0n) : payBal)) : undefined}
+                usd={ethUsd && parsed > 0n ? money((Number(parsed) / 1e18) * (side === "buy" ? 1 : priceEth) * ethUsd) : undefined}
+                bad={!!short_}
+              />
+              <button
+                type="button"
+                aria-label="Flip direction"
+                onClick={() => {
+                  setSide((v) => (v === "buy" ? "sell" : "buy"));
+                  setAmount("");
+                  setTradeNote("");
+                }}
+                className="absolute top-1/2 left-1/2 z-10 grid size-9 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-xl border-[3px] border-chip bg-raise2 text-fg transition-transform hover:rotate-180"
+              >
+                <IconArrowDown size={15} />
+              </button>
+              <TradeField
+                label="You receive"
+                symbol={recvSymbol}
+                logo={side === "buy" ? coinLogo(24) : <EthLogo size={24} />}
+                value={quote === 0n ? "0" : amountText(quote, 6)}
+                readOnly
+                usd={ethUsd && quote > 0n ? money((Number(quote) / 1e18) * (side === "buy" ? priceEth : 1) * ethUsd) : undefined}
+              />
+            </div>
+
+            <div className="mt-2 grid grid-cols-4 gap-1.5">
+              {[25, 50, 75, 100].map((pct) => (
+                <button
+                  key={pct}
+                  type="button"
+                  disabled={payBal === undefined}
+                  onClick={() => {
+                    if (payBal === undefined) return;
+                    const part = (payBal * BigInt(pct)) / 100n;
+                    // A share of the balance is rounded to six decimals so it reads cleanly; Max stays exact.
+                    const all = pct === 100 ? (side === "buy" ? (payBal > GAS_RESERVE ? payBal - GAS_RESERVE : 0n) : payBal) : part - (part % 10n ** 12n);
+                    setAmount(formatEther(all));
+                  }}
+                  className="btn btn-sm btn-secondary w-full disabled:opacity-40"
+                >
+                  {pct === 100 ? "Max" : `${pct}%`}
+                </button>
+              ))}
+            </div>
+
+            <dl className="mt-3 space-y-2 px-1.5 text-[13px]">
+              <Line label="Rate" value={`1 ${coin.symbol} = ${tinyEth(price)} ETH`} />
+              <Line label="Minimum received" value={quote === 0n ? "—" : `${amountText(minOut, 6)} ${recvSymbol}`} />
+              <Line label="Pool fee" value={feeLabel(coin.fee ?? POOL_FEE)} />
+            </dl>
+
+            <button type="button" disabled={busy || !tradable || !!short_} onClick={() => void go()} className={`btn btn-xl mt-3 w-full ${side === "sell" ? "btn-light" : "btn-primary"}`}>
+              {!tradable
+                ? "Preview coin"
+                : busy
+                  ? "Confirming…"
+                  : !account
+                    ? "Connect wallet"
+                    : short_
+                      ? `Not enough ${paySymbol}`
+                      : side === "buy"
+                        ? `Buy ${coin.symbol}`
+                        : `Sell ${coin.symbol}`}
+            </button>
+            {wethBal !== undefined && wethBal > 0n ? (
+              <button type="button" disabled={busy} onClick={() => void doUnwrap()} className="mt-2 flex w-full items-center justify-between rounded-xl bg-raise px-3.5 py-2.5 text-[13px] hover:bg-raise2">
+                <span className="text-muted">
+                  You hold <span className="num text-fg">{amountText(wethBal, 5)} WETH</span> from selling
+                </span>
+                <span className="font-semibold text-gold">Unwrap</span>
+              </button>
+            ) : null}
+            <Note kind={kind} className="mt-2.5 px-1 text-center">
+              {tradeNote}
+            </Note>
+          </section>
+
+          <section className="card p-5">
+            <h2 className="text-[15px] font-semibold">About {coin.symbol}</h2>
+            {meta?.description ? null : <p className="mt-2 text-sm leading-relaxed text-muted">The full supply sits in a locked pool. There is no bonding curve.</p>}
+            <dl className="mt-3 space-y-2.5 text-sm">
+              <Line label="Supply" value="1,000,000,000" />
+              <Line label="Pool" value={`${coin.symbol}/ETH · v3 · ${feeLabel(coin.fee ?? POOL_FEE)}`} />
+              <Line label="Launch liquidity" value="Locked 100 years" />
+              <Line label="All-time high" value={swaps ? cash(market.athEth) : "—"} />
+              <Line
+                label="Pool contract"
+                value={
+                  <a href={`${explorer}/address/${coin.pool}`} target="_blank" rel="noreferrer" className="num inline-flex items-center gap-1 hover:text-gold">
+                    {shortAddr(coin.pool)}
+                    <IconExternal size={12} />
+                  </a>
+                }
+              />
+            </dl>
+          </section>
+        </aside>
+
+        <section className="card min-w-0 overflow-hidden lg:col-start-1">
+          <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-5">
+            <Seg
+              label="Activity"
+              value={panel}
+              onChange={setPanel}
+              options={[
+                ["trades", `Transactions${swaps ? ` · ${swaps.length}` : ""}`],
+                ["holders", `Holders${holders ? ` · ${holders.length}` : ""}`],
+              ]}
+            />
+            <span className="hidden text-xs text-faint sm:block">{panel === "trades" ? "About the last day of trades" : "The pool, the creator and recent traders"}</span>
+          </div>
+          {panel === "trades" ? (
+            !swaps ? (
+              <RowsSkeleton />
+            ) : list.length === 0 ? (
+              <Empty mark="첫 거래" title="No trades in the last day">
+                {coin.preview ? "Preview coins can’t be traded." : `Be the first to trade ${coin.symbol} today.`}
+              </Empty>
+            ) : (
+              <>
+                <div className={`${TRADE_GRID} th border-b border-line py-2.5`}>
+                  <span>Time</span>
+                  <span>Type</span>
+                  <span className="text-right">{coin.symbol}</span>
+                  <span className="text-right">ETH</span>
+                  <span className="hidden text-right sm:block">Trader</span>
+                  <span className="hidden sm:block" />
+                </div>
+                {list.slice(0, shown).map((swap) => (
+                  <a key={`${swap.tx}:${swap.index ?? 0}`} href={`${explorer}/tx/${swap.tx}`} target="_blank" rel="noreferrer" className={`${TRADE_GRID} row-hover num border-b border-line/70 py-3 text-sm last:border-0`}>
+                    <span className="text-muted">{ago(now - swap.time)}</span>
+                    <span className={`font-semibold ${swap.buy ? "text-ok" : "text-down"}`}>{swap.buy ? "Buy" : "Sell"}</span>
+                    <span className="truncate text-right">{compactCount(Number(swap.tokenAmount) / 1e18)}</span>
+                    <span className="text-right">
+                      {ethText(Number(swap.ethAmount) / 1e18)}
+                      {ethUsd ? <span className="block text-xs text-muted">{money((Number(swap.ethAmount) / 1e18) * ethUsd)}</span> : null}
+                    </span>
+                    <span className="hidden items-center justify-end gap-2 text-muted sm:flex">
+                      <Blockie address={swap.recipient} size={16} />
+                      {shortAddr(swap.recipient)}
+                    </span>
+                    <span className="hidden justify-end text-faint sm:flex">
+                      <IconExternal size={14} />
+                    </span>
+                  </a>
+                ))}
+                {list.length > shown ? (
+                  <button type="button" onClick={() => setShown((n) => n + 50)} className="w-full border-t border-line py-3 text-sm font-medium text-muted hover:text-fg">
+                    Show more ({list.length - shown} left)
+                  </button>
+                ) : null}
+              </>
+            )
+          ) : !holders ? (
+            <RowsSkeleton />
+          ) : holders.length === 0 ? (
+            <Empty mark="없음" title="No holder balances yet" />
+          ) : (
+            <>
+              <div className={`${HOLDER_GRID} th border-b border-line py-2.5`}>
+                <span>#</span>
+                <span>Wallet</span>
+                <span className="text-right">{coin.symbol}</span>
+                <span className="text-right">Share</span>
+              </div>
+              {holders.map((holder, i) => {
+                const share = Number((holder.balance * 10_000n) / supplyWei) / 100;
+                const isPool = holder.address.toLowerCase() === coin.pool.toLowerCase();
+                const isDev = holder.address.toLowerCase() === coin.creator.toLowerCase();
+                return (
+                  <a key={holder.address} href={`${explorer}/address/${holder.address}`} target="_blank" rel="noreferrer" className={`${HOLDER_GRID} row-hover num border-b border-line/70 py-3 text-sm last:border-0`}>
+                    <span className="text-faint">{i + 1}</span>
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      <Blockie address={holder.address} size={22} />
+                      <span className="truncate">{shortAddr(holder.address)}</span>
+                      {isPool ? <span className="chip h-5 px-1.5 text-[11px]">Pool</span> : null}
+                      {isDev ? <span className="chip h-5 border-gold/30 bg-gold/10 px-1.5 text-[11px] text-gold">Creator</span> : null}
+                    </span>
+                    <span className="text-right">{compactCount(Number(holder.balance) / 1e18)}</span>
+                    <span className="flex items-center justify-end gap-2.5">
+                      <span className="hidden h-1.5 w-16 overflow-hidden rounded-full bg-raise2 sm:block">
+                        <span className="block h-full rounded-full bg-gold" style={{ width: `${Math.min(100, share)}%` }} />
+                      </span>
+                      <span className="w-14 text-right">{share.toFixed(2)}%</span>
+                    </span>
+                  </a>
+                );
+              })}
+              <p className="border-t border-line px-5 py-3 text-xs text-faint">Shows the pool, the creator and wallets that traded in about the last day. Older holders appear on the explorer.</p>
+            </>
+          )}
+        </section>
       </div>
+
+      {isCreator && editing ? <ProfileEditor token={coin.token} symbol={coin.symbol} initial={meta} sign={signMessage} onDone={() => setEditing(false)} /> : null}
     </main>
   );
 }
 
-function ago(seconds: number) {
-  if (seconds < 60) return `${Math.max(0, seconds)}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h`;
-  return `${Math.floor(seconds / 86_400)}d`;
+const TRADE_GRID = "grid items-center gap-3 px-4 sm:px-5 grid-cols-[2.75rem_2.75rem_minmax(0,1fr)_minmax(0,1fr)] sm:grid-cols-[3.5rem_3.5rem_minmax(0,1fr)_minmax(0,1fr)_9rem_1rem]";
+const HOLDER_GRID = "grid items-center gap-3 px-4 sm:px-5 grid-cols-[1.5rem_minmax(0,1fr)_5rem_4rem] sm:grid-cols-[2rem_minmax(0,1fr)_7rem_9.5rem]";
+
+function IconLink({ href, label, children }: { href: string; label: string; children: ReactNode }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer" aria-label={label} title={label} className="btn btn-icon btn-sm btn-secondary size-9 rounded-xl">
+      {children}
+    </a>
+  );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, wait }: { label: string; value: ReactNode; wait?: boolean }) {
   return (
     <div className="min-w-0">
-      <p className="text-[13px] text-muted">{label}</p>
-      <p className="mt-0.5 truncate text-lg font-semibold tracking-[-0.01em] tabular-nums">{value}</p>
+      <dt className="text-xs text-muted">{label}</dt>
+      <dd className="num mt-1 truncate text-[19px] font-semibold tracking-[-0.02em]">{wait ? <span className="skeleton mt-1.5 h-5 w-20" /> : value}</dd>
+    </div>
+  );
+}
+
+function Line({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4">
+      <dt className="text-muted">{label}</dt>
+      <dd className="num text-right">{value}</dd>
+    </div>
+  );
+}
+
+function RowsSkeleton() {
+  return (
+    <div className="divide-y divide-line/70">
+      {Array.from({ length: 5 }, (_, i) => (
+        <div key={i} className="flex items-center gap-4 px-5 py-3.5">
+          <span className="skeleton h-4 w-8" />
+          <span className="skeleton h-4 w-10" />
+          <span className="skeleton h-4 flex-1" />
+          <span className="skeleton h-4 w-20" />
+        </div>
+      ))}
     </div>
   );
 }
@@ -621,8 +736,10 @@ function TradeField({
   value,
   onChange,
   balance,
+  onBalance,
   readOnly,
   usd,
+  bad,
 }: {
   label: string;
   symbol: string;
@@ -630,34 +747,43 @@ function TradeField({
   value: string;
   onChange?: (value: string) => void;
   balance?: bigint;
+  onBalance?: () => void;
   readOnly?: boolean;
   usd?: string;
+  bad?: boolean;
 }) {
   return (
-    <div className={`rounded-[22px] border border-line px-4 py-4 ${readOnly ? "bg-bg/55" : "bg-bg"}`}>
-      <p className="text-[13px] text-muted">{label}</p>
+    <div className={`rounded-xl border px-4 py-3.5 transition-colors ${bad ? "border-down/60" : "border-transparent focus-within:border-edge"} ${readOnly ? "bg-bg/60" : "bg-bg"}`}>
+      <div className="flex items-center justify-between gap-3 text-[13px] text-muted">
+        <span>{label}</span>
+        {balance === undefined ? null : onBalance ? (
+          <button type="button" onClick={onBalance} className="num hover:text-fg">
+            Balance {amountText(balance)}
+          </button>
+        ) : (
+          <span className="num">Balance {amountText(balance)}</span>
+        )}
+      </div>
       <div className="mt-1.5 flex items-center gap-3">
         {readOnly ? (
-          <p className="min-w-0 flex-1 truncate text-[32px] leading-[1.15] font-medium tracking-[-0.03em] tabular-nums">{value}</p>
+          <p className={`num min-w-0 flex-1 truncate text-[30px] leading-[1.15] font-medium tracking-[-0.03em] ${value === "0" ? "text-faint" : ""}`}>{value}</p>
         ) : (
           <input
             inputMode="decimal"
             value={value}
             placeholder="0"
             aria-label={label}
-            onChange={(e) => onChange?.(e.target.value)}
-            className="min-w-0 flex-1 bg-transparent text-[32px] leading-[1.15] font-medium tracking-[-0.03em] tabular-nums outline-none"
+            autoComplete="off"
+            onChange={(e) => onChange?.(e.target.value.replace(",", "."))}
+            className="num min-w-0 flex-1 bg-transparent text-[30px] leading-[1.15] font-medium tracking-[-0.03em] outline-none placeholder:text-faint"
           />
         )}
-        <span className="flex shrink-0 items-center gap-2 rounded-full border border-line bg-chip py-1 pr-3 pl-1 text-[15px] font-semibold">
+        <span className="flex shrink-0 items-center gap-2 rounded-full bg-raise2 py-1 pr-3 pl-1 text-[15px] font-semibold">
           {logo}
           {symbol}
         </span>
       </div>
-      <div className="mt-1.5 flex justify-between gap-3 text-[13px] text-muted tabular-nums">
-        <span>{usd ?? ""}</span>
-        <span>{balance === undefined ? "" : `Balance ${fmt(balance, 4)}`}</span>
-      </div>
+      <p className="num mt-1 h-[18px] text-[13px] text-muted">{usd ?? ""}</p>
     </div>
   );
 }
@@ -683,7 +809,6 @@ function ProfileEditor({
   const [note, setNote] = useState("");
   const [bad, setBad] = useState(false);
   const [busy, setBusy] = useState(false);
-  const input = "mt-1 w-full rounded-xl border border-line bg-bg px-3 py-2.5 text-[15px] text-fg outline-none";
 
   async function publish() {
     const profile = { description, image, twitter, telegram, website };
@@ -693,6 +818,7 @@ function ProfileEditor({
       setNote("Sign the message in your wallet. It costs no gas.");
       await publishTokenProfile(token, profile, sign);
       setNote("Published. Everyone now sees this picture.");
+      toast({ kind: "good", title: "Profile published", body: `Everyone now sees ${symbol}’s picture and links.` });
       setTimeout(onDone, 900);
     } catch (err) {
       saveTokenMeta(token, { ...profile, description });
@@ -705,19 +831,18 @@ function ProfileEditor({
   }
 
   return (
-    <section className="mt-5 rounded-3xl border border-gold/30 bg-chip p-5">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold">Token profile</h2>
-        <button type="button" onClick={onDone} className="text-sm text-muted">Close</button>
-      </div>
-      <p className="mt-1 text-sm text-muted">
-        You launched {symbol}. Sign once with your wallet to share its picture, description, and links with everyone.
+    <Modal kicker={`$${symbol}`} title="Token profile" onClose={onDone} width={600}>
+      <p className="mt-2 text-sm leading-relaxed text-muted">
+        You launched {symbol}. Sign once with your wallet to share its picture, description and links with everyone.
         {sharedStorageEnabled() === false ? " Shared pictures aren’t switched on for this site yet, so this will only save in this browser." : ""}
       </p>
-      <div className="mt-4 grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)]">
-        <label className="flex cursor-pointer flex-col items-center gap-2 text-sm text-muted">
-          <TokenLogo symbol={symbol} image={image} size={88} />
-          <span className="rounded-full border border-line px-3 py-1 text-xs">Choose image</span>
+      <div className="mt-5 grid gap-5 sm:grid-cols-[auto_minmax(0,1fr)]">
+        <label className="group flex cursor-pointer flex-col items-center gap-2.5">
+          <TokenLogo symbol={symbol} image={image} size={104} shape="rounded" />
+          <span className="btn btn-sm btn-secondary">
+            <IconImage size={14} />
+            Choose image
+          </span>
           <input
             type="file"
             accept="image/*"
@@ -734,33 +859,40 @@ function ProfileEditor({
             }}
           />
         </label>
-        <div className="grid gap-3">
-          <label className="block text-sm text-muted">
-            Description
-            <textarea value={description} maxLength={280} rows={2} onChange={(e) => setDescription(e.target.value)} className={input} />
+        <div className="grid gap-3.5">
+          <label>
+            <span className="label">Description</span>
+            <textarea value={description} maxLength={280} rows={3} onChange={(e) => setDescription(e.target.value)} className="field resize-none" />
           </label>
           <div className="grid gap-3 sm:grid-cols-3">
-            <label className="block text-sm text-muted">
-              X handle
-              <input value={twitter} onChange={(e) => setTwitter(e.target.value.replace(/^@/, ""))} className={input} />
+            <label>
+              <span className="label">X handle</span>
+              <input value={twitter} onChange={(e) => setTwitter(e.target.value.replace(/^@/, ""))} className="field" />
             </label>
-            <label className="block text-sm text-muted">
-              Telegram
-              <input value={telegram} onChange={(e) => setTelegram(e.target.value)} className={input} />
+            <label>
+              <span className="label">Telegram</span>
+              <input value={telegram} onChange={(e) => setTelegram(e.target.value)} className="field" />
             </label>
-            <label className="block text-sm text-muted">
-              Website
-              <input value={website} placeholder="https://" onChange={(e) => setWebsite(e.target.value)} className={input} />
+            <label>
+              <span className="label">Website</span>
+              <input value={website} placeholder="https://" onChange={(e) => setWebsite(e.target.value)} className="field" />
             </label>
           </div>
         </div>
       </div>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <p className={`text-sm ${bad ? "text-seal" : "text-muted"}`}>{note}</p>
-        <button type="button" disabled={busy} onClick={() => void publish()} className="rounded-full bg-seal px-5 py-2.5 text-sm font-semibold text-onseal disabled:opacity-40">
-          {busy ? "Publishing…" : "Sign and publish"}
-        </button>
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+        <Note kind={bad ? "bad" : ""} className="min-w-0 flex-1">
+          {note}
+        </Note>
+        <div className="ml-auto flex gap-2">
+          <button type="button" onClick={onDone} className="btn btn-ghost">
+            Cancel
+          </button>
+          <button type="button" disabled={busy} onClick={() => void publish()} className="btn btn-primary">
+            {busy ? "Publishing…" : "Sign and publish"}
+          </button>
+        </div>
       </div>
-    </section>
+    </Modal>
   );
 }

@@ -41,3 +41,9 @@ Name and symbol are on-chain; the picture, description, and links are a token pr
 
 Env vars (same names as eve.fun): `BLOB_READ_WRITE_TOKEN`, which Vercel adds when a Blob store is connected, and `KV_REST_API_URL` + `KV_REST_API_TOKEN`, which Vercel adds when an Upstash Redis/KV store is connected (`UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` also work). Without them, reads still work and pictures stay in the creator's browser. A creator can (re)publish from the coin page with "Set picture".
 
+
+### Look and feel
+
+The site is one dark theme, defined in `web/src/styles.css`: colour tokens under `@theme` (night-sky surfaces, the vermilion `seal` accent, `gold` for small highlights, `ok` and `down` for price moves) and a small set of component classes (`card`, `btn`, `field`, `seg`, `chip`, `skeleton`). Shared pieces live in `web/src/components/chimi/`: `shell.tsx` (side rail, top bar, status bar, phone tab bar), `ui.tsx`, `charts.tsx`, `icons.tsx`, `command.tsx` (search, opened with `/` or Cmd/Ctrl+K), `wallet-menu.tsx` and `toast.tsx`.
+
+Numbers that several pages show (the ETH price, each pool's recent trades and ETH reserve, the chain head) are read once and shared through `web/src/lib/chimi/live.ts`. Contract reads go through Multicall3, and the board reads every pool's trades in one pass, so its cost doesn't grow with the number of coins.
