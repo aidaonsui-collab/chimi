@@ -48,6 +48,29 @@ export const IconChart = (p: IconProps) => (
     <path d="M4 20V10M10 20V4M16 20v-7M21 20H3" />
   </Svg>
 );
+export const IconCandles = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M7 3v3M7 15v4M17 5v4M17 17v4" />
+    <rect x="4.5" y="6" width="5" height="9" rx="1" />
+    <rect x="14.5" y="9" width="5" height="8" rx="1" />
+  </Svg>
+);
+export const IconLine = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 17l5-6 4 3 4-7 5 5" />
+  </Svg>
+);
+export const IconMinus = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M5 12h14" />
+  </Svg>
+);
+export const IconReset = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 12a8 8 0 1 0 2.6-5.9" />
+    <path d="M4 4v4.5h4.5" />
+  </Svg>
+);
 export const IconPoints = (p: IconProps) => (
   <Svg {...p}>
     <path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9Z" />

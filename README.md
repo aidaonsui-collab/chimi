@@ -90,3 +90,14 @@ Every coin's page has a **Comments** tab beside Trades and Holders. Each comment
 - A wallet can delete its own comments. The operator can take any comment out: `POST /api/comments` with `{ "admin": "delete", "token": "0x…", "id": "…" }` and the `CHIMI_ADMIN_TOKEN` bearer token.
 - Each coin's comments are one document in Redis (`chimi:comments:v1:<token>`), which keeps the latest 500. `GET /api/comments?token=0x…` answers with the newest 50 (`&limit=` for more).
 - What a commenter holds is read from the chain in the browser. "Sold" means the balance is zero and the trade record, or the trades the page has read itself, shows a buy.
+
+### The coin chart
+
+A coin's page charts its trades as candles, with volume underneath and the traders marked where they traded.
+
+- It is drawn with [TradingView Lightweight Charts](https://github.com/tradingview/lightweight-charts) (Apache-2.0), loaded only on coin pages. Its mark stays on the chart, as the licence asks.
+- Candles run from one minute to one day. A chart opens on the size that fits the coin's age, and can show price or market cap, as candles or a line. Drag to move through time, scroll or pinch to zoom.
+- Candles are built in the browser from the pool's swaps (`web/src/lib/chimi/chart-rules.ts`). A candle opens where the one before it closed, a stretch with no trade is flat, and the latest 3,000 candles are kept.
+- The whole history comes from the chain's explorer (`web/src/lib/chimi/history.ts`); the last day comes from the node and keeps the chart current. If the explorer can't be reached, or on a fork, the chart starts a day back.
+- Traders are bubbles on the candles, ringed green for a buy and red for a sell: the creator is a "D", wallets you follow carry a star, and your own trades have a white ring. Other wallets show too, biggest trades first, up to 140 at once. The switch above the chart shows everyone, only those you follow, or nobody. A bubble opens that trader's page.
+- Dollar figures use today's ETH price for the whole history, like the rest of the site.
