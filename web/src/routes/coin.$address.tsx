@@ -743,7 +743,14 @@ function Stat({ label, value, wait }: { label: string; value: ReactNode; wait?: 
   return (
     <div className="min-w-0">
       <dt className="text-xs text-muted">{label}</dt>
-      <dd className="num mt-1 truncate text-[19px] font-semibold tracking-[-0.02em]">{wait ? <span className="skeleton mt-1.5 h-5 w-20" /> : value}</dd>
+      <dd className="num mt-1 truncate text-[19px] font-semibold tracking-[-0.02em]">{wait ? (
+          <span className="skeleton mt-1.5 h-5 w-20" />
+        ) : (
+          <span key={typeof value === "string" ? value : undefined} className="settle">
+            {value}
+          </span>
+        )}
+      </dd>
     </div>
   );
 }

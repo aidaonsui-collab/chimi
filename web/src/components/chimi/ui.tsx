@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { IconCheck, IconClose, IconCopy } from "@/components/chimi/icons";
 
 /** A percent move, green up and red down. Shows a dash when there is nothing to measure. */
@@ -54,6 +54,8 @@ export function Sparkline({ values, width = 112, height = 36, className = "" }: 
   );
 }
 
+const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
 export function Seg<T extends string>({
   value,
   options,
@@ -67,8 +69,40 @@ export function Seg<T extends string>({
   className?: string;
   label?: string;
 }) {
+  // The selected pill is one element that slides to whichever option is on. Until it has been measured (and
+  // without scripts) the selected button carries the pill itself, so the control never shows nothing selected.
+  const ref = useRef<HTMLDivElement>(null);
+  const [thumb, setThumb] = useState<{ left: number; width: number } | null>(null);
+  const [moving, setMoving] = useState(false);
+  const keys = options.map(([key]) => key).join("|");
+
+  useIsoLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const place = () => {
+      const on = el.querySelector<HTMLElement>('button[aria-selected="true"]');
+      setThumb((was) => {
+        if (!on) return null;
+        return was && was.left === on.offsetLeft && was.width === on.offsetWidth ? was : { left: on.offsetLeft, width: on.offsetWidth };
+      });
+    };
+    place();
+    const watcher = new ResizeObserver(place);
+    watcher.observe(el);
+    for (const button of el.querySelectorAll("button")) watcher.observe(button);
+    return () => watcher.disconnect();
+  }, [value, keys]);
+
+  // Slide only after the first placement, so the pill doesn't fly in from the corner when the control appears.
+  useEffect(() => {
+    if (!thumb || moving) return;
+    const frame = requestAnimationFrame(() => setMoving(true));
+    return () => cancelAnimationFrame(frame);
+  }, [thumb, moving]);
+
   return (
-    <div className={`seg ${className}`} role="tablist" aria-label={label}>
+    <div ref={ref} className={`seg ${className}`} role="tablist" aria-label={label} data-thumb={thumb ? "" : undefined}>
+      {thumb ? <span aria-hidden="true" className="seg-thumb" data-moving={moving ? "" : undefined} style={{ width: thumb.width, transform: `translateX(${thumb.left}px)` }} /> : null}
       {options.map(([key, text]) => (
         <button key={key} type="button" role="tab" aria-selected={value === key} onClick={() => onChange(key)}>
           {text}

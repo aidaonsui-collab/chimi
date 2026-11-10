@@ -24,6 +24,7 @@ import {
 } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
 import { duration, useNow } from "@/components/chimi/rewards-bits";
+import { RoofLoop } from "@/components/chimi/roof-loop";
 import { Tape } from "@/components/chimi/tape";
 import { TokenArt, TokenLogo } from "@/components/chimi/token-logo";
 import { Change, Empty, Seg, Sparkline } from "@/components/chimi/ui";
@@ -198,7 +199,7 @@ function Home() {
         </div>
       </section>
 
-      <section className="page grid gap-5 pt-12 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+      <section className="reveal page grid gap-5 pt-12 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
         <Tape listed={rows} byPool={byPool} ready={ready} loading={loading} />
         <div className="grid content-start gap-5">
           <PointsCard />
@@ -216,8 +217,10 @@ function Home() {
       </section>
 
       <section className="page pt-14 pb-6">
-        <p className="eyebrow">How Chimi works</p>
-        <h2 className="mt-2 max-w-xl text-[30px] leading-[1.08] font-semibold tracking-[-0.03em] sm:text-[34px]">One transaction from an idea to a market.</h2>
+        <div className="reveal">
+          <p className="eyebrow">How Chimi works</p>
+          <h2 className="mt-2 max-w-xl text-[30px] leading-[1.08] font-semibold tracking-[-0.03em] sm:text-[34px]">One transaction from an idea to a market.</h2>
+        </div>
         <div className="mt-7 grid gap-4 md:grid-cols-3">
           <Step n="01" icon={<IconPlus size={20} />} title="Press a coin">
             Name it, give it a picture, and sign once. A billion tokens are minted in the same transaction.
@@ -271,7 +274,7 @@ function Hero({
 
   return (
     <div
-      className="relative isolate overflow-hidden rounded-3xl border border-line bg-[#0d1024]"
+      className="roof-frame relative isolate overflow-hidden rounded-3xl border border-line bg-[#0d1024]"
       onMouseEnter={() => (hold.current = true)}
       onMouseLeave={() => (hold.current = false)}
       onFocusCapture={() => (hold.current = true)}
@@ -283,6 +286,7 @@ function Hero({
         <source media="(max-width: 640px)" srcSet="/banner-960.webp" />
         <img src="/banner.webp" alt="" fetchPriority="high" className="absolute inset-0 -z-20 size-full object-cover object-[center_38%]" />
       </picture>
+      <RoofLoop className="absolute inset-0 -z-20 size-full object-cover object-[center_38%]" />
       <div className="banner-fog -z-10" />
       <div className="banner-fog banner-fog-b -z-10" />
       <div className="roof-scrim absolute inset-0 -z-10" />
@@ -414,7 +418,14 @@ function StatBar({ items }: { items: [string, ReactNode | null][] }) {
       {items.map(([label, value], i) => (
         <div key={label} className={`min-w-0 px-4 ${i % 2 ? "border-l border-white/10" : ""} ${i ? "sm:border-l sm:border-white/10" : ""}`}>
           <dt className="text-xs text-fg/60">{label}</dt>
-          <dd className="num mt-0.5 truncate text-[19px] font-semibold tracking-[-0.02em]">{value === null ? <span className="skeleton mt-1 h-5 w-16 opacity-60" /> : value}</dd>
+          <dd className="num mt-0.5 truncate text-[19px] font-semibold tracking-[-0.02em]">{value === null ? (
+              <span className="skeleton mt-1 h-5 w-16 opacity-60" />
+            ) : (
+              <span key={typeof value === "string" ? value : undefined} className="settle">
+                {value}
+              </span>
+            )}
+          </dd>
         </div>
       ))}
     </dl>
@@ -585,7 +596,7 @@ function PointsCard() {
 
 function Step({ n, icon, title, children }: { n: string; icon: ReactNode; title: string; children: ReactNode }) {
   return (
-    <div className="card relative overflow-hidden p-6">
+    <div className="reveal reveal-step card relative overflow-hidden p-6">
       <span className="num absolute top-5 right-6 text-[13px] font-medium text-faint">{n}</span>
       <span className="grid size-11 place-items-center rounded-xl bg-raise2 text-gold">{icon}</span>
       <p className="mt-5 text-[19px] font-semibold tracking-[-0.02em]">{title}</p>

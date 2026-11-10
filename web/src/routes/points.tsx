@@ -349,7 +349,7 @@ function HowItWorks() {
       <SectionLabel>HOW IT WORKS</SectionLabel>
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
         {items.map(([ko, title, body]) => (
-          <div key={title} className="card p-5">
+          <div key={title} className="reveal reveal-step card p-5">
             <p className="font-serif text-lg text-gold">{ko}</p>
             <p className="mt-2 text-[17px] font-semibold tracking-[-0.01em]">{title}</p>
             <p className="mt-1.5 text-sm leading-relaxed text-muted">{body}</p>
