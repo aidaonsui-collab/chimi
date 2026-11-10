@@ -79,3 +79,14 @@ Leading a buy earns points, worked out from the chain and the follow list alone,
 - Nothing is taken from the buyer, and like every other point it only pays wallets with a Dojang.
 
 It applies from the day this ships; earlier days are unchanged. A trader's page shows how many buys it has led.
+
+### Comments
+
+Every coin's page has a **Comments** tab beside Trades and Holders. Each comment shows who wrote it and what they hold of the coin at this moment: "holds 1.2%", "sold", or "Creator".
+
+- A comment is a message the wallet signs, with no transaction (`web/src/lib/chimi/comment-rules.ts`, `POST /api/comments`). A signature is good for five minutes and only once.
+- Only a wallet with a GIWA Dojang can comment, and only on a coin the factory made.
+- Text only, up to 280 characters, and no links. One wallet can comment on one coin every 15 seconds at most.
+- A wallet can delete its own comments. The operator can take any comment out: `POST /api/comments` with `{ "admin": "delete", "token": "0x…", "id": "…" }` and the `CHIMI_ADMIN_TOKEN` bearer token.
+- Each coin's comments are one document in Redis (`chimi:comments:v1:<token>`), which keeps the latest 500. `GET /api/comments?token=0x…` answers with the newest 50 (`&limit=` for more).
+- What a commenter holds is read from the chain in the browser. "Sold" means the balance is zero and the trade record, or the trades the page has read itself, shows a buy.

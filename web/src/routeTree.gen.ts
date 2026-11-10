@@ -15,6 +15,7 @@ import { Route as LaunchRouteImport } from './routes/launch'
 import { Route as PointsRouteImport } from './routes/points'
 import { Route as PoolsRouteImport } from './routes/pools'
 import { Route as SwapRouteImport } from './routes/swap'
+import { Route as ApiCommentsRouteImport } from './routes/api/comments'
 import { Route as ApiFeedRouteImport } from './routes/api/feed'
 import { Route as ApiFollowsRouteImport } from './routes/api/follows'
 import { Route as ApiHousesRouteImport } from './routes/api/houses'
@@ -56,6 +57,11 @@ const PoolsRoute = PoolsRouteImport.update({
 const SwapRoute = SwapRouteImport.update({
   id: '/swap',
   path: '/swap',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCommentsRoute = ApiCommentsRouteImport.update({
+  id: '/api/comments',
+  path: '/api/comments',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiFeedRoute = ApiFeedRouteImport.update({
@@ -126,6 +132,7 @@ export interface FileRoutesByFullPath {
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
+  '/api/comments': typeof ApiCommentsRoute
   '/api/feed': typeof ApiFeedRoute
   '/api/follows': typeof ApiFollowsRoute
   '/api/houses': typeof ApiHousesRoute
@@ -146,6 +153,7 @@ export interface FileRoutesByTo {
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
+  '/api/comments': typeof ApiCommentsRoute
   '/api/feed': typeof ApiFeedRoute
   '/api/follows': typeof ApiFollowsRoute
   '/api/houses': typeof ApiHousesRoute
@@ -167,6 +175,7 @@ export interface FileRoutesById {
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
+  '/api/comments': typeof ApiCommentsRoute
   '/api/feed': typeof ApiFeedRoute
   '/api/follows': typeof ApiFollowsRoute
   '/api/houses': typeof ApiHousesRoute
@@ -189,6 +198,7 @@ export interface FileRouteTypes {
     | '/points'
     | '/pools'
     | '/swap'
+    | '/api/comments'
     | '/api/feed'
     | '/api/follows'
     | '/api/houses'
@@ -209,6 +219,7 @@ export interface FileRouteTypes {
     | '/points'
     | '/pools'
     | '/swap'
+    | '/api/comments'
     | '/api/feed'
     | '/api/follows'
     | '/api/houses'
@@ -229,6 +240,7 @@ export interface FileRouteTypes {
     | '/points'
     | '/pools'
     | '/swap'
+    | '/api/comments'
     | '/api/feed'
     | '/api/follows'
     | '/api/houses'
@@ -250,6 +262,7 @@ export interface RootRouteChildren {
   PointsRoute: typeof PointsRoute
   PoolsRoute: typeof PoolsRoute
   SwapRoute: typeof SwapRoute
+  ApiCommentsRoute: typeof ApiCommentsRoute
   ApiFeedRoute: typeof ApiFeedRoute
   ApiFollowsRoute: typeof ApiFollowsRoute
   ApiHousesRoute: typeof ApiHousesRoute
@@ -306,6 +319,13 @@ declare module '@tanstack/react-router' {
       path: '/swap'
       fullPath: '/swap'
       preLoaderRoute: typeof SwapRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/comments': {
+      id: '/api/comments'
+      path: '/api/comments'
+      fullPath: '/api/comments'
+      preLoaderRoute: typeof ApiCommentsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/feed': {
@@ -402,6 +422,7 @@ const rootRouteChildren: RootRouteChildren = {
   PointsRoute: PointsRoute,
   PoolsRoute: PoolsRoute,
   SwapRoute: SwapRoute,
+  ApiCommentsRoute: ApiCommentsRoute,
   ApiFeedRoute: ApiFeedRoute,
   ApiFollowsRoute: ApiFollowsRoute,
   ApiHousesRoute: ApiHousesRoute,
