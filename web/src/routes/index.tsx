@@ -24,7 +24,7 @@ import {
 } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
 import { duration, useNow } from "@/components/chimi/rewards-bits";
-import { RoofLoop } from "@/components/chimi/roof-loop";
+import { LoopVideo, ROOF } from "@/components/chimi/loop-video";
 import { Tape } from "@/components/chimi/tape";
 import { TokenArt, TokenLogo } from "@/components/chimi/token-logo";
 import { Change, Empty, Seg, Sparkline } from "@/components/chimi/ui";
@@ -286,7 +286,7 @@ function Hero({
         <source media="(max-width: 640px)" srcSet="/banner-960.webp" />
         <img src="/banner.webp" alt="" fetchPriority="high" className="absolute inset-0 -z-20 size-full object-cover object-[center_38%]" />
       </picture>
-      <RoofLoop className="absolute inset-0 -z-20 size-full object-cover object-[center_38%]" />
+      <LoopVideo wide={ROOF.wide} narrow={ROOF.narrow} className="absolute inset-0 -z-20 size-full object-cover object-[center_38%]" />
       <div className="banner-fog -z-10" />
       <div className="banner-fog banner-fog-b -z-10" />
       <div className="roof-scrim absolute inset-0 -z-10" />
