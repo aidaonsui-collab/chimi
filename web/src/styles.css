@@ -550,11 +550,37 @@
 }
 
 /*
- * The scene behind a tab's heading (backdrop.tsx). It runs up under the top bar, is dimmed toward the left where the
- * heading sits, and fades out into the page before the content gets busy.
+ * The side rail (shell.tsx). It is as wide as its icons until the pointer is on it or the keyboard is in it. A link
+ * that was clicked with the pointer keeps focus, so the test is :focus-visible, which only the keyboard sets;
+ * otherwise the rail would stay open until something else was clicked. data-shut holds it folded after a pick.
+ */
+.rail {
+  width: 68px;
+  transition:
+    width 0.2s ease-out,
+    box-shadow 0.2s ease-out;
+}
+.rail-label {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.rail:not([data-shut]):hover,
+.rail:has(:focus-visible) {
+  width: 224px;
+  box-shadow: 24px 0 60px -20px rgba(0, 0, 0, 0.8);
+}
+.rail:not([data-shut]):hover .rail-label,
+.rail:has(:focus-visible) .rail-label {
+  opacity: 1;
+}
+
+/*
+ * The scene behind a tab's heading (backdrop.tsx). It is pinned to the top of the window, so the page scrolls over
+ * it and the picture itself stays put. It runs up under the top bar, is dimmed toward the left where the heading
+ * sits, and fades out before the content gets busy.
  */
 .page-backdrop {
-  position: absolute;
+  position: fixed;
   top: 0;
   right: 0;
   left: 0;

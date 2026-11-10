@@ -14,14 +14,14 @@ import {
   IconFlame,
   IconGrid,
   IconHouse,
+  IconInfo,
   IconList,
-  IconLock,
   IconPlus,
   IconPoints,
   IconSearch,
-  IconSwap,
   IconTrophy,
 } from "@/components/chimi/icons";
+import { HowItWorks } from "@/components/chimi/how-it-works";
 import { useChimi } from "@/components/chimi/provider";
 import { duration, useNow } from "@/components/chimi/rewards-bits";
 import { LoopVideo, ROOF } from "@/components/chimi/loop-video";
@@ -199,7 +199,7 @@ function Home() {
         </div>
       </section>
 
-      <section className="reveal page grid gap-5 pt-12 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+      <section className="reveal page grid gap-5 pt-12 pb-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
         <Tape listed={rows} byPool={byPool} ready={ready} loading={loading} />
         <div className="grid content-start gap-5">
           <PointsCard />
@@ -216,23 +216,6 @@ function Home() {
         </div>
       </section>
 
-      <section className="page pt-14 pb-6">
-        <div className="reveal">
-          <p className="eyebrow">How Chimi works</p>
-          <h2 className="mt-2 max-w-xl text-[30px] leading-[1.08] font-semibold tracking-[-0.03em] sm:text-[34px]">One transaction from an idea to a market.</h2>
-        </div>
-        <div className="mt-7 grid gap-4 md:grid-cols-3">
-          <Step n="01" icon={<IconPlus size={20} />} title="Press a coin">
-            Name it, give it a picture, and sign once. A billion tokens are minted in the same transaction.
-          </Step>
-          <Step n="02" icon={<IconLock size={20} />} title="The pool locks">
-            The whole supply opens in a Uniswap v3 pool against ETH. The launch liquidity is locked for 100 years.
-          </Step>
-          <Step n="03" icon={<IconSwap size={20} />} title="Trade from block one">
-            There is no bonding curve and nothing to graduate. The price you see is the pool, from the first block.
-          </Step>
-        </div>
-      </section>
     </main>
   );
 }
@@ -313,6 +296,10 @@ function Hero({
                 Explore the board
                 <IconArrowDown size={16} />
               </a>
+              <HowItWorks className="btn btn-lg gap-2 px-3 text-fg/85 underline-offset-4 hover:text-fg hover:underline">
+                <IconInfo size={17} />
+                How it works
+              </HowItWorks>
             </div>
             <StatBar
               items={[
@@ -594,13 +581,3 @@ function PointsCard() {
   );
 }
 
-function Step({ n, icon, title, children }: { n: string; icon: ReactNode; title: string; children: ReactNode }) {
-  return (
-    <div className="reveal reveal-step card relative overflow-hidden p-6">
-      <span className="num absolute top-5 right-6 text-[13px] font-medium text-faint">{n}</span>
-      <span className="grid size-11 place-items-center rounded-xl bg-raise2 text-gold">{icon}</span>
-      <p className="mt-5 text-[19px] font-semibold tracking-[-0.02em]">{title}</p>
-      <p className="mt-2 text-sm leading-relaxed text-muted">{children}</p>
-    </div>
-  );
-}

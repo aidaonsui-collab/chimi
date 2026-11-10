@@ -4,11 +4,13 @@ import { giwaSepolia } from "@/lib/chimi/chain";
 import { useBlockNumber, useEthUsd } from "@/lib/chimi/live";
 import { shortAddr } from "@/lib/chimi/market";
 import { PageBackdrop } from "@/components/chimi/backdrop";
+import { HowItWorks } from "@/components/chimi/how-it-works";
 import { CommandPalette } from "@/components/chimi/command";
 import {
   ChimiMark,
   IconBoard,
   IconChart,
+  IconChevronRight,
   IconExternal,
   IconHouse,
   IconMenu,
@@ -41,12 +43,25 @@ const NAV: NavItem[] = [
 
 const LAUNCH: NavItem = { to: "/launch", label: "Launch", icon: IconPlus, on: (p) => p === "/launch" };
 
-/** The side rail: icons only, opening to show labels when the pointer or keyboard is on it. */
+/**
+ * The side rail: icons only, opening to show labels while the pointer is on it or the keyboard is in it (.rail in
+ * styles.css). Picking a page with the pointer folds it away at once, and it stays folded until the pointer has
+ * left, so it never sits over the page that was just opened.
+ */
 function Rail({ path }: { path: string }) {
   const explorer = giwaSepolia.blockExplorers.default.url;
-  const label = "ml-3.5 whitespace-nowrap opacity-0 transition-opacity duration-150 group-hover/rail:opacity-100 group-focus-within/rail:opacity-100";
+  const label = "rail-label ml-3.5 whitespace-nowrap";
+  const [shut, setShut] = useState(false);
   return (
-    <aside className="vt-rail group/rail fixed inset-y-0 left-0 z-40 hidden w-[68px] flex-col overflow-hidden border-r border-line bg-bg transition-[width,box-shadow] duration-200 ease-out hover:w-[224px] hover:shadow-[24px_0_60px_-20px_rgba(0,0,0,.8)] focus-within:w-[224px] lg:flex">
+    <aside
+      className="rail vt-rail fixed inset-y-0 left-0 z-40 hidden flex-col overflow-hidden border-r border-line bg-bg lg:flex"
+      data-shut={shut ? "" : undefined}
+      onPointerLeave={() => setShut(false)}
+      onClick={(e) => {
+        // A click made with the keyboard (detail 0) leaves the rail open, so the focused link stays in view.
+        if (e.detail > 0 && e.target instanceof Element && e.target.closest("a")) setShut(true);
+      }}
+    >
       <Link to="/" className="flex h-16 shrink-0 items-center pl-[16px]" aria-label="Chimi home">
         <ChimiMark size={36} />
         <span className={`${label} flex items-baseline gap-2`}>
@@ -294,6 +309,10 @@ function Footer() {
             <span className="font-serif text-sm text-gold">치미</span>
           </div>
           <p className="mt-3 max-w-xs text-sm leading-relaxed text-muted">The pool is the market. Every coin opens straight into a locked pool on GIWA, with no bonding curve.</p>
+          <HowItWorks className={`mt-3 inline-flex items-center gap-1.5 text-sm ${link}`}>
+            How Chimi works
+            <IconChevronRight size={14} />
+          </HowItWorks>
         </div>
         <div className="grid content-start gap-2.5 text-sm">
           <p className="th uppercase">Trade</p>
