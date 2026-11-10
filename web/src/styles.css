@@ -26,6 +26,9 @@
   --font-display: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-serif: "Song Myung", "Noto Serif KR", serif;
 
+  /* Fine paper grain: sparse light specks, a few levels above the page colour. */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0.085 0 0 0 -0.029'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+
   --shadow-pop: 0 24px 60px -20px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.04);
   --shadow-seal: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 8px 24px -8px rgba(212, 67, 43, 0.55);
 
@@ -100,9 +103,11 @@
     margin: 0;
     min-height: 100vh;
     background:
+      var(--grain),
       radial-gradient(1100px 520px at 50% -260px, rgba(92, 104, 190, 0.16), transparent 70%),
+      radial-gradient(760px 420px at 100% -180px, rgba(212, 67, 43, 0.055), transparent 70%),
       var(--color-bg);
-    background-attachment: fixed;
+    background-attachment: scroll, fixed, fixed, fixed;
     color: var(--color-fg);
     font-family: var(--font-sans);
     font-weight: 400;
@@ -171,19 +176,36 @@
   .card {
     border-radius: 1rem;
     border: 1px solid var(--color-line);
-    background: var(--color-chip);
+    background-color: var(--color-chip);
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.026), transparent 140px);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.04),
+      0 14px 34px -26px rgba(0, 0, 0, 0.85);
   }
+  /* A card you can open: it lifts, and a soft light follows the pointer across it (--mx/--my are set in shell.tsx). */
   .card-lift {
+    --glow: 0;
+    background-image:
+      radial-gradient(360px circle at var(--mx, 50%) var(--my, 0%), rgb(236 204 140 / calc(var(--glow) * 0.085)), transparent 72%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.026), transparent 140px);
     transition:
-      border-color 0.18s ease,
-      transform 0.18s ease,
-      box-shadow 0.18s ease,
-      background-color 0.18s ease;
+      border-color 0.2s ease,
+      transform 0.25s cubic-bezier(0.2, 0.7, 0.2, 1),
+      box-shadow 0.25s ease,
+      background-color 0.2s ease,
+      --glow 0.3s ease;
   }
   .card-lift:hover {
+    --glow: 1;
     border-color: var(--color-edge);
     transform: translateY(-2px);
-    box-shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.9);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.07),
+      0 22px 44px -22px rgba(0, 0, 0, 0.95);
+  }
+  .card-lift:active {
+    transform: translateY(0);
+    transition-duration: 0.08s;
   }
   .glass {
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -241,25 +263,32 @@
     font-size: 1.0625rem;
   }
   .btn-primary {
-    background: var(--color-seal);
+    background: linear-gradient(180deg, var(--color-seal-hi), var(--color-seal) 78%);
     color: var(--color-onseal);
     box-shadow: var(--shadow-seal);
   }
   .btn-primary:hover:not(:disabled) {
-    background: var(--color-seal-hi);
+    background: linear-gradient(180deg, #ec6549, var(--color-seal-hi) 78%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.24),
+      0 12px 30px -8px rgba(212, 67, 43, 0.7);
   }
   .btn-secondary {
     background: var(--color-raise);
     border-color: var(--color-line);
     color: var(--color-fg);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
   .btn-secondary:hover:not(:disabled) {
     background: var(--color-raise2);
     border-color: var(--color-edge);
   }
   .btn-light {
-    background: var(--color-fg);
+    background: linear-gradient(180deg, #ffffff, var(--color-fg) 70%);
     color: var(--color-bg);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      0 8px 22px -12px rgba(244, 242, 236, 0.45);
   }
   .btn-light:hover:not(:disabled) {
     background: #ffffff;
@@ -334,6 +363,33 @@
     border-radius: 0.75rem;
     border: 1px solid var(--color-line);
     background: var(--color-chip);
+  }
+  .seg {
+    position: relative;
+  }
+  .seg-thumb {
+    position: absolute;
+    top: 3px;
+    left: 0;
+    height: 1.875rem;
+    border-radius: 0.5625rem;
+    background: var(--color-raise2);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 1px 2px rgba(0, 0, 0, 0.4);
+    pointer-events: none;
+  }
+  .seg-thumb[data-moving] {
+    transition:
+      transform 0.28s cubic-bezier(0.3, 0.7, 0.2, 1),
+      width 0.28s cubic-bezier(0.3, 0.7, 0.2, 1);
+  }
+  .seg[data-thumb] > button {
+    position: relative;
+  }
+  .seg[data-thumb] > button[aria-selected="true"] {
+    background: transparent;
+    box-shadow: none;
   }
   .seg > button {
     height: 1.875rem;
@@ -479,7 +535,131 @@
   }
 }
 
+/* How strongly the pointer light shows on a card. Registered so it can fade in and out. */
+@property --glow {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
+/* The roof banner: a hairline of light on its top edge and the night sky spilling a little past it. */
+.roof-frame {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 50px 120px -70px rgba(88, 104, 214, 0.7);
+}
+
+/* A value that has just arrived or changed settles into place. */
+.settle {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: settle 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes settle {
+  from {
+    opacity: 0;
+    transform: translateY(0.35em);
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+/*
+ * Sections further down a page ease in as they are scrolled to. This follows the scroll position, with no script,
+ * so a browser that can't do it simply shows the section.
+ */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal {
+      animation: reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 170px;
+    }
+    /* Cards in a row arrive one after another. */
+    .reveal-step:nth-child(2) {
+      animation-range: entry 30px entry 200px;
+    }
+    .reveal-step:nth-child(3) {
+      animation-range: entry 60px entry 230px;
+    }
+  }
+}
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * Going from one page to another: the old page fades, the new one fades in and rises a little. The rail, the top
+ * bar and the bars along the bottom are named so they hold still while the page between them changes.
+ */
+.vt-rail {
+  view-transition-name: rail;
+}
+.vt-top {
+  view-transition-name: topbar;
+}
+.vt-status {
+  view-transition-name: statusbar;
+}
+.vt-tabs {
+  view-transition-name: tabbar;
+}
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root) {
+    animation: 0.12s ease-out both page-out;
+  }
+  ::view-transition-new(root) {
+    animation: 0.34s cubic-bezier(0.2, 0.7, 0.2, 1) both page-in;
+  }
+}
+::view-transition-group(rail),
+::view-transition-group(topbar),
+::view-transition-group(statusbar),
+::view-transition-group(tabbar) {
+  animation: none;
+}
+::view-transition-old(rail),
+::view-transition-old(topbar),
+::view-transition-old(statusbar),
+::view-transition-old(tabbar) {
+  display: none;
+}
+::view-transition-new(rail),
+::view-transition-new(topbar),
+::view-transition-new(statusbar),
+::view-transition-new(tabbar) {
+  animation: none;
+}
+@keyframes page-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
   *,
   *::before,
   *::after {

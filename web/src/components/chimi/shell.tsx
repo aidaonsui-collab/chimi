@@ -45,7 +45,7 @@ function Rail({ path }: { path: string }) {
   const explorer = giwaSepolia.blockExplorers.default.url;
   const label = "ml-3.5 whitespace-nowrap opacity-0 transition-opacity duration-150 group-hover/rail:opacity-100 group-focus-within/rail:opacity-100";
   return (
-    <aside className="group/rail fixed inset-y-0 left-0 z-40 hidden w-[68px] flex-col overflow-hidden border-r border-line bg-bg transition-[width,box-shadow] duration-200 ease-out hover:w-[224px] hover:shadow-[24px_0_60px_-20px_rgba(0,0,0,.8)] focus-within:w-[224px] lg:flex">
+    <aside className="vt-rail group/rail fixed inset-y-0 left-0 z-40 hidden w-[68px] flex-col overflow-hidden border-r border-line bg-bg transition-[width,box-shadow] duration-200 ease-out hover:w-[224px] hover:shadow-[24px_0_60px_-20px_rgba(0,0,0,.8)] focus-within:w-[224px] lg:flex">
       <Link to="/" className="flex h-16 shrink-0 items-center pl-[16px]" aria-label="Chimi home">
         <ChimiMark size={36} />
         <span className={`${label} flex items-baseline gap-2`}>
@@ -111,7 +111,7 @@ function TabBar({ path }: { path: string }) {
   };
   return (
     <>
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex h-[64px] items-stretch border-t border-line bg-bg/92 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden" aria-label="Main">
+      <nav className="vt-tabs fixed inset-x-0 bottom-0 z-40 flex h-[64px] items-stretch border-t border-line bg-bg/92 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden" aria-label="Main">
         {tabs.map(tab)}
         <Link to="/launch" aria-label="Launch a coin" className="flex flex-1 items-center justify-center">
           <span className="grid size-11 place-items-center rounded-2xl bg-seal text-onseal shadow-seal">
@@ -155,7 +155,7 @@ function StatusBar() {
   const explorer = giwaSepolia.blockExplorers.default.url;
   const down = !loading && !!note && coins.length === 0;
   return (
-    <div className="fixed right-0 bottom-0 left-[68px] z-30 hidden h-9 items-center justify-between gap-4 border-t border-line bg-bg/92 px-5 text-xs text-muted backdrop-blur-xl lg:flex">
+    <div className="vt-status fixed right-0 bottom-0 left-[68px] z-30 hidden h-9 items-center justify-between gap-4 border-t border-line bg-bg/92 px-5 text-xs text-muted backdrop-blur-xl lg:flex">
       <div className="flex min-w-0 items-center gap-4">
         <span className={`flex items-center gap-2 font-medium ${down ? "text-down" : "text-ok"}`}>
           <span className="live-dot" />
@@ -211,10 +211,31 @@ export function Shell({ children }: { children: ReactNode }) {
 
   useEffect(() => setSearch(false), [path]);
 
+  // The soft light on a card that can be opened follows the pointer (.card-lift in styles.css).
+  useEffect(() => {
+    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+    let frame = 0;
+    const onMove = (e: PointerEvent) => {
+      const card = e.target instanceof Element ? e.target.closest<HTMLElement>(".card-lift") : null;
+      if (!card) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const box = card.getBoundingClientRect();
+        card.style.setProperty("--mx", `${Math.round(e.clientX - box.left)}px`);
+        card.style.setProperty("--my", `${Math.round(e.clientY - box.top)}px`);
+      });
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      cancelAnimationFrame(frame);
+    };
+  }, []);
+
   return (
     <div className="flex min-h-dvh flex-col lg:pl-[68px]">
       <Rail path={path} />
-      <header className={`sticky top-0 z-30 border-b transition-colors duration-200 ${scrolled ? "border-line bg-bg/85 backdrop-blur-xl" : "border-transparent bg-transparent"}`}>
+      <header className={`vt-top sticky top-0 z-30 border-b transition-colors duration-200 ${scrolled ? "border-line bg-bg/85 backdrop-blur-xl" : "border-transparent bg-transparent"}`}>
         <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex items-center gap-2.5 lg:hidden" aria-label="Chimi home">
             <ChimiMark size={34} />

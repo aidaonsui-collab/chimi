@@ -17,7 +17,25 @@ function AppError({ error, reset }: ErrorComponentProps) {
   );
 }
 
+// A cross-fade that gets skipped (a second click before the first has finished) rejects its `ready` promise.
+// Nothing is wrong when that happens, so it shouldn't show up in the console as an unhandled error.
+if (typeof document !== "undefined" && typeof document.startViewTransition === "function") {
+  const start = document.startViewTransition.bind(document);
+  document.startViewTransition = ((...args: Parameters<typeof start>) => {
+    const transition = start(...args);
+    transition.ready.catch(() => {});
+    return transition;
+  }) as typeof document.startViewTransition;
+}
+
 export function getRouter() {
-  // Hovering a link warms up its page, so the click feels instant.
-  return createRouter({ routeTree, defaultErrorComponent: AppError, defaultPreload: "intent", scrollRestoration: true });
+  // Hovering a link warms up its page, so the click feels instant. Pages cross-fade (styles.css) when the path
+  // changes; a page changing its own search params does not.
+  return createRouter({
+    routeTree,
+    defaultErrorComponent: AppError,
+    defaultPreload: "intent",
+    scrollRestoration: true,
+    defaultViewTransition: { types: ({ pathChanged }) => (pathChanged && document.visibilityState === "visible" ? ["page"] : false) },
+  });
 }
