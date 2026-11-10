@@ -3,6 +3,7 @@ import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { giwaSepolia } from "@/lib/chimi/chain";
 import { useBlockNumber, useEthUsd } from "@/lib/chimi/live";
 import { shortAddr } from "@/lib/chimi/market";
+import { PageBackdrop } from "@/components/chimi/backdrop";
 import { CommandPalette } from "@/components/chimi/command";
 import {
   ChimiMark,
@@ -233,7 +234,8 @@ export function Shell({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <div className="flex min-h-dvh flex-col lg:pl-[68px]">
+    <div className="relative isolate flex min-h-dvh flex-col lg:pl-[68px]">
+      <PageBackdrop path={path} />
       <Rail path={path} />
       <header className={`vt-top sticky top-0 z-30 border-b transition-colors duration-200 ${scrolled ? "border-line bg-bg/85 backdrop-blur-xl" : "border-transparent bg-transparent"}`}>
         <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
