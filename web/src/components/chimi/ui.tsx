@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { IconCheck, IconClose, IconCopy } from "@/components/chimi/icons";
 
@@ -104,22 +105,39 @@ export function CopyButton({ text, label = "Copy", className = "btn btn-sm btn-i
 }
 
 /** A wallet's picture: a gradient that is always the same for the same address. */
-export function Blockie({ address, size = 24, className = "" }: { address: string; size?: number; className?: string }) {
-  const hex = address.replace(/^0x/, "").padEnd(12, "0");
-  const a = parseInt(hex.slice(0, 4), 16) % 360;
-  const b = (a + 40 + (parseInt(hex.slice(4, 8), 16) % 140)) % 360;
-  const angle = parseInt(hex.slice(8, 12), 16) % 360;
+export function Blockie({ address, size = 24, className = "", shape = "circle" }: { address: string; size?: number; className?: string; shape?: "circle" | "rounded" }) {
   return (
     <span
       aria-hidden
-      className={`block shrink-0 rounded-full ${className}`}
+      className={`block shrink-0 ${shape === "circle" ? "rounded-full" : size >= 72 ? "rounded-2xl" : "rounded-xl"} ${className}`}
       style={{
         width: size,
         height: size,
-        background: `linear-gradient(${angle}deg, hsl(${a} 72% 58%), hsl(${b} 68% 42%))`,
+        background: walletGradient(address),
         boxShadow: "inset 0 0 0 1px rgba(255,255,255,.14)",
       }}
     />
+  );
+}
+
+/** The gradient behind a wallet's picture, so its page can be tinted to match. */
+export function walletGradient(address: string) {
+  const hex = address.toLowerCase().replace(/^0x/, "").padEnd(12, "0");
+  const a = parseInt(hex.slice(0, 4), 16) % 360;
+  const b = (a + 40 + (parseInt(hex.slice(4, 8), 16) % 140)) % 360;
+  const angle = parseInt(hex.slice(8, 12), 16) % 360;
+  return `linear-gradient(${angle}deg, hsl(${a} 72% 58%), hsl(${b} 68% 42%))`;
+}
+
+const shortWallet = (address: string) => `${address.slice(0, 6)}…${address.slice(-4)}`;
+
+/** A wallet, shown by its picture and short address (or `name`), linking to its trader page. */
+export function TraderLink({ address, name, size = 16, className = "" }: { address: string; name?: string | null; size?: number; className?: string }) {
+  return (
+    <Link to="/u/$address" params={{ address }} title={address} className={`inline-flex min-w-0 items-center gap-2 transition-colors hover:text-fg ${className}`}>
+      <Blockie address={address} size={size} />
+      <span className="num truncate">{name ? name.replace(/\.up\.id$/, "") : shortWallet(address)}</span>
+    </Link>
   );
 }
 

@@ -18,11 +18,13 @@ import { Route as SwapRouteImport } from './routes/swap'
 import { Route as ApiHousesRouteImport } from './routes/api/houses'
 import { Route as ApiPointsRouteImport } from './routes/api/points'
 import { Route as ApiTokenMetaRouteImport } from './routes/api/token-meta'
+import { Route as ApiTraderRouteImport } from './routes/api/trader'
 import { Route as ApiUploadRouteImport } from './routes/api/upload'
 import { Route as CoinAddressRouteImport } from './routes/coin.$address'
 import { Route as HousesIndexRouteImport } from './routes/houses.index'
 import { Route as HousesTagRouteImport } from './routes/houses.$tag'
 import { Route as PoolAddressRouteImport } from './routes/pool.$address'
+import { Route as UAddressRouteImport } from './routes/u.$address'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -69,6 +71,11 @@ const ApiTokenMetaRoute = ApiTokenMetaRouteImport.update({
   path: '/api/token-meta',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTraderRoute = ApiTraderRouteImport.update({
+  id: '/api/trader',
+  path: '/api/trader',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiUploadRoute = ApiUploadRouteImport.update({
   id: '/api/upload',
   path: '/api/upload',
@@ -94,6 +101,11 @@ const PoolAddressRoute = PoolAddressRouteImport.update({
   path: '/pool/$address',
   getParentRoute: () => rootRouteImport,
 } as any)
+const UAddressRoute = UAddressRouteImport.update({
+  id: '/u/$address',
+  path: '/u/$address',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -105,10 +117,12 @@ export interface FileRoutesByFullPath {
   '/api/houses': typeof ApiHousesRoute
   '/api/points': typeof ApiPointsRoute
   '/api/token-meta': typeof ApiTokenMetaRoute
+  '/api/trader': typeof ApiTraderRoute
   '/api/upload': typeof ApiUploadRoute
   '/coin/$address': typeof CoinAddressRoute
   '/houses/$tag': typeof HousesTagRoute
   '/pool/$address': typeof PoolAddressRoute
+  '/u/$address': typeof UAddressRoute
   '/houses/': typeof HousesIndexRoute
 }
 export interface FileRoutesByTo {
@@ -121,10 +135,12 @@ export interface FileRoutesByTo {
   '/api/houses': typeof ApiHousesRoute
   '/api/points': typeof ApiPointsRoute
   '/api/token-meta': typeof ApiTokenMetaRoute
+  '/api/trader': typeof ApiTraderRoute
   '/api/upload': typeof ApiUploadRoute
   '/coin/$address': typeof CoinAddressRoute
   '/houses/$tag': typeof HousesTagRoute
   '/pool/$address': typeof PoolAddressRoute
+  '/u/$address': typeof UAddressRoute
   '/houses': typeof HousesIndexRoute
 }
 export interface FileRoutesById {
@@ -138,10 +154,12 @@ export interface FileRoutesById {
   '/api/houses': typeof ApiHousesRoute
   '/api/points': typeof ApiPointsRoute
   '/api/token-meta': typeof ApiTokenMetaRoute
+  '/api/trader': typeof ApiTraderRoute
   '/api/upload': typeof ApiUploadRoute
   '/coin/$address': typeof CoinAddressRoute
   '/houses/$tag': typeof HousesTagRoute
   '/pool/$address': typeof PoolAddressRoute
+  '/u/$address': typeof UAddressRoute
   '/houses/': typeof HousesIndexRoute
 }
 export interface FileRouteTypes {
@@ -156,10 +174,12 @@ export interface FileRouteTypes {
     | '/api/houses'
     | '/api/points'
     | '/api/token-meta'
+    | '/api/trader'
     | '/api/upload'
     | '/coin/$address'
     | '/houses/$tag'
     | '/pool/$address'
+    | '/u/$address'
     | '/houses/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -172,10 +192,12 @@ export interface FileRouteTypes {
     | '/api/houses'
     | '/api/points'
     | '/api/token-meta'
+    | '/api/trader'
     | '/api/upload'
     | '/coin/$address'
     | '/houses/$tag'
     | '/pool/$address'
+    | '/u/$address'
     | '/houses'
   id:
     | '__root__'
@@ -188,10 +210,12 @@ export interface FileRouteTypes {
     | '/api/houses'
     | '/api/points'
     | '/api/token-meta'
+    | '/api/trader'
     | '/api/upload'
     | '/coin/$address'
     | '/houses/$tag'
     | '/pool/$address'
+    | '/u/$address'
     | '/houses/'
   fileRoutesById: FileRoutesById
 }
@@ -205,10 +229,12 @@ export interface RootRouteChildren {
   ApiHousesRoute: typeof ApiHousesRoute
   ApiPointsRoute: typeof ApiPointsRoute
   ApiTokenMetaRoute: typeof ApiTokenMetaRoute
+  ApiTraderRoute: typeof ApiTraderRoute
   ApiUploadRoute: typeof ApiUploadRoute
   CoinAddressRoute: typeof CoinAddressRoute
   HousesTagRoute: typeof HousesTagRoute
   PoolAddressRoute: typeof PoolAddressRoute
+  UAddressRoute: typeof UAddressRoute
   HousesIndexRoute: typeof HousesIndexRoute
 }
 
@@ -277,6 +303,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTokenMetaRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/trader': {
+      id: '/api/trader'
+      path: '/api/trader'
+      fullPath: '/api/trader'
+      preLoaderRoute: typeof ApiTraderRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/upload': {
       id: '/api/upload'
       path: '/api/upload'
@@ -312,6 +345,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PoolAddressRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/u/$address': {
+      id: '/u/$address'
+      path: '/u/$address'
+      fullPath: '/u/$address'
+      preLoaderRoute: typeof UAddressRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -325,10 +365,12 @@ const rootRouteChildren: RootRouteChildren = {
   ApiHousesRoute: ApiHousesRoute,
   ApiPointsRoute: ApiPointsRoute,
   ApiTokenMetaRoute: ApiTokenMetaRoute,
+  ApiTraderRoute: ApiTraderRoute,
   ApiUploadRoute: ApiUploadRoute,
   CoinAddressRoute: CoinAddressRoute,
   HousesTagRoute: HousesTagRoute,
   PoolAddressRoute: PoolAddressRoute,
+  UAddressRoute: UAddressRoute,
   HousesIndexRoute: HousesIndexRoute,
 }
 export const routeTree = rootRouteImport

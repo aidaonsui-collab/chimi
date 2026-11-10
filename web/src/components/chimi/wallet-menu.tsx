@@ -6,7 +6,7 @@ import { ethText, money } from "@/lib/chimi/format";
 import { useEthUsd } from "@/lib/chimi/live";
 import { short, shortAddr } from "@/lib/chimi/market";
 import { useMyProfile } from "@/lib/chimi/rewards";
-import { IconChevronDown, IconExternal, IconHouse, IconPoints, IconPower, IconWallet } from "@/components/chimi/icons";
+import { IconBoard, IconChevronDown, IconExternal, IconHouse, IconPoints, IconPower, IconWallet } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
 import { DojangMark } from "@/components/chimi/rewards-bits";
 import { toast } from "@/components/chimi/toast";
@@ -117,6 +117,10 @@ function Menu({ account, onClose, onDisconnect }: { account: `0x${string}`; onCl
         <p className="num mt-0.5 text-xl font-semibold tracking-[-0.02em]">{eth === undefined ? <span className="skeleton h-6 w-24" /> : `${ethText(eth)} ETH`}</p>
         {eth !== undefined && ethUsd ? <p className="num text-xs text-muted">{money(eth * ethUsd)}</p> : null}
       </div>
+      <Link to="/u/$address" params={{ address: account }} role="menuitem" onClick={onClose} className={row}>
+        <IconBoard size={17} className="text-muted" />
+        Your trades and profit
+      </Link>
       <Link to="/points" role="menuitem" onClick={onClose} className={row}>
         <IconPoints size={17} className="text-muted" />
         Your points

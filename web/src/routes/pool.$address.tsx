@@ -13,7 +13,7 @@ import { IconChevronRight, IconExternal, IconPlus, IconSwap } from "@/components
 import { PairMark } from "@/components/chimi/pair-mark";
 import { PositionDesk } from "@/components/chimi/position-form";
 import { useChimi } from "@/components/chimi/provider";
-import { Blockie, CopyButton, Empty, Seg } from "@/components/chimi/ui";
+import { CopyButton, Empty, Seg, TraderLink } from "@/components/chimi/ui";
 
 export const Route = createFileRoute("/pool/$address")({ component: PoolPage });
 
@@ -322,22 +322,25 @@ function PoolPage() {
               <span>Type</span>
               <span className="text-right">ETH</span>
               <span className="text-right">{coin.symbol}</span>
-              <span className="hidden text-right sm:block">Wallet</span>
+              <span className="hidden text-right sm:block">Trader</span>
+              <span />
             </div>
             {rows
               .slice(-10)
               .reverse()
               .map((swap) => (
-                <a key={`${swap.tx}:${swap.index ?? 0}`} href={`${explorer}/tx/${swap.tx}`} target="_blank" rel="noreferrer" className={`${SWAP_GRID} row-hover num border-b border-line/70 py-3 text-sm last:border-0`}>
+                <div key={`${swap.tx}:${swap.index ?? 0}`} className={`${SWAP_GRID} row-hover num border-b border-line/70 py-3 text-sm last:border-0`}>
                   <span className="text-muted">{ago(now - swap.time)}</span>
                   <span className={`font-semibold ${swap.buy ? "text-ok" : "text-down"}`}>{swap.buy ? "Buy" : "Sell"}</span>
                   <span className="text-right">{ethText(Number(swap.ethAmount) / 1e18)}</span>
                   <span className="truncate text-right">{compactCount(Number(swap.tokenAmount) / 1e18)}</span>
-                  <span className="hidden items-center justify-end gap-2 text-muted sm:flex">
-                    <Blockie address={swap.recipient} size={16} />
-                    {shortAddr(swap.recipient)}
+                  <span className="hidden min-w-0 justify-end text-muted sm:flex">
+                    <TraderLink address={swap.recipient} />
                   </span>
-                </a>
+                  <a href={`${explorer}/tx/${swap.tx}`} target="_blank" rel="noreferrer" aria-label="Transaction on the explorer" title="Transaction on the explorer" className="flex justify-end text-faint hover:text-fg">
+                    <IconExternal size={14} />
+                  </a>
+                </div>
               ))}
           </>
         )}
@@ -346,7 +349,7 @@ function PoolPage() {
   );
 }
 
-const SWAP_GRID = "grid items-center gap-3 px-5 sm:px-6 grid-cols-[2.75rem_2.75rem_minmax(0,1fr)_minmax(0,1fr)] sm:grid-cols-[4rem_3.5rem_minmax(0,1fr)_minmax(0,1fr)_9rem]";
+const SWAP_GRID = "grid items-center gap-3 px-5 sm:px-6 grid-cols-[2.5rem_2.5rem_minmax(0,1fr)_minmax(0,1fr)_1rem] sm:grid-cols-[4rem_3.5rem_minmax(0,1fr)_minmax(0,1fr)_9rem_1rem]";
 
 function Big({ label, value, tone = "" }: { label: string; value: ReactNode; tone?: string }) {
   return (

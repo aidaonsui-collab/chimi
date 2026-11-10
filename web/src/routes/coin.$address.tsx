@@ -23,7 +23,7 @@ import {
 import { useChimi } from "@/components/chimi/provider";
 import { toast } from "@/components/chimi/toast";
 import { EthLogo, TokenLogo } from "@/components/chimi/token-logo";
-import { Blockie, Change, CopyButton, Empty, Modal, Note, Seg } from "@/components/chimi/ui";
+import { Blockie, Change, CopyButton, Empty, Modal, Note, Seg, TraderLink } from "@/components/chimi/ui";
 
 export const Route = createFileRoute("/coin/$address")({ component: CoinPage });
 
@@ -350,10 +350,10 @@ function CoinPage() {
                       Locked pool
                     </span>
                   )}
-                  <a href={`${explorer}/address/${coin.creator}`} target="_blank" rel="noreferrer" className="chip hover:text-fg">
+                  <Link to="/u/$address" params={{ address: coin.creator }} className="chip hover:text-fg" title="The wallet that launched this coin">
                     <Blockie address={coin.creator} size={14} />
                     <span className="num">{shortAddr(coin.creator)}</span>
-                  </a>
+                  </Link>
                 </div>
               </div>
             </div>
@@ -611,11 +611,11 @@ function CoinPage() {
                   <span>Type</span>
                   <span className="text-right">{coin.symbol}</span>
                   <span className="text-right">ETH</span>
-                  <span className="hidden text-right sm:block">Trader</span>
-                  <span className="hidden sm:block" />
+                  <span className="text-right">Trader</span>
+                  <span />
                 </div>
                 {list.slice(0, shown).map((swap) => (
-                  <a key={`${swap.tx}:${swap.index ?? 0}`} href={`${explorer}/tx/${swap.tx}`} target="_blank" rel="noreferrer" className={`${TRADE_GRID} row-hover num border-b border-line/70 py-3 text-sm last:border-0`}>
+                  <div key={`${swap.tx}:${swap.index ?? 0}`} className={`${TRADE_GRID} row-hover num border-b border-line/70 py-3 text-sm last:border-0`}>
                     <span className="text-muted">{ago(now - swap.time)}</span>
                     <span className={`font-semibold ${swap.buy ? "text-ok" : "text-down"}`}>{swap.buy ? "Buy" : "Sell"}</span>
                     <span className="truncate text-right">{compactCount(Number(swap.tokenAmount) / 1e18)}</span>
@@ -623,14 +623,13 @@ function CoinPage() {
                       {ethText(Number(swap.ethAmount) / 1e18)}
                       {ethUsd ? <span className="block text-xs text-muted">{money((Number(swap.ethAmount) / 1e18) * ethUsd)}</span> : null}
                     </span>
-                    <span className="hidden items-center justify-end gap-2 text-muted sm:flex">
-                      <Blockie address={swap.recipient} size={16} />
-                      {shortAddr(swap.recipient)}
+                    <span className="flex min-w-0 justify-end text-muted">
+                      <TraderLink address={swap.recipient} />
                     </span>
-                    <span className="hidden justify-end text-faint sm:flex">
+                    <a href={`${explorer}/tx/${swap.tx}`} target="_blank" rel="noreferrer" aria-label="Transaction on the explorer" title="Transaction on the explorer" className="flex justify-end text-faint hover:text-fg">
                       <IconExternal size={14} />
-                    </span>
-                  </a>
+                    </a>
+                  </div>
                 ))}
                 {list.length > shown ? (
                   <button type="button" onClick={() => setShown((n) => n + 50)} className="w-full border-t border-line py-3 text-sm font-medium text-muted hover:text-fg">
@@ -655,8 +654,9 @@ function CoinPage() {
                 const share = Number((holder.balance * 10_000n) / supplyWei) / 100;
                 const isPool = holder.address.toLowerCase() === coin.pool.toLowerCase();
                 const isDev = holder.address.toLowerCase() === coin.creator.toLowerCase();
-                return (
-                  <a key={holder.address} href={`${explorer}/address/${holder.address}`} target="_blank" rel="noreferrer" className={`${HOLDER_GRID} row-hover num border-b border-line/70 py-3 text-sm last:border-0`}>
+                const rowClass = `${HOLDER_GRID} row-hover num border-b border-line/70 py-3 text-sm last:border-0`;
+                const cells = (
+                  <>
                     <span className="text-faint">{i + 1}</span>
                     <span className="flex min-w-0 items-center gap-2.5">
                       <Blockie address={holder.address} size={22} />
@@ -671,7 +671,17 @@ function CoinPage() {
                       </span>
                       <span className="w-14 text-right">{share.toFixed(2)}%</span>
                     </span>
+                  </>
+                );
+                // The pool is a contract, so it opens on the explorer; every other holder has a trader page.
+                return isPool ? (
+                  <a key={holder.address} href={`${explorer}/address/${holder.address}`} target="_blank" rel="noreferrer" className={rowClass}>
+                    {cells}
                   </a>
+                ) : (
+                  <Link key={holder.address} to="/u/$address" params={{ address: holder.address }} className={rowClass}>
+                    {cells}
+                  </Link>
                 );
               })}
               <p className="border-t border-line px-5 py-3 text-xs text-faint">Shows the pool, the creator and wallets that traded in about the last day. Older holders appear on the explorer.</p>
@@ -685,7 +695,7 @@ function CoinPage() {
   );
 }
 
-const TRADE_GRID = "grid items-center gap-3 px-4 sm:px-5 grid-cols-[2.75rem_2.75rem_minmax(0,1fr)_minmax(0,1fr)] sm:grid-cols-[3.5rem_3.5rem_minmax(0,1fr)_minmax(0,1fr)_9rem_1rem]";
+const TRADE_GRID = "grid items-center gap-2.5 sm:gap-3 px-4 sm:px-5 grid-cols-[2rem_2.25rem_minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,1.3fr)_0.875rem] sm:grid-cols-[3.5rem_3.5rem_minmax(0,1fr)_minmax(0,1fr)_9rem_1rem]";
 const HOLDER_GRID = "grid items-center gap-3 px-4 sm:px-5 grid-cols-[1.5rem_minmax(0,1fr)_5rem_4rem] sm:grid-cols-[2rem_minmax(0,1fr)_7rem_9.5rem]";
 
 function IconLink({ href, label, children }: { href: string; label: string; children: ReactNode }) {

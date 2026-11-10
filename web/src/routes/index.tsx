@@ -26,7 +26,7 @@ import {
 import { useChimi } from "@/components/chimi/provider";
 import { duration, useNow } from "@/components/chimi/rewards-bits";
 import { TokenArt, TokenLogo } from "@/components/chimi/token-logo";
-import { Change, Empty, Seg, Sparkline } from "@/components/chimi/ui";
+import { Change, Empty, Seg, Sparkline, TraderLink } from "@/components/chimi/ui";
 
 export const Route = createFileRoute("/")({ component: Home });
 
@@ -600,22 +600,23 @@ function Tape({ rows, byPool, ready, loading }: { rows: Row[]; byPool: Record<st
       ) : (
         <ul>
           {trades.map(({ swap, row }) => (
-            <li key={`${swap.tx}:${swap.index ?? 0}`}>
-              <a href={`${explorer}/tx/${swap.tx}`} target="_blank" rel="noreferrer" className="row-hover flex items-center gap-3 border-b border-line/70 px-5 py-3 text-sm last:border-0">
+            // Three things to open from one row: the coin, the trader, and the transaction itself.
+            <li key={`${swap.tx}:${swap.index ?? 0}`} className="row-hover flex items-center gap-3 border-b border-line/70 px-5 py-3 text-sm last:border-0">
+              <Link to="/coin/$address" params={{ address: row.coin.token }} aria-label={row.coin.name} className="shrink-0">
                 <TokenLogo symbol={row.coin.symbol} image={row.image} size={32} />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2">
-                    <span className={`font-semibold ${swap.buy ? "text-ok" : "text-down"}`}>{swap.buy ? "Buy" : "Sell"}</span>
-                    <span className="num truncate font-medium">
-                      {compactCount(Number(swap.tokenAmount) / 1e18)} {row.coin.symbol}
-                    </span>
+              </Link>
+              <span className="min-w-0 flex-1">
+                <Link to="/coin/$address" params={{ address: row.coin.token }} className="group flex items-center gap-2">
+                  <span className={`font-semibold ${swap.buy ? "text-ok" : "text-down"}`}>{swap.buy ? "Buy" : "Sell"}</span>
+                  <span className="num truncate font-medium group-hover:text-gold">
+                    {compactCount(Number(swap.tokenAmount) / 1e18)} {row.coin.symbol}
                   </span>
-                  <span className="num block truncate text-xs text-muted">{shortAddr(swap.recipient)}</span>
-                </span>
-                <span className="text-right">
-                  <span className="num block font-medium">{ethText(Number(swap.ethAmount) / 1e18)} ETH</span>
-                  <span className="num block text-xs text-muted">{now === null ? "" : `${ago(Math.floor(now / 1000) - swap.time)} ago`}</span>
-                </span>
+                </Link>
+                <TraderLink address={swap.recipient} size={14} className="mt-0.5 gap-1.5 text-xs text-muted" />
+              </span>
+              <a href={`${explorer}/tx/${swap.tx}`} target="_blank" rel="noreferrer" title="Transaction on the explorer" className="group text-right">
+                <span className="num block font-medium group-hover:text-gold">{ethText(Number(swap.ethAmount) / 1e18)} ETH</span>
+                <span className="num block text-xs text-muted">{now === null ? "" : `${ago(Math.floor(now / 1000) - swap.time)} ago`}</span>
               </a>
             </li>
           ))}
