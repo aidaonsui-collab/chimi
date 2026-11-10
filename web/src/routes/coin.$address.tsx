@@ -3,18 +3,24 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { formatEther, parseEther, type Address } from "viem";
 import { POOL_FEE, erc20Abi, giwaSepolia } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
-import { ago, amountText, compactCount, ethText, money, tokenUsd } from "@/lib/chimi/format";
-import { SUPPLY, coinStats, fetchSwaps, openingCap, useEthUsd } from "@/lib/chimi/live";
+import { buildCandles, INTERVALS, intervalSeconds, pickBubbles, pickInterval, type BubbleMode, type IntervalKey, type Tick } from "@/lib/chimi/chart-rules";
+import { followingOf } from "@/lib/chimi/follow-rules";
+import { useFollows } from "@/lib/chimi/follows";
+import { ago, amountText, compactCount, compactUsd, ethText, money, tokenUsd } from "@/lib/chimi/format";
+import { useSwapHistory } from "@/lib/chimi/history";
+import { SUPPLY, capBefore, coinStats, fetchSwaps, useEthUsd } from "@/lib/chimi/live";
 import { estimatedOut, feeLabel, loadCoin, loadHolders, short, shortAddr, wethPerToken, type Coin, type Holder, type PoolSwap } from "@/lib/chimi/market";
 import { saveTokenMeta, shrinkImage } from "@/lib/chimi/meta";
 import { publishTokenProfile, refreshTokenProfiles, sharedStorageEnabled, useTokenProfile } from "@/lib/chimi/token-image";
-import { AreaChart, type ChartPoint } from "@/components/chimi/charts";
+import { CandleChart, type ChartBubble } from "@/components/chimi/candle-chart";
 import {
   IconArrowDown,
+  IconCandles,
   IconChevronRight,
   IconExternal,
   IconGlobe,
   IconImage,
+  IconLine,
   IconLock,
   IconSliders,
   IconTelegram,
@@ -38,13 +44,15 @@ export const Route = createFileRoute("/coin/$address")({
 });
 
 const SLIPPAGE = [100, 200, 500];
-const RANGES = [
-  ["1H", 60 * 60],
-  ["6H", 6 * 60 * 60],
-  ["1D", 24 * 60 * 60],
-  ["ALL", 0],
-] as const;
-type Range = (typeof RANGES)[number][0];
+
+/** Chart values to four figures, so a candle's open and close don't read the same: $2.245K, $5.812M. */
+function fineUsd(v: number) {
+  if (!Number.isFinite(v)) return "—";
+  const abs = Math.abs(v);
+  const [size, suffix] = abs >= 1e9 ? ([1e9, "B"] as const) : abs >= 1e6 ? ([1e6, "M"] as const) : abs >= 1e3 ? ([1e3, "K"] as const) : ([1, ""] as const);
+  const scaled = v / size;
+  return "$" + scaled.toFixed(Math.abs(scaled) >= 100 ? 1 : Math.abs(scaled) >= 10 ? 2 : 3) + suffix;
+}
 
 /** Left in the wallet when buying with everything, so the swap can still pay for gas. */
 const GAS_RESERVE = 200_000_000_000_000n;
@@ -80,11 +88,14 @@ function CoinPage() {
   const [poolEth, setPoolEth] = useState<bigint>();
   const [swaps, setSwaps] = useState<PoolSwap[]>();
   const [holders, setHolders] = useState<Holder[]>();
-  const [range, setRange] = useState<Range>("ALL");
+  // The chart: candle size (chosen for the coin's age until the visitor picks one), what is charted, and how.
+  const [picked, setPicked] = useState<IntervalKey | null>(null);
+  const [unit, setUnit] = useState<"mcap" | "price">("mcap");
+  const [chartKind, setChartKind] = useState<"candles" | "line">("candles");
+  const [traders, setTraders] = useState<BubbleMode>("all");
   const [panel, setPanel] = useState<"trades" | "holders" | "comments">("trades");
   const thread = useComments(coin && !coin.preview ? coin.token : undefined);
   const [shown, setShown] = useState(25);
-  const [hover, setHover] = useState<ChartPoint | null>(null);
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
@@ -201,32 +212,51 @@ function CoinPage() {
   const now = Math.floor(Date.now() / 1000);
 
   const market = useMemo(() => {
-    const list = swaps ?? [];
-    const is0 = coin?.tokenIs0 ?? true;
-    const capOf = (sqrt: bigint) => (Number(wethPerToken(sqrt, is0)) / 1e18) * SUPPLY;
-    const priced = list.filter((s) => s.sqrtPriceX96 > 0n);
-    const windowSec = RANGES.find((item) => item[0] === range)?.[1] ?? 0;
-    const from = windowSec === 0 ? (priced[0]?.time ?? now - 3600) : now - windowSec;
-    const inside = priced.filter((s) => s.time >= from);
-    const points: ChartPoint[] = [];
-    // The cap the window opened at: where the trade before it left the price, or what its first trade started from.
-    const opened = coin ? openingCap(list, coin, from) : undefined;
-    if (opened !== undefined) points.push({ t: inside.length && windowSec === 0 ? Math.max(from - 60, inside[0]!.time - 60) : from, v: opened });
-    for (const s of inside) points.push({ t: s.time, v: capOf(s.sqrtPriceX96) });
-    if (points.length === 0) points.push({ t: from, v: capEth });
-    points.push({ t: now, v: capEth });
-    const first = points[0]!.v;
-    const day = list.filter((s) => now - s.time <= 86_400);
+    const day = (swaps ?? []).filter((s) => now - s.time <= 86_400);
     return {
-      points,
-      from: Math.min(from, points[0]!.t),
-      change: first > 0 && inside.length > 0 ? ((capEth - first) / first) * 100 : undefined,
+      change: coin && swaps ? coinStats(coin, swaps, now).change : undefined,
       volEth: day.reduce((sum, s) => sum + Number(s.ethAmount) / 1e18, 0),
       trades: day.length,
-      athEth: Math.max(capEth, ...priced.map((s) => capOf(s.sqrtPriceX96))),
     };
-    // `now` moves every render; the numbers only need to follow the trades, the range and the price.
-  }, [swaps, range, capEth, coin?.tokenIs0]);
+    // `now` moves every render; the numbers only need to follow the trades and the price.
+  }, [swaps, capEth, coin]);
+
+  // Every trade that can be read, for the chart: candles, and the traders marked on them.
+  const history = useSwapHistory(coin ?? undefined, swaps);
+  const { data: follows } = useFollows();
+  const following = useMemo(() => followingOf(follows?.state, account ?? undefined), [follows, account]);
+  const chart = useMemo(() => {
+    const all = (history ?? []).filter((s) => s.sqrtPriceX96 > 0n);
+    const at = Math.floor(Date.now() / 1000);
+    const interval = picked ?? pickInterval(all[0]?.time, at);
+    const seconds = intervalSeconds(interval);
+    const is0 = coin?.tokenIs0 ?? true;
+    const priceOf = (sqrt: bigint) => Number(wethPerToken(sqrt, is0)) / 1e18;
+    // One ETH price for the whole history, like every other dollar figure here.
+    const usd = ethUsd ?? 1;
+    const per = (unit === "mcap" ? SUPPLY : 1) * usd;
+    const ticks: Tick[] = all.map((s, i) => {
+      const started = i === 0 && coin ? capBefore(s, coin) : undefined;
+      return {
+        time: s.time,
+        after: priceOf(s.sqrtPriceX96) * per,
+        before: started === undefined ? undefined : (started / SUPPLY) * per,
+        volume: (Number(s.ethAmount) / 1e18) * usd,
+        buy: s.buy,
+      };
+    });
+    const candles = buildCandles(ticks, seconds, at);
+    const from = candles[0]?.time ?? 0;
+    const keyOf = (s: PoolSwap) => s.tx + ":" + (s.index ?? 0);
+    const byKey = new Map(all.map((s) => [keyOf(s), s]));
+    const marks = all.filter((s) => s.time >= from).map((s) => ({ key: keyOf(s), time: s.time, wallet: s.recipient, buy: s.buy, eth: Number(s.ethAmount) / 1e18 }));
+    const bubbles: ChartBubble[] = pickBubbles(marks, { me: account ?? undefined, creator: coin?.creator, following }, traders).map((b) => {
+      const s = byKey.get(b.key)!;
+      return { ...b, candle: Math.floor(b.time / seconds) * seconds, value: priceOf(s.sqrtPriceX96) * per, tokens: Number(s.tokenAmount) / 1e18 };
+    });
+    const athEth = all.reduce((max, s) => Math.max(max, priceOf(s.sqrtPriceX96) * SUPPLY), capEth);
+    return { interval, candles, bubbles, athEth };
+  }, [history, picked, unit, traders, ethUsd, coin, account, following, capEth]);
 
   let parsed = 0n;
   let badAmount = false;
@@ -335,8 +365,9 @@ function CoinPage() {
   const isCreator = Boolean(account && coin.creator && account.toLowerCase() === coin.creator.toLowerCase() && !coin.preview);
   const cash = (eth: number | undefined) => (eth === undefined ? "—" : ethUsd ? money(eth * ethUsd) : `${ethText(eth)} ETH`);
   const liqEth = poolEth === undefined ? undefined : Number(poolEth) / 1e18;
-  const headline = hover ? hover.v : capEth;
-  const tone = market.change === undefined || Math.abs(market.change) < 0.005 ? "gold" : market.change > 0 ? "up" : "down";
+  const chartValue = (v: number) => (unit === "mcap" ? (ethUsd ? fineUsd(v) : ethText(v) + " ETH") : ethUsd ? tokenUsd(v) : v.toPrecision(3) + " ETH");
+  const chartAxis = (v: number) => (unit === "mcap" && ethUsd ? compactUsd(v) : chartValue(v));
+  const chartVolume = (v: number) => (ethUsd ? compactUsd(v) : ethText(v) + " ETH");
   const list = swaps ? [...swaps].reverse() : [];
   const supplyWei = BigInt(SUPPLY) * 10n ** 18n;
 
@@ -429,28 +460,63 @@ function CoinPage() {
 
       <div className="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
         <section className="card min-w-0 p-4 sm:p-6 lg:col-start-1">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
             <div>
               <p className="text-[13px] text-muted">Market cap</p>
-              <p className="num mt-1 text-[34px] leading-none font-semibold tracking-[-0.035em] sm:text-[40px]">{cash(headline)}</p>
+              <p className="num mt-1 text-[34px] leading-none font-semibold tracking-[-0.035em] sm:text-[40px]">{cash(capEth)}</p>
               <p className="mt-2 flex items-center gap-2 text-sm">
-                {hover ? (
-                  <span className="num text-muted">{new Date(hover.t * 1000).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
-                ) : (
-                  <>
-                    <Change value={market.change} className="font-medium" />
-                    <span className="text-muted">{range === "ALL" ? "since the first trade we can read" : `past ${range === "1H" ? "hour" : range === "6H" ? "6 hours" : "day"}`}</span>
-                  </>
-                )}
+                <Change value={market.change} className="font-medium" />
+                <span className="text-muted">past day</span>
               </p>
             </div>
-            <Seg label="Chart range" value={range} onChange={setRange} options={RANGES.map(([label]) => [label, label] as const)} />
+            <Seg
+              label="Traders on the chart"
+              value={traders}
+              onChange={setTraders}
+              options={[
+                ["all", "All traders"],
+                ["following", "Following"],
+                ["off", "Hide"],
+              ]}
+            />
           </div>
-          <div className="mt-5">
-            {swaps ? (
-              <AreaChart points={market.points} from={market.from} to={now} format={(v) => cash(v)} tone={tone} height={280} onHover={setHover} />
+          <div className="no-scrollbar -mx-1 mt-4 flex items-center gap-2 overflow-x-auto px-1 pb-1">
+            <Seg label="Candle size" value={chart.interval} onChange={setPicked} options={INTERVALS.map(([key]) => [key, key] as const)} />
+            <Seg
+              label="What the chart shows"
+              value={unit}
+              onChange={setUnit}
+              options={[
+                ["price", "Price"],
+                ["mcap", "MCap"],
+              ]}
+            />
+            <div className="seg shrink-0" role="group" aria-label="Chart type">
+              <button type="button" aria-pressed={chartKind === "candles"} aria-label="Candles" title="Candles" onClick={() => setChartKind("candles")} className="!px-2">
+                <IconCandles size={16} />
+              </button>
+              <button type="button" aria-pressed={chartKind === "line"} aria-label="Line" title="Line" onClick={() => setChartKind("line")} className="!px-2">
+                <IconLine size={16} />
+              </button>
+            </div>
+          </div>
+          <div className="mt-3">
+            {history ? (
+              <CandleChart
+                candles={chart.candles}
+                bubbles={chart.bubbles}
+                kind={chartKind}
+                view={coin.token + ":" + chart.interval + ":" + unit}
+                label={coin.symbol + " · " + chart.interval}
+                symbol={coin.symbol}
+                format={chartValue}
+                axis={chartAxis}
+                volumeText={chartVolume}
+                ethUsd={ethUsd}
+                now={now}
+              />
             ) : (
-              <span className="skeleton h-[304px] w-full rounded-xl" />
+              <span className="skeleton chart-frame w-full rounded-xl" />
             )}
           </div>
         </section>
@@ -598,7 +664,7 @@ function CoinPage() {
               <Line label="Supply" value="1,000,000,000" />
               <Line label="Pool" value={`${coin.symbol}/ETH · v3 · ${feeLabel(coin.fee ?? POOL_FEE)}`} />
               <Line label="Launch liquidity" value="Locked 100 years" />
-              <Line label="All-time high" value={swaps ? cash(market.athEth) : "—"} />
+              <Line label="All-time high" value={history ? cash(chart.athEth) : "—"} />
               <Line
                 label="Pool contract"
                 value={

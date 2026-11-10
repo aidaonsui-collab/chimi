@@ -622,6 +622,97 @@
   }
 }
 
+/*
+ * The candle chart (candle-chart.tsx). The library draws the candles; the legend, the trader bubbles and the zoom
+ * buttons are ours and sit over it.
+ */
+.chart-frame {
+  height: 340px;
+}
+@media (min-width: 640px) {
+  .chart-frame {
+    height: 460px;
+  }
+}
+.chart-legend-value {
+  color: var(--color-fg);
+}
+.chart-legend[data-tone="up"] .chart-legend-value {
+  color: var(--color-ok);
+}
+.chart-legend[data-tone="down"] .chart-legend-value {
+  color: var(--color-down);
+}
+/* A trader on the chart: their picture, ringed green for a buy and red for a sell. */
+.chart-bubble {
+  --ring: var(--color-ok);
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: var(--bubble, 22px);
+  height: var(--bubble, 22px);
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 2px var(--ring),
+    0 0 0 3.5px rgba(9, 10, 14, 0.85),
+    0 5px 12px -3px rgba(0, 0, 0, 0.7);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  pointer-events: auto;
+  transition: scale 0.15s ease;
+  will-change: transform;
+}
+.chart-bubble[data-side="sell"] {
+  --ring: var(--color-down);
+}
+/* The coin's creator is a plain letter in the trade's colour, so it reads at a glance among the pictures. */
+.chart-bubble[data-kind="dev"] {
+  background: var(--ring);
+}
+.chart-bubble[data-kind="you"] {
+  box-shadow:
+    0 0 0 2px var(--ring),
+    0 0 0 4px var(--color-fg),
+    0 5px 12px -3px rgba(0, 0, 0, 0.7);
+}
+.chart-bubble:hover,
+.chart-bubble:focus-visible {
+  z-index: 30 !important;
+  scale: 1.3;
+  outline: none;
+}
+.chart-bubble-star {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--color-chip);
+  font-size: 9px;
+  color: var(--color-gold);
+}
+/* Zoom buttons show while the pointer is on the chart; a touch screen has no hover, so there they stay. */
+.chart-controls {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.chart-frame:hover .chart-controls,
+.chart-frame:focus-within .chart-controls {
+  opacity: 1;
+}
+@media (hover: none) {
+  .chart-controls {
+    opacity: 1;
+  }
+}
+
 /* A value that has just arrived or changed settles into place. */
 .settle {
   display: block;
