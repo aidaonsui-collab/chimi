@@ -11,6 +11,9 @@ import { leagueOf } from "@/lib/chimi/points-rules";
 import { fmtPoints, useHouses, usePoints, useProfiles } from "@/lib/chimi/rewards";
 import { useTokenImages } from "@/lib/chimi/token-image";
 import { useBalances, useTrader } from "@/lib/chimi/trader";
+import { followersOf, followingOf } from "@/lib/chimi/follow-rules";
+import { useFollows } from "@/lib/chimi/follows";
+import { FollowButton, WalletListModal } from "@/components/chimi/follow";
 import { HouseSeal } from "@/components/chimi/house-seal";
 import { IconChevronRight, IconExternal, IconPlus, IconSwap } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
@@ -34,7 +37,14 @@ function TraderPage() {
   const { data: trader, loading, error } = useTrader(wallet);
   const { data: points } = usePoints();
   const { data: houses } = useHouses();
-  const profiles = useProfiles(wallet ? [wallet] : [], points?.file.profiles);
+  const { data: follows } = useFollows();
+  const followers = useMemo(() => followersOf(follows?.state, wallet), [follows, wallet]);
+  const following = useMemo(() => followingOf(follows?.state, wallet), [follows, wallet]);
+  const [list, setList] = useState<"followers" | "following" | null>(null);
+  const profiles = useProfiles(
+    useMemo(() => (wallet ? [wallet, ...followers, ...following] : []), [wallet, followers, following]),
+    points?.file.profiles,
+  );
   const ethUsd = useEthUsd();
   const now = useNow(30_000);
   const live = useMemo(() => coins.filter((c) => !c.preview), [coins]);
@@ -58,6 +68,7 @@ function TraderPage() {
   useEffect(() => {
     setTab("holdings");
     setShown(25);
+    setList(null);
   }, [wallet]);
 
   const book = trader?.book ?? null;
@@ -149,11 +160,20 @@ function TraderPage() {
                       {house.name}
                     </Link>
                   ) : null}
+                  <button type="button" onClick={() => setList("followers")} className="chip transition-colors hover:border-edge hover:text-fg" title="Only wallets with a Dojang can follow">
+                    <span className="num font-semibold text-fg">{followers.length}</span>
+                    {followers.length === 1 ? "follower" : "followers"}
+                  </button>
+                  <button type="button" onClick={() => setList("following")} className="chip transition-colors hover:border-edge hover:text-fg">
+                    Following
+                    <span className="num font-semibold text-fg">{following.length}</span>
+                  </button>
                   {book ? <span className="chip">Trading since {new Date(book.first * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span> : null}
                 </div>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
+              <FollowButton wallet={wallet} name={name} size="sm" className="h-9 rounded-xl px-3.5" />
               <span className="chip h-9 gap-1 rounded-xl pr-1 pl-3">
                 <span className="num text-[13px]">{shortAddr(wallet)}</span>
                 <CopyButton text={address} label="Copy wallet address" className="btn btn-icon btn-sm btn-ghost size-7" size={14} />
@@ -418,6 +438,17 @@ function TraderPage() {
           ) : null}
         </aside>
       </div>
+
+      {list ? (
+        <WalletListModal
+          kicker={display}
+          title={list === "followers" ? "Followers" : "Following"}
+          wallets={list === "followers" ? followers : following}
+          profiles={profiles}
+          emptyText={list === "followers" ? "Nobody follows this wallet yet. Following needs a Dojang, so every follower is a person." : "This wallet isn’t following anyone yet."}
+          onClose={() => setList(null)}
+        />
+      ) : null}
     </main>
   );
 }

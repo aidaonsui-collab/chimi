@@ -15,6 +15,8 @@ import { Route as LaunchRouteImport } from './routes/launch'
 import { Route as PointsRouteImport } from './routes/points'
 import { Route as PoolsRouteImport } from './routes/pools'
 import { Route as SwapRouteImport } from './routes/swap'
+import { Route as ApiFeedRouteImport } from './routes/api/feed'
+import { Route as ApiFollowsRouteImport } from './routes/api/follows'
 import { Route as ApiHousesRouteImport } from './routes/api/houses'
 import { Route as ApiPointsRouteImport } from './routes/api/points'
 import { Route as ApiTokenMetaRouteImport } from './routes/api/token-meta'
@@ -54,6 +56,16 @@ const PoolsRoute = PoolsRouteImport.update({
 const SwapRoute = SwapRouteImport.update({
   id: '/swap',
   path: '/swap',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFeedRoute = ApiFeedRouteImport.update({
+  id: '/api/feed',
+  path: '/api/feed',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFollowsRoute = ApiFollowsRouteImport.update({
+  id: '/api/follows',
+  path: '/api/follows',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiHousesRoute = ApiHousesRouteImport.update({
@@ -114,6 +126,8 @@ export interface FileRoutesByFullPath {
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
+  '/api/feed': typeof ApiFeedRoute
+  '/api/follows': typeof ApiFollowsRoute
   '/api/houses': typeof ApiHousesRoute
   '/api/points': typeof ApiPointsRoute
   '/api/token-meta': typeof ApiTokenMetaRoute
@@ -132,6 +146,8 @@ export interface FileRoutesByTo {
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
+  '/api/feed': typeof ApiFeedRoute
+  '/api/follows': typeof ApiFollowsRoute
   '/api/houses': typeof ApiHousesRoute
   '/api/points': typeof ApiPointsRoute
   '/api/token-meta': typeof ApiTokenMetaRoute
@@ -151,6 +167,8 @@ export interface FileRoutesById {
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
+  '/api/feed': typeof ApiFeedRoute
+  '/api/follows': typeof ApiFollowsRoute
   '/api/houses': typeof ApiHousesRoute
   '/api/points': typeof ApiPointsRoute
   '/api/token-meta': typeof ApiTokenMetaRoute
@@ -171,6 +189,8 @@ export interface FileRouteTypes {
     | '/points'
     | '/pools'
     | '/swap'
+    | '/api/feed'
+    | '/api/follows'
     | '/api/houses'
     | '/api/points'
     | '/api/token-meta'
@@ -189,6 +209,8 @@ export interface FileRouteTypes {
     | '/points'
     | '/pools'
     | '/swap'
+    | '/api/feed'
+    | '/api/follows'
     | '/api/houses'
     | '/api/points'
     | '/api/token-meta'
@@ -207,6 +229,8 @@ export interface FileRouteTypes {
     | '/points'
     | '/pools'
     | '/swap'
+    | '/api/feed'
+    | '/api/follows'
     | '/api/houses'
     | '/api/points'
     | '/api/token-meta'
@@ -226,6 +250,8 @@ export interface RootRouteChildren {
   PointsRoute: typeof PointsRoute
   PoolsRoute: typeof PoolsRoute
   SwapRoute: typeof SwapRoute
+  ApiFeedRoute: typeof ApiFeedRoute
+  ApiFollowsRoute: typeof ApiFollowsRoute
   ApiHousesRoute: typeof ApiHousesRoute
   ApiPointsRoute: typeof ApiPointsRoute
   ApiTokenMetaRoute: typeof ApiTokenMetaRoute
@@ -280,6 +306,20 @@ declare module '@tanstack/react-router' {
       path: '/swap'
       fullPath: '/swap'
       preLoaderRoute: typeof SwapRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/feed': {
+      id: '/api/feed'
+      path: '/api/feed'
+      fullPath: '/api/feed'
+      preLoaderRoute: typeof ApiFeedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/follows': {
+      id: '/api/follows'
+      path: '/api/follows'
+      fullPath: '/api/follows'
+      preLoaderRoute: typeof ApiFollowsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/houses': {
@@ -362,6 +402,8 @@ const rootRouteChildren: RootRouteChildren = {
   PointsRoute: PointsRoute,
   PoolsRoute: PoolsRoute,
   SwapRoute: SwapRoute,
+  ApiFeedRoute: ApiFeedRoute,
+  ApiFollowsRoute: ApiFollowsRoute,
   ApiHousesRoute: ApiHousesRoute,
   ApiPointsRoute: ApiPointsRoute,
   ApiTokenMetaRoute: ApiTokenMetaRoute,

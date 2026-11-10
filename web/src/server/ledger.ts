@@ -12,6 +12,7 @@ import deployment from "../../public/deployments.json";
 import { factoryAbi, giwaSepolia, poolAbi } from "@/lib/chimi/chain";
 import { LEDGER_VERSION, byChainOrder, emptyWallet, record, type LedgerCursor, type Trade, type WalletBook } from "@/lib/chimi/ledger-rules";
 import { env } from "@/server/env";
+import { kvMGetJson, kvReady } from "@/server/kv";
 import { blockTimes, giwa, swapEvent } from "@/server/points";
 import { docStore, takeLock } from "@/server/store";
 
@@ -42,8 +43,8 @@ export type TraderRecord = {
   writable: boolean;
 };
 
-/** One wallet's trade record, with the reader brought closer to the chain's head first when it has fallen behind. */
-export async function traderRecord(wallet: string): Promise<TraderRecord> {
+/** Where the reader stands, after bringing it closer to the chain's head when it has fallen behind. */
+async function freshCursor(): Promise<{ cursor: LedgerCursor | null; writable: boolean }> {
   const store = docStore<LedgerCursor>(KEY);
   const { doc, rev } = await store.load();
   let cursor = doc && mine(doc) ? doc : null;
@@ -66,6 +67,12 @@ export async function traderRecord(wallet: string): Promise<TraderRecord> {
       }
     }
   }
+  return { cursor, writable: store.writable };
+}
+
+/** One wallet's trade record, with the reader brought closer to the chain's head first when it has fallen behind. */
+export async function traderRecord(wallet: string): Promise<TraderRecord> {
+  const { cursor, writable } = await freshCursor();
   const { doc: book } = await walletStore(wallet).load();
   return {
     wallet: wallet.toLowerCase(),
@@ -73,8 +80,38 @@ export async function traderRecord(wallet: string): Promise<TraderRecord> {
     through: cursor?.through ?? 0,
     throughTs: cursor?.throughTs ?? 0,
     start: cursor?.start ?? 0,
-    writable: store.writable,
+    writable,
   };
+}
+
+export type FeedTrade = Trade & { wallet: string };
+
+export type Feed = {
+  /** The latest trades by the wallets asked for, newest first. */
+  trades: FeedTrade[];
+  through: number;
+  throughTs: number;
+  writable: boolean;
+};
+
+/** The latest trades made by any of these wallets, newest first: what a "following" feed shows. */
+export async function tradeFeed(wallets: string[], limit = 60): Promise<Feed> {
+  const { cursor, writable } = await freshCursor();
+  const list = [...new Set(wallets.map((w) => w.toLowerCase()))];
+  const trades: FeedTrade[] = [];
+  for (const [i, book] of (await walletBooks(list)).entries()) {
+    if (book?.version !== LEDGER_VERSION) continue;
+    for (const trade of book.recent.slice(-limit)) trades.push({ ...trade, wallet: list[i]! });
+  }
+  trades.sort((a, b) => byChainOrder(b, a));
+  return { trades: trades.slice(0, limit), through: cursor?.through ?? 0, throughTs: cursor?.throughTs ?? 0, writable };
+}
+
+/** Many wallets' documents at once: one Redis read for all of them. */
+async function walletBooks(wallets: string[]): Promise<(WalletBook | null)[]> {
+  if (wallets.length === 0) return [];
+  if (kvReady()) return kvMGetJson<WalletBook>(wallets.map((w) => `${KEY}:w:${w}`));
+  return Promise.all(wallets.map(async (w) => (await walletStore(w).load()).doc));
 }
 
 /**

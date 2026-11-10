@@ -6,7 +6,7 @@ import { summarize, type Points, type PointsFile, type Profile } from "@/lib/chi
 import { useChimi } from "@/components/chimi/provider";
 
 /** A value fetched from the server and shared by every component that reads it, refreshed while any of them is open. */
-function shared<T>(load: () => Promise<T>, everyMs: number) {
+export function shared<T>(load: () => Promise<T>, everyMs: number) {
   let value: { data?: T; error?: string; loading: boolean } = { loading: true };
   const listeners = new Set<() => void>();
   let timer: ReturnType<typeof setInterval> | undefined;

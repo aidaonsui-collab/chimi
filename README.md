@@ -57,3 +57,12 @@ The trades come from the trade record (`web/src/lib/chimi/ledger-rules.ts`, kept
 - It starts at the factory's own block, which it asks the GIWA explorer for once. Set `CHIMI_LEDGER_START` to a block number to skip that (a local fork, for example).
 - The first fill reads about four days of chain per request, a few seconds apart, because the public RPC limits how fast logs can be read. A read that fails keeps everything before it.
 - Profit is what selling brought in plus what is still held, less what was paid, at each pool's current price. Balances are read straight from the chain, so tokens that were transferred in or out show up in the balance without counting as a trade.
+
+### Following
+
+A wallet can follow other wallets and see their trades under **Following** in the live trades feed on the home page. Trader pages show a Follow button, how many followers a wallet has, and who it follows.
+
+- Following is a message the wallet signs, with no transaction, handled like house actions (`web/src/lib/chimi/follow-rules.ts`, `POST /api/follows`).
+- Only a wallet with a GIWA Dojang can follow, so a follower count is a count of people. Anyone can be followed and anyone can unfollow. A wallet follows at most 100 others.
+- Who follows whom is one public document in Redis (`chimi:follows:v1`), read through `GET /api/follows`.
+- The feed has two sources. Trades from about the last day are read live from the chain in the browser. Older ones come from the trade record through `GET /api/feed?wallet=0x…`, which runs a few minutes behind the chain's head. The page merges the two and drops duplicates.

@@ -1,9 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { giwaSepolia } from "@/lib/chimi/chain";
-import { ago, compactCount, compactUsd, ethText, tokenUsd } from "@/lib/chimi/format";
+import { compactUsd, ethText, tokenUsd } from "@/lib/chimi/format";
 import { coinStats, useEthUsd, usePoolEth, useSwaps, type CoinStats } from "@/lib/chimi/live";
-import { shortAddr, type Coin, type PoolSwap } from "@/lib/chimi/market";
+import { shortAddr, type Coin } from "@/lib/chimi/market";
 import { DAILY_POOL, dayEndMs, today } from "@/lib/chimi/points-rules";
 import { fmtPoints } from "@/lib/chimi/rewards";
 import { useTokenImages } from "@/lib/chimi/token-image";
@@ -25,8 +24,9 @@ import {
 } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
 import { duration, useNow } from "@/components/chimi/rewards-bits";
+import { Tape } from "@/components/chimi/tape";
 import { TokenArt, TokenLogo } from "@/components/chimi/token-logo";
-import { Change, Empty, Seg, Sparkline, TraderLink } from "@/components/chimi/ui";
+import { Change, Empty, Seg, Sparkline } from "@/components/chimi/ui";
 
 export const Route = createFileRoute("/")({ component: Home });
 
@@ -199,7 +199,7 @@ function Home() {
       </section>
 
       <section className="page grid gap-5 pt-12 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
-        <Tape rows={rows} byPool={byPool} ready={ready} loading={loading} />
+        <Tape listed={rows} byPool={byPool} ready={ready} loading={loading} />
         <div className="grid content-start gap-5">
           <PointsCard />
           <Link to="/houses" className="card card-lift group flex items-center gap-4 p-5">
@@ -554,77 +554,6 @@ function BoardSkeleton({ view }: { view: View }) {
 }
 
 /* Below the board ---------------------------------------------------------------------------- */
-
-/** The latest trades across every pool. */
-function Tape({ rows, byPool, ready, loading }: { rows: Row[]; byPool: Record<string, PoolSwap[]>; ready: boolean; loading: boolean }) {
-  const now = useNow(15_000);
-  const explorer = giwaSepolia.blockExplorers.default.url;
-  const trades = useMemo(() => {
-    const all: { swap: PoolSwap; row: Row }[] = [];
-    for (const row of rows) for (const swap of byPool[row.coin.pool.toLowerCase()] ?? []) all.push({ swap, row });
-    return all.sort((a, b) => b.swap.time - a.swap.time).slice(0, 8);
-  }, [rows, byPool]);
-  const anyLive = rows.some((r) => !r.coin.preview);
-  return (
-    <div className="card overflow-hidden">
-      <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
-        <h2 className="flex items-center gap-2.5 text-[17px] font-semibold tracking-[-0.01em]">
-          <span className="live-dot text-ok" />
-          Live trades
-        </h2>
-        <span className="text-xs text-faint">Last 24 hours, every pool</span>
-      </div>
-      {loading || (anyLive && !ready && trades.length === 0) ? (
-        <div className="divide-y divide-line/70">
-          {Array.from({ length: 5 }, (_, i) => (
-            <div key={i} className="flex items-center gap-3 px-5 py-3.5">
-              <span className="skeleton size-8 rounded-full" />
-              <span className="skeleton h-4 flex-1" />
-              <span className="skeleton h-4 w-16" />
-            </div>
-          ))}
-        </div>
-      ) : trades.length === 0 ? (
-        <Empty
-          mark="첫 거래"
-          title="No trades in the last day"
-          action={
-            <Link to="/swap" className="btn btn-secondary">
-              <IconSwap size={16} />
-              Make the first one
-            </Link>
-          }
-        >
-          When someone buys or sells a Chimi coin, it shows up here within a minute.
-        </Empty>
-      ) : (
-        <ul>
-          {trades.map(({ swap, row }) => (
-            // Three things to open from one row: the coin, the trader, and the transaction itself.
-            <li key={`${swap.tx}:${swap.index ?? 0}`} className="row-hover flex items-center gap-3 border-b border-line/70 px-5 py-3 text-sm last:border-0">
-              <Link to="/coin/$address" params={{ address: row.coin.token }} aria-label={row.coin.name} className="shrink-0">
-                <TokenLogo symbol={row.coin.symbol} image={row.image} size={32} />
-              </Link>
-              <span className="min-w-0 flex-1">
-                <Link to="/coin/$address" params={{ address: row.coin.token }} className="group flex items-center gap-2">
-                  <span className={`font-semibold ${swap.buy ? "text-ok" : "text-down"}`}>{swap.buy ? "Buy" : "Sell"}</span>
-                  <span className="num truncate font-medium group-hover:text-gold">
-                    {compactCount(Number(swap.tokenAmount) / 1e18)} {row.coin.symbol}
-                  </span>
-                </Link>
-                <TraderLink address={swap.recipient} size={14} className="mt-0.5 gap-1.5 text-xs text-muted" />
-              </span>
-              <a href={`${explorer}/tx/${swap.tx}`} target="_blank" rel="noreferrer" title="Transaction on the explorer" className="group text-right">
-                <span className="num block font-medium group-hover:text-gold">{ethText(Number(swap.ethAmount) / 1e18)} ETH</span>
-                <span className="num block text-xs text-muted">{now === null ? "" : `${ago(Math.floor(now / 1000) - swap.time)} ago`}</span>
-              </a>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
 
 function PointsCard() {
   const now = useNow();

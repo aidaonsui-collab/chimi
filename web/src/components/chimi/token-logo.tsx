@@ -52,14 +52,16 @@ export function TokenLogo({ symbol, image, size = 40, ring = true, shape = "circ
       </span>
     );
   }
+  // A very small mark only has room for one letter.
+  const tiny = size < 22;
   return (
     <span
       aria-label={`${symbol} logo`}
       role="img"
-      className={`grid shrink-0 place-items-center font-semibold leading-none tracking-[-0.02em] text-white/90 ${radius} ${className}`}
-      style={{ ...box, background: tint(symbol), fontSize: Math.max(8, Math.round(size * (symbol.length > 3 ? 0.24 : 0.3))), boxShadow: hairline }}
+      className={`grid shrink-0 place-items-center overflow-hidden font-semibold leading-none tracking-[-0.02em] text-white/90 ${radius} ${className}`}
+      style={{ ...box, background: tint(symbol), fontSize: tiny ? Math.round(size * 0.56) : Math.max(8, Math.round(size * (symbol.length > 3 ? 0.24 : 0.3))), boxShadow: hairline }}
     >
-      {symbol.slice(0, 4)}
+      {tiny ? symbol.slice(0, 1) : symbol.slice(0, 4)}
     </span>
   );
 }
