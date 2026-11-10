@@ -283,9 +283,9 @@ function Hero({
               {preview ? "Preview" : "Live on GIWA Sepolia"}
               <span className="font-serif text-[15px] text-gold">치미</span>
             </p>
-            <h1 className="mt-3 max-w-[14ch] text-[44px] leading-[0.98] font-semibold tracking-[-0.04em] text-balance sm:text-[64px]">The pool is the market.</h1>
+            <h1 className="mt-3 max-w-[14ch] text-[44px] leading-[0.98] font-semibold tracking-[-0.04em] text-balance sm:text-[64px]">The crown goes on first.</h1>
             <p className="mt-4 max-w-[46ch] text-[15px] leading-relaxed text-fg/80 sm:text-[17px]">
-              Launch a coin in one transaction. A billion tokens open in a locked pool, with no bonding curve and nothing to graduate.
+              Every coin starts where others finish: in a locked pool, trading from block one. One transaction, no bonding curve.
             </p>
             <div className="mt-6 flex flex-wrap gap-2.5">
               <Link to="/launch" className="btn btn-lg btn-primary">
