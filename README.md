@@ -47,3 +47,13 @@ Env vars (same names as eve.fun): `BLOB_READ_WRITE_TOKEN`, which Vercel adds whe
 The site is one dark theme, defined in `web/src/styles.css`: colour tokens under `@theme` (night-sky surfaces, the vermilion `seal` accent, `gold` for small highlights, `ok` and `down` for price moves) and a small set of component classes (`card`, `btn`, `field`, `seg`, `chip`, `skeleton`). Shared pieces live in `web/src/components/chimi/`: `shell.tsx` (side rail, top bar, status bar, phone tab bar), `ui.tsx`, `charts.tsx`, `icons.tsx`, `command.tsx` (search, opened with `/` or Cmd/Ctrl+K), `wallet-menu.tsx` and `toast.tsx`.
 
 Numbers that several pages show (the ETH price, each pool's recent trades and ETH reserve, the chain head) are read once and shared through `web/src/lib/chimi/live.ts`. Contract reads go through Multicall3, and the board reads every pool's trades in one pass, so its cost doesn't grow with the number of coins.
+
+### Trader pages
+
+Every wallet has a page at `/u/<address>`: what it holds, what it has bought and sold, its profit, the coins it launched, its house and its points. Addresses across the site link to it, and pasting an address into search offers it.
+
+The trades come from the trade record (`web/src/lib/chimi/ledger-rules.ts`, kept by `web/src/server/ledger.ts`). It works like the points book: there is no indexer. `GET /api/trader?wallet=0x…` reads the chain from where the record stopped, up to a budget per request, and answers with that wallet's record. It keeps one small document per wallet (a running tally per coin and the latest 200 trades) and a cursor, in the same Redis as the points book.
+
+- It starts at the factory's own block, which it asks the GIWA explorer for once. Set `CHIMI_LEDGER_START` to a block number to skip that (a local fork, for example).
+- The first fill reads about four days of chain per request, a few seconds apart, because the public RPC limits how fast logs can be read. A read that fails keeps everything before it.
+- Profit is what selling brought in plus what is still held, less what was paid, at each pool's current price. Balances are read straight from the chain, so tokens that were transferred in or out show up in the balance without counting as a trade.

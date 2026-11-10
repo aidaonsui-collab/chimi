@@ -9,11 +9,11 @@ import { HouseSeal } from "@/components/chimi/house-seal";
 import { IconBoard, IconChart, IconHouse, IconPlus, IconPoints, IconPools, IconSearch, IconSwap } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
 import { TokenLogo } from "@/components/chimi/token-logo";
-import { Modal } from "@/components/chimi/ui";
+import { Blockie, Modal } from "@/components/chimi/ui";
 
 type Item = {
   key: string;
-  group: "Coins" | "Houses" | "Pages";
+  group: "Coins" | "Traders" | "Houses" | "Pages";
   title: string;
   sub?: string;
   right?: string;
@@ -62,12 +62,21 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         go: close(() => void navigate({ to: "/coin/$address", params: { address: c.token } })),
       });
     }
-    // A pasted address that isn't on the board yet still opens its coin page, which reads the factory.
+    // A pasted address that isn't a coin on the board is most likely a wallet, so its trader page comes first. It
+    // could also be a coin launched moments ago, so the coin page, which reads the factory, is offered too.
     if (/^0x[0-9a-f]{40}$/.test(q) && matched.length === 0) {
+      out.push({
+        key: `trader:${q}`,
+        group: "Traders",
+        title: `Trader ${shortAddr(q)}`,
+        sub: "Trades, holdings and profit for this wallet",
+        mark: <Blockie address={q} size={36} />,
+        go: close(() => void navigate({ to: "/u/$address", params: { address: q } })),
+      });
       out.push({
         key: `addr:${q}`,
         group: "Coins",
-        title: `Open ${shortAddr(q)}`,
+        title: `Open ${shortAddr(q)} as a coin`,
         sub: "Look this address up on the factory",
         mark: (
           <span className="grid size-9 place-items-center rounded-full bg-raise2 text-muted">

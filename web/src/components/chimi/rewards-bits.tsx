@@ -9,19 +9,21 @@ export function SectionLabel({ children }: { children: ReactNode }) {
   return <p className="eyebrow">{children}</p>;
 }
 
-/** A wallet's up.id name when it has one, else its short address. */
+/** A wallet's up.id name when it has one, else its short address. The name opens the wallet's trader page. */
 export function WalletName({ wallet, profile, you }: { wallet: string; profile?: Profile | null; you?: boolean }) {
   const name = profile?.name;
   return (
     <span className="flex min-w-0 items-baseline gap-1.5">
-      {name ? (
-        <span className="truncate font-medium">
-          {name.replace(/\.up\.id$/, "")}
-          <span className="font-normal text-muted">.up.id</span>
-        </span>
-      ) : (
-        <span className="truncate font-medium tabular-nums">{shortWallet(wallet)}</span>
-      )}
+      <Link to="/u/$address" params={{ address: wallet }} title={wallet} className="min-w-0 truncate font-medium decoration-edge underline-offset-4 hover:underline">
+        {name ? (
+          <>
+            {name.replace(/\.up\.id$/, "")}
+            <span className="font-normal text-muted">.up.id</span>
+          </>
+        ) : (
+          <span className="tabular-nums">{shortWallet(wallet)}</span>
+        )}
+      </Link>
       {you ? <span className="shrink-0 rounded-md bg-gold/15 px-1.5 py-px text-[11px] font-semibold text-gold">you</span> : null}
     </span>
   );

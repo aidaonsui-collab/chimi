@@ -29,7 +29,7 @@ const FRESH_MS = 15_000;
 const PROFILE_TTL_MS = 30 * 60_000;
 const PROFILE_BATCH = 300;
 
-const swapEvent = parseAbiItem(
+export const swapEvent = parseAbiItem(
   "event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)",
 );
 
@@ -174,7 +174,7 @@ async function advance(prev: PointsFile | null, settings: PointsSettings): Promi
 }
 
 /** Each log's block time: from the log when the node includes it, else read once per block. */
-async function blockTimes(client: ReturnType<typeof giwa>, logs: { blockNumber: bigint; blockTimestamp?: bigint | null }[]) {
+export async function blockTimes(client: ReturnType<typeof giwa>, logs: { blockNumber: bigint; blockTimestamp?: bigint | null }[]) {
   const times = new Map<bigint, number>();
   for (const l of logs) if (l.blockTimestamp != null) times.set(l.blockNumber, Number(l.blockTimestamp));
   const missing = [...new Set(logs.map((l) => l.blockNumber).filter((n) => !times.has(n)))];
