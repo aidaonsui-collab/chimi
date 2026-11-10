@@ -271,6 +271,14 @@ function TradeRow({ item, lead, name, nowSec }: { item: Item; lead: "coin" | "tr
           </Link>
         </span>
         {tx}
+        {/* A buy can be copied: the coin's page opens with the buy side filled in. A sale has nothing to copy. */}
+        <span className="flex w-[54px] shrink-0 justify-end">
+          {item.buy && !item.coin.preview ? (
+            <Link to="/coin/$address" params={{ address: item.coin.token }} search={{ copy: item.wallet, eth: item.eth }} className="btn btn-sm btn-light px-2.5" title={`Buy ${item.coin.symbol} too`}>
+              Copy
+            </Link>
+          ) : null}
+        </span>
       </li>
     );
   }

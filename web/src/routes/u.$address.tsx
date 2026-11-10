@@ -115,6 +115,7 @@ function TraderPage() {
   const today = points?.live?.standings.find((s) => s.wallet === wallet);
   const league = season && points ? leagueOf(season.rank, points.season.length) : null;
   const house = houseOfWallet(houses?.state).get(wallet);
+  const led = points?.file.led?.[wallet];
   const trades = book ? [...book.recent].reverse() : [];
   const waiting = loading && !trader;
   const behind = !!trader && trader.through > 0 && now !== null && now - trader.throughTs * 1000 > 15 * 60_000;
@@ -406,6 +407,11 @@ function TraderPage() {
               <p className="mt-1.5 text-sm text-muted">
                 {season ? "points this season" : profile?.verified === false ? "No Dojang on this wallet, so it earns no points." : "No points yet this season."}
               </p>
+              {led ? (
+                <p className="mt-3 rounded-xl bg-raise px-3.5 py-2.5 text-[13px] text-muted" title="A follower bought a coin within a day of this wallet buying it">
+                  Led <span className="num font-semibold text-fg">{led.n}</span> {led.n === 1 ? "buy" : "buys"} by followers, worth <span className="num font-semibold text-fg">{cash(led.eth)}</span>
+                </p>
+              ) : null}
               {points && (season || today) ? (
                 <div className="mt-5">
                   <DayBars days={points.history(wallet)} live={points.live ? { day: points.live.day, points: today?.points ?? 0 } : null} color="#e4563d" />

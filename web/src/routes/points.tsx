@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { DOJANG_URL } from "@/lib/chimi/identity";
 import { houseOfWallet } from "@/lib/chimi/house-rules";
-import { DAILY_POOL, LEAGUES, dayEndMs, dayLabel, leagueOf, today, type Points, type Standing } from "@/lib/chimi/points-rules";
+import { DAILY_POOL, LEAD_SHARE, LEAGUES, dayEndMs, dayLabel, leagueOf, today, type Points, type Standing } from "@/lib/chimi/points-rules";
 import { fmtPoints, useHouses, useMyProfile, usePoints } from "@/lib/chimi/rewards";
 import { IconChevronRight, IconSearch } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
@@ -340,13 +340,14 @@ function HowItWorks() {
   const items = [
     ["매일", "A pool every day", `${fmtPoints(DAILY_POOL)} points are shared out at midnight in Seoul, by how much ETH each wallet bought and sold on Chimi coins that day.`],
     ["창작", "Creators earn too", "Launch a coin and earn 10% of what other wallets trade on it. Your own trades on your own coin don’t count."],
+    ["선도", "Lead the way", `When someone who follows you buys a coin within a day of your own buy, you earn ${LEAD_SHARE * 100}% of theirs, up to the size of yours. It costs them nothing.`],
     ["도장", "Dojang only", "Only wallets with a GIWA Dojang share the pool, so one person can’t farm it with a hundred wallets. It’s checked when each day closes."],
     ["가문", "Houses add up", "Join a house and your points also count toward it. A day counts for the house you’re in when it ends."],
   ] as const;
   return (
     <div className="mt-12">
       <SectionLabel>HOW IT WORKS</SectionLabel>
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
         {items.map(([ko, title, body]) => (
           <div key={title} className="card p-5">
             <p className="font-serif text-lg text-gold">{ko}</p>
