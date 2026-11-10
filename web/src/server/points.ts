@@ -6,6 +6,7 @@
 import { createPublicClient, formatEther, http, parseAbiItem, type Address } from "viem";
 import deployment from "../../public/deployments.json";
 import { factoryAbi, giwaSepolia, poolAbi } from "@/lib/chimi/chain";
+import { followingOf, type FollowsState } from "@/lib/chimi/follow-rules";
 import { readProfiles } from "@/lib/chimi/identity";
 import {
   CREATOR_SHARE,
@@ -121,6 +122,13 @@ async function advance(prev: PointsFile | null, settings: PointsSettings): Promi
   // router took the output to unwrap it: then the trader is whoever sent the transaction.
   const pools = Object.keys(book.pools) as Address[];
   const routers = new Set([deployment.swapRouter, deployment.positionManager].map((a) => a.toLowerCase()));
+  // Who follows whom, as it stands now: a followed wallet earns when a follower buys a coin after it (points-rules).
+  // If the list can't be read, the swaps still score; they just lead nobody this time.
+  const follows = await docStore<FollowsState>("chimi:follows:v1")
+    .load()
+    .then((loaded) => loaded.doc)
+    .catch(() => null);
+  const following = (wallet: string) => followingOf(follows ?? undefined, wallet);
   for (let spans = 0; book.through < headNum && spans < MAX_SPANS && Date.now() - started < TIME_BUDGET_MS; spans += PARALLEL) {
     const from = book.through + 1;
     const to = Math.min(headNum, from + SPAN * PARALLEL - 1);
@@ -138,14 +146,22 @@ async function advance(prev: PointsFile | null, settings: PointsSettings): Promi
         await Promise.all(viaRouter.map(async (hash) => [hash, (await client.getTransaction({ hash })).from.toLowerCase()] as const)),
       );
       const times = await blockTimes(client, logs);
+      // Who led a buy depends on what came before it, so the swaps are scored in chain order.
+      logs.sort((a, b) => Number(a.blockNumber - b.blockNumber) || a.logIndex - b.logIndex);
       for (const log of logs) {
         const pool = book.pools[log.address.toLowerCase()];
         if (!pool) continue;
         const recipient = log.args.recipient.toLowerCase();
         const wallet = routers.has(recipient) ? senders.get(log.transactionHash) : recipient;
         const weth = pool.wethIs0 ? log.args.amount0 : log.args.amount1;
+        const coin = pool.wethIs0 ? log.args.amount1 : log.args.amount0;
         if (!wallet) continue;
-        score(book, { wallet, creator: pool.creator, eth: Number(formatEther(weth < 0n ? -weth : weth)), ts: times.get(log.blockNumber)! });
+        score(
+          book,
+          // The pool paying the coin out is someone buying it.
+          { wallet, creator: pool.creator, eth: Number(formatEther(weth < 0n ? -weth : weth)), ts: times.get(log.blockNumber)!, token: pool.token, buy: coin < 0n },
+          following,
+        );
       }
     }
     book.through = to;

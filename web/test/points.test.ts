@@ -117,3 +117,95 @@ test("leagues by rank", () => {
   assert.equal(leagueOf(201, 500).name, "Juchutdol");
   assert.equal(leagueOf(1, 3).name, "Chimi", "someone is always at the top");
 });
+
+// Leads: a followed wallet earns when a follower buys the same coin after it.
+const COIN = "0xc0ffee0000000000000000000000000000000001";
+const OTHER_COIN = "0xc0ffee0000000000000000000000000000000002";
+const follows = (map: Record<string, string[]>) => (wallet: string) => map[wallet] ?? [];
+const weights = (b: ReturnType<typeof book>) => b.open[0]!.weights;
+const close = (x: number, y: number) => assert.ok(Math.abs(x - y) < 1e-12, `${x} is not ${y}`);
+
+test("a follower's buy after yours earns you a tenth of it", () => {
+  const b = book();
+  const f = follows({ [B]: [A] });
+  score(b, { wallet: A, creator: C, eth: 1, ts: ts("2026-10-24T01:00:00Z"), token: COIN, buy: true }, f);
+  score(b, { wallet: B, creator: C, eth: 0.4, ts: ts("2026-10-24T02:00:00Z"), token: COIN, buy: true }, f);
+  close(weights(b)[A]!, 1 + 0.04);
+  close(weights(b)[B]!, 0.4); // nothing is taken from the buyer
+  close(weights(b)[C]!, 0.14); // the creator's cut is unchanged
+  assert.deepEqual(b.led, { [A]: { n: 1, eth: 0.4 } });
+});
+
+test("a lead is capped at the size of your own buy", () => {
+  const b = book();
+  const f = follows({ [B]: [A] });
+  score(b, { wallet: A, creator: C, eth: 0.01, ts: ts("2026-10-24T01:00:00Z"), token: COIN, buy: true }, f);
+  score(b, { wallet: B, creator: C, eth: 5, ts: ts("2026-10-24T02:00:00Z"), token: COIN, buy: true }, f);
+  close(weights(b)[A]!, 0.01 + 0.001);
+  assert.deepEqual(b.led, { [A]: { n: 1, eth: 0.01 } });
+});
+
+test("no lead without following, for another coin, for a sell, or after a day", () => {
+  const first = { wallet: A, creator: C, eth: 1, ts: ts("2026-10-24T01:00:00Z"), token: COIN, buy: true };
+  // B doesn't follow A.
+  let b = book();
+  score(b, first, follows({}));
+  score(b, { wallet: B, creator: C, eth: 1, ts: ts("2026-10-24T02:00:00Z"), token: COIN, buy: true }, follows({}));
+  close(weights(b)[A]!, 1);
+  // B follows A but buys a different coin.
+  b = book();
+  score(b, first, follows({ [B]: [A] }));
+  score(b, { wallet: B, creator: C, eth: 1, ts: ts("2026-10-24T02:00:00Z"), token: OTHER_COIN, buy: true }, follows({ [B]: [A] }));
+  close(weights(b)[A]!, 1);
+  // B follows A but is selling.
+  b = book();
+  score(b, first, follows({ [B]: [A] }));
+  score(b, { wallet: B, creator: C, eth: 1, ts: ts("2026-10-24T02:00:00Z"), token: COIN, buy: false }, follows({ [B]: [A] }));
+  close(weights(b)[A]!, 1);
+  // A sold rather than bought: a sale leads nobody.
+  b = book();
+  score(b, { ...first, buy: false }, follows({ [B]: [A] }));
+  score(b, { wallet: B, creator: C, eth: 1, ts: ts("2026-10-24T02:00:00Z"), token: COIN, buy: true }, follows({ [B]: [A] }));
+  close(weights(b)[A]!, 1);
+  // More than a day later.
+  b = book();
+  score(b, first, follows({ [B]: [A] }));
+  score(b, { wallet: B, creator: C, eth: 1, ts: ts("2026-10-25T01:00:01Z"), token: COIN, buy: true }, follows({ [B]: [A] }));
+  assert.equal(b.led, undefined);
+});
+
+test("the most recent followed buyer leads, and a wallet never leads itself", () => {
+  const b = book();
+  const D = "0x000000000000000000000000000000000000000d";
+  const f = follows({ [B]: [A, D], [A]: [A] });
+  score(b, { wallet: A, creator: C, eth: 1, ts: ts("2026-10-24T01:00:00Z"), token: COIN, buy: true }, f);
+  score(b, { wallet: D, creator: C, eth: 1, ts: ts("2026-10-24T02:00:00Z"), token: COIN, buy: true }, f);
+  score(b, { wallet: A, creator: C, eth: 1, ts: ts("2026-10-24T03:00:00Z"), token: COIN, buy: true }, f); // A again: not its own leader
+  score(b, { wallet: D, creator: C, eth: 1, ts: ts("2026-10-24T04:00:00Z"), token: COIN, buy: true }, f);
+  score(b, { wallet: B, creator: C, eth: 1, ts: ts("2026-10-24T05:00:00Z"), token: COIN, buy: true }, f);
+  assert.deepEqual(b.led, { [D]: { n: 1, eth: 1 } });
+  close(weights(b)[D]!, 2 + 0.1);
+  close(weights(b)[A]!, 2);
+});
+
+test("a creator doesn't lead on their own coin, and old swaps without a side still score", () => {
+  const b = book();
+  const f = follows({ [B]: [C] });
+  score(b, { wallet: C, creator: C, eth: 1, ts: ts("2026-10-24T01:00:00Z"), token: COIN, buy: true }, f); // the creator's own buy
+  score(b, { wallet: B, creator: C, eth: 1, ts: ts("2026-10-24T02:00:00Z"), token: COIN, buy: true }, f);
+  close(weights(b)[C]!, 0.1); // the creator's cut only
+  assert.equal(b.led, undefined);
+  score(b, { wallet: A, creator: C, eth: 2, ts: ts("2026-10-24T03:00:00Z") }); // as the reader called it before leads
+  close(weights(b)[A]!, 2);
+});
+
+test("a lead only pays a wallet with a Dojang, like every other point", () => {
+  const b = book();
+  const f = follows({ [A]: [N] });
+  score(b, { wallet: N, creator: C, eth: 1, ts: ts("2026-10-24T01:00:00Z"), token: COIN, buy: true }, f);
+  score(b, { wallet: A, creator: C, eth: 1, ts: ts("2026-10-24T02:00:00Z"), token: COIN, buy: true }, f);
+  close(weights(b)[N]!, 1.1);
+  closeDays(at(b, "2026-10-24T15:00:00Z"), dojang);
+  assert.equal(b.days[0]!.points[N], undefined);
+  assert.ok(b.days[0]!.unverified.includes(N));
+});

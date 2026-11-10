@@ -6,10 +6,19 @@
  * sold on Chimi coins, plus CREATOR_SHARE of what other wallets traded on coins they launched. A creator's own trades
  * on their coin don't count. Only wallets with a GIWA Dojang share the pool: when a day closes, wallets without one
  * are left out and the rest split the whole pool. A day closes once the book has read a block from a later KST day.
+ *
+ * Leading a buy earns too. When a wallet buys a coin within LEAD_WINDOW_S after a wallet it follows bought the same
+ * coin, the followed wallet gets LEAD_SHARE of that buy as weight, up to the size of its own buy, so nobody is paid
+ * for leading with dust. If the buyer follows several such wallets, the one that bought most recently leads. A coin's
+ * creator never leads on their own coin: they already earn from every trade on it. Nothing is taken from the buyer.
  */
 export const POINTS_VERSION = 1;
 export const DAILY_POOL = 100_000;
 export const CREATOR_SHARE = 0.1;
+export const LEAD_SHARE = 0.1;
+export const LEAD_WINDOW_S = 24 * 60 * 60;
+/** How many recent buys are remembered per coin when looking for who led. */
+const LEAD_MEMORY = 200;
 
 const KST_OFFSET_S = 9 * 3600;
 const DAY_MS = 86_400_000;
@@ -49,7 +58,14 @@ export type PointsFile = {
   days: { day: string; points: Record<string, number>; volume: number; unverified: string[] }[];
   open: { day: string; weights: Record<string, number>; volume: number }[];
   profiles: Record<string, Profile>;
+  /** Buys from about the last day, by coin and oldest first: who, when, and how much ETH. Books from before leads lack it. */
+  buys?: Record<string, { w: string; t: number; e: number }[]>;
+  /** For each wallet: how many buys it has led this season, and the ETH they came to. */
+  led?: Record<string, { n: number; eth: number }>;
 };
+
+/** One swap as the points see it. `token` and `buy` are what let a buy be led; without them only the trade counts. */
+export type ScoredSwap = { wallet: string; creator: string; eth: number; ts: number; token?: string; buy?: boolean };
 
 export type PointsSettings = Pick<PointsFile, "chainId" | "factory" | "dailyPool" | "creatorShare" | "seasonStart">;
 
@@ -69,8 +85,12 @@ export function sameSettings(f: PointsFile, s: PointsSettings) {
   );
 }
 
-/** Adds one swap to its day's weights. Closed days never change. Mutates `book`. */
-export function score(book: PointsFile, swap: { wallet: string; creator: string; eth: number; ts: number }) {
+/**
+ * Adds one swap to its day's weights. Closed days never change. Mutates `book`. Swaps must come in chain order.
+ * `following` answers who a wallet follows (lowercase); with it, a buy made after a followed wallet's buy of the same
+ * coin also earns that wallet its lead.
+ */
+export function score(book: PointsFile, swap: ScoredSwap, following?: (wallet: string) => readonly string[]) {
   const day = kstDay(swap.ts);
   const wallet = swap.wallet.toLowerCase();
   const creator = swap.creator.toLowerCase();
@@ -82,6 +102,24 @@ export function score(book: PointsFile, swap: { wallet: string; creator: string;
   open.weights[wallet] = (open.weights[wallet] ?? 0) + swap.eth;
   open.weights[creator] = (open.weights[creator] ?? 0) + swap.eth * book.creatorShare;
   open.volume += swap.eth;
+
+  if (!swap.token || !swap.buy) return;
+  const token = swap.token.toLowerCase();
+  const buys = (book.buys ??= {});
+  const recent = (buys[token] ?? []).filter((b) => swap.ts - b.t <= LEAD_WINDOW_S);
+  // The latest earlier buyer this wallet follows led it here.
+  const follows = new Set(following?.(wallet) ?? []);
+  let leader: (typeof recent)[number] | undefined;
+  for (let i = recent.length - 1; i >= 0 && !leader; i--) if (recent[i]!.w !== wallet && follows.has(recent[i]!.w)) leader = recent[i];
+  if (leader) {
+    const eth = Math.min(swap.eth, leader.e);
+    open.weights[leader.w] = (open.weights[leader.w] ?? 0) + eth * LEAD_SHARE;
+    const led = ((book.led ??= {})[leader.w] ??= { n: 0, eth: 0 });
+    led.n++;
+    led.eth += eth;
+  }
+  recent.push({ w: wallet, t: swap.ts, e: swap.eth });
+  buys[token] = recent.slice(-LEAD_MEMORY);
 }
 
 /** Open days the book has read past (their every swap is in), oldest first. */

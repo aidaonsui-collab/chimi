@@ -66,3 +66,16 @@ A wallet can follow other wallets and see their trades under **Following** in th
 - Only a wallet with a GIWA Dojang can follow, so a follower count is a count of people. Anyone can be followed and anyone can unfollow. A wallet follows at most 100 others.
 - Who follows whom is one public document in Redis (`chimi:follows:v1`), read through `GET /api/follows`.
 - The feed has two sources. Trades from about the last day are read live from the chain in the browser. Older ones come from the trade record through `GET /api/feed?wallet=0x…`, which runs a few minutes behind the chain's head. The page merges the two and drops duplicates.
+
+### Copying a buy, and leading one
+
+Buys in the Following feed have a **Copy** button. It opens the coin's page on the buy side with a size filled in and a notice saying whose buy is being copied. The size is this browser's last choice (0.01 ETH the first time), and nothing is sent until the buy button is pressed.
+
+Leading a buy earns points, worked out from the chain and the follow list alone, so there is nothing to claim and nothing to fake:
+
+- When a wallet buys a coin within 24 hours after a wallet it follows bought the same coin, the followed wallet earns 10% of that buy as weight in the day's pool (`LEAD_SHARE`, `LEAD_WINDOW_S` in `web/src/lib/chimi/points-rules.ts`).
+- The lead is capped at the size of the leader's own buy, so nobody is paid for leading with dust.
+- If the buyer follows several such wallets, the one that bought most recently leads. A coin's creator never leads on their own coin.
+- Nothing is taken from the buyer, and like every other point it only pays wallets with a Dojang.
+
+It applies from the day this ships; earlier days are unchanged. A trader's page shows how many buys it has led.

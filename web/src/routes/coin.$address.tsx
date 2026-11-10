@@ -21,11 +21,19 @@ import {
   IconX,
 } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
+import { CopyNotice, copySize } from "@/components/chimi/copy";
 import { toast } from "@/components/chimi/toast";
 import { EthLogo, TokenLogo } from "@/components/chimi/token-logo";
 import { Blockie, Change, CopyButton, Empty, Modal, Note, Seg, TraderLink } from "@/components/chimi/ui";
 
-export const Route = createFileRoute("/coin/$address")({ component: CoinPage });
+export const Route = createFileRoute("/coin/$address")({
+  // ?copy=<wallet>&eth=<their size> opens the page ready to copy that wallet's buy (the Copy button in the feed).
+  validateSearch: (search: Record<string, unknown>): { copy?: string; eth?: number } => ({
+    copy: typeof search.copy === "string" && /^0x[0-9a-fA-F]{40}$/.test(search.copy) ? search.copy.toLowerCase() : undefined,
+    eth: Number.isFinite(Number(search.eth)) && Number(search.eth) > 0 ? Number(search.eth) : undefined,
+  }),
+  component: CoinPage,
+});
 
 const SLIPPAGE = [100, 200, 500];
 const RANGES = [
@@ -48,7 +56,10 @@ function tinyEth(wei: bigint) {
 
 function CoinPage() {
   const { address } = Route.useParams();
+  const search = Route.useSearch();
   const { coins, deployment, account, connect, trade, unwrap, signMessage, loading } = useChimi();
+  /** The wallet whose buy is being copied, until it is dismissed or the page moves on. */
+  const [copying, setCopying] = useState<string | undefined>(search.copy);
   const listed = coins.find((c) => c.token.toLowerCase() === address.toLowerCase());
   const [coin, setCoin] = useState<Coin | null>(listed ?? null);
   const [phase, setPhase] = useState<"loading" | "ready" | "missing">(listed ? "ready" : "loading");
@@ -97,6 +108,15 @@ function CoinPage() {
   }, [address, deployment, listed, loading]);
 
   const tradable = !!coin && !coin.preview;
+
+  // Opened from a Copy button: start on the buy side with this browser's usual copy size, ready to confirm.
+  useEffect(() => {
+    setCopying(search.copy);
+    if (!search.copy) return;
+    setSide("buy");
+    setAmount(copySize());
+    setTradeNote("");
+  }, [search.copy, address]);
 
   // The tab's title follows the coin, so several coins open at once can be told apart.
   useEffect(() => {
@@ -242,9 +262,10 @@ function CoinPage() {
       toast({
         kind: "good",
         title: side === "buy" ? `Bought ${coin.symbol}` : `Sold ${coin.symbol}`,
-        body: side === "buy" ? `${amount.trim()} ETH in.` : "You received wrapped ETH. Unwrap it below the trade button.",
+        body: side === "buy" ? `${amount.trim()} ETH in.${copying ? ` Copied from ${shortAddr(copying)}.` : ""}` : "You received wrapped ETH. Unwrap it below the trade button.",
         href: `${explorer}/tx/${hash}`,
       });
+      if (side === "buy") setCopying(undefined);
       setAmount("");
       const fresh = deployment ? await loadCoin(deployment, coin.token) : null;
       if (fresh) setCoin(fresh);
@@ -475,6 +496,10 @@ function CoinPage() {
                   ))}
                 </div>
               </div>
+            ) : null}
+
+            {copying && side === "buy" && tradable ? (
+              <CopyNotice leader={copying} theirEth={search.copy === copying ? search.eth : undefined} symbol={coin.symbol} amount={amount} onAmount={setAmount} onDismiss={() => setCopying(undefined)} />
             ) : null}
 
             <div className="relative mt-2 flex flex-col gap-1">
