@@ -200,7 +200,10 @@ export function Empty({ mark, title, children, action }: { mark?: ReactNode; tit
   );
 }
 
-/** A dialog: a sheet from the bottom on a phone, centered on a desktop. Closes on Escape and on the backdrop. */
+/**
+ * A dialog: a sheet from the bottom on a phone, centered on a desktop (or centered everywhere with `center`).
+ * Closes on Escape and on the backdrop.
+ */
 export function Modal({
   title,
   kicker,
@@ -208,6 +211,8 @@ export function Modal({
   children,
   width = 560,
   bare,
+  center,
+  label,
 }: {
   title?: ReactNode;
   kicker?: ReactNode;
@@ -216,6 +221,10 @@ export function Modal({
   width?: number;
   /** No header or padding: the caller draws everything. */
   bare?: boolean;
+  /** In the middle of the screen on a phone too, instead of a sheet from the bottom. */
+  center?: boolean;
+  /** What a screen reader calls the dialog when it has no `title` of its own. */
+  label?: string;
 }) {
   const titleId = useId();
   useEffect(() => {
@@ -229,14 +238,15 @@ export function Modal({
     };
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center sm:items-center sm:p-4" role="presentation">
+    <div className={`fixed inset-0 z-[70] flex justify-center ${center ? "items-center p-4" : "items-end sm:items-center sm:p-4"}`} role="presentation">
       <button type="button" aria-label="Close" tabIndex={-1} className="absolute inset-0 animate-fade cursor-default bg-black/65 backdrop-blur-[3px]" onClick={onClose} />
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? titleId : undefined}
+        aria-label={title ? undefined : label}
         style={{ maxWidth: width }}
-        className={`relative max-h-[92dvh] w-full animate-pop overflow-y-auto rounded-t-3xl border border-edge bg-chip shadow-pop sm:rounded-3xl ${bare ? "" : "p-5 sm:p-7"}`}
+        className={`relative max-h-[92dvh] w-full animate-pop overflow-y-auto border border-edge bg-chip shadow-pop ${center ? "rounded-3xl" : "rounded-t-3xl sm:rounded-3xl"} ${bare ? "" : "p-5 sm:p-7"}`}
       >
         {bare ? null : (
           <div className="flex items-start justify-between gap-4">
