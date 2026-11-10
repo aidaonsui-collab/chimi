@@ -107,6 +107,20 @@ export async function tradeFeed(wallets: string[], limit = 60): Promise<Feed> {
   return { trades: trades.slice(0, limit), through: cursor?.through ?? 0, throughTs: cursor?.throughTs ?? 0, writable };
 }
 
+/**
+ * Which of these wallets have ever bought this coin. Like the other readers it first brings the record closer to the
+ * chain's head when it has fallen behind, so the answer doesn't depend on someone having opened a trader's page
+ * lately. The last few minutes are still missing; the coin's page fills those in from the trades it has read itself.
+ */
+export async function everBought(token: string, wallets: string[]): Promise<string[]> {
+  const list = [...new Set(wallets.map((w) => w.toLowerCase()))];
+  if (list.length === 0) return [];
+  await freshCursor();
+  const coin = token.toLowerCase();
+  const books = await walletBooks(list);
+  return list.filter((_, i) => books[i]?.version === LEDGER_VERSION && (books[i]?.coins[coin]?.buys ?? 0) > 0);
+}
+
 /** Many wallets' documents at once: one Redis read for all of them. */
 async function walletBooks(wallets: string[]): Promise<(WalletBook | null)[]> {
   if (wallets.length === 0) return [];

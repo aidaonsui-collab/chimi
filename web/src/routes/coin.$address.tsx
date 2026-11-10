@@ -21,6 +21,8 @@ import {
   IconX,
 } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
+import { Comments } from "@/components/chimi/comments";
+import { useComments } from "@/lib/chimi/comments";
 import { CopyNotice, copySize } from "@/components/chimi/copy";
 import { toast } from "@/components/chimi/toast";
 import { EthLogo, TokenLogo } from "@/components/chimi/token-logo";
@@ -79,7 +81,8 @@ function CoinPage() {
   const [swaps, setSwaps] = useState<PoolSwap[]>();
   const [holders, setHolders] = useState<Holder[]>();
   const [range, setRange] = useState<Range>("ALL");
-  const [panel, setPanel] = useState<"trades" | "holders">("trades");
+  const [panel, setPanel] = useState<"trades" | "holders" | "comments">("trades");
+  const thread = useComments(coin && !coin.preview ? coin.token : undefined);
   const [shown, setShown] = useState(25);
   const [hover, setHover] = useState<ChartPoint | null>(null);
   const [reload, setReload] = useState(0);
@@ -616,13 +619,18 @@ function CoinPage() {
               value={panel}
               onChange={setPanel}
               options={[
-                ["trades", `Transactions${swaps ? ` · ${swaps.length}` : ""}`],
+                ["trades", `Trades${swaps ? ` · ${swaps.length}` : ""}`],
                 ["holders", `Holders${holders ? ` · ${holders.length}` : ""}`],
+                ["comments", `Comments${thread.view ? ` · ${thread.view.total}` : ""}`],
               ]}
             />
-            <span className="hidden text-xs text-faint sm:block">{panel === "trades" ? "About the last day of trades" : "The pool, the creator and recent traders"}</span>
+            <span className="hidden truncate text-xs text-faint sm:block lg:hidden xl:block">
+              {panel === "trades" ? "About the last day of trades" : panel === "holders" ? "The pool, the creator and recent traders" : "From wallets with a Dojang"}
+            </span>
           </div>
-          {panel === "trades" ? (
+          {panel === "comments" ? (
+            <Comments coin={coin} thread={thread} holders={holders} swaps={swaps} />
+          ) : panel === "trades" ? (
             !swaps ? (
               <RowsSkeleton />
             ) : list.length === 0 ? (
