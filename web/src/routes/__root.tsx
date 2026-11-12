@@ -2,6 +2,7 @@ import { createRootRoute, HeadContent, Link, Outlet, Scripts } from "@tanstack/r
 import { ChimiProvider } from "@/components/chimi/provider";
 import { Shell } from "@/components/chimi/shell";
 import { Empty } from "@/components/chimi/ui";
+import { Analytics } from "@vercel/analytics/react";
 import appCss from "../styles.css?url";
 
 export const Route = createRootRoute({
@@ -67,6 +68,7 @@ export const Route = createRootRoute({
             <Outlet />
           </Shell>
         </ChimiProvider>
+        <Analytics />
         <Scripts />
       </body>
     </html>
