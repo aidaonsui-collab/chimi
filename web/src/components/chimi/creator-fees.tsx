@@ -172,3 +172,39 @@ export function LaunchedFeesBar({ fees, onDone }: { fees: Record<string, Creator
     </div>
   );
 }
+
+/** Beside the home feed: the fees waiting across the coins this wallet launched. Nothing for a wallet that launched none. */
+export function CreatorFeesMini({ coins }: { coins: Coin[] }) {
+  const { account } = useChimi();
+  const ethUsd = useEthUsd();
+  const [again, setAgain] = useState(0);
+  const mine = useMemo(() => coins.filter((c) => same(account, c.creator)), [coins, account]);
+  const { fees, ready } = useCreatorFees(mine, !!account && mine.length > 0, again);
+  const { claim, busy, note, kind } = useClaim(() => setAgain((n) => n + 1));
+  if (!account || mine.length === 0) return null;
+  const due = Object.values(fees).filter((f) => f.creator > 0n && same(account, f.wallet));
+  const total = due.reduce((sum, f) => sum + f.creator, 0n);
+  return (
+    <section className="card p-5">
+      <h3 className="text-[15px] font-semibold">Your creator fees</h3>
+      {ready ? (
+        <p className="num mt-3 text-[26px] leading-none font-semibold tracking-[-0.03em]">
+          {amountText(total, 6)} <span className="text-[14px] font-medium text-muted">ETH</span>
+        </p>
+      ) : (
+        <span className="skeleton mt-3 block h-7 w-32 rounded-lg" />
+      )}
+      <p className="mt-1.5 text-sm text-muted">
+        {total === 0n ? "Nothing to claim yet" : ethUsd ? `${money((Number(total) / 1e18) * ethUsd)} waiting` : "Waiting"} across the {mine.length === 1 ? "coin" : `${mine.length} coins`} you launched.
+      </p>
+      <button type="button" disabled={busy || total === 0n} onClick={() => void claim(due.map((f) => f.positionId))} className="btn btn-primary mt-4 w-full disabled:opacity-40">
+        {busy ? "Confirming…" : due.length > 1 ? "Claim all" : "Claim"}
+      </button>
+      {note ? (
+        <Note kind={kind} className="mt-2.5 text-center">
+          {note}
+        </Note>
+      ) : null}
+    </section>
+  );
+}

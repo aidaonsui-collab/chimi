@@ -12,6 +12,7 @@ import {
   IconChart,
   IconChevronRight,
   IconExternal,
+  IconFeed,
   IconHouse,
   IconMenu,
   IconPlus,
@@ -19,6 +20,7 @@ import {
   IconPools,
   IconSearch,
   IconSwap,
+  IconTraders,
 } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
 import { Toaster } from "@/components/chimi/toast";
@@ -26,14 +28,20 @@ import { Modal } from "@/components/chimi/ui";
 import { WalletButton } from "@/components/chimi/wallet-menu";
 
 type NavItem = {
-  to: "/" | "/swap" | "/pools" | "/analytics" | "/points" | "/houses" | "/launch";
+  to: "/" | "/board" | "/traders" | "/swap" | "/pools" | "/analytics" | "/points" | "/houses" | "/launch";
   label: string;
   icon: ComponentType<{ size?: number; className?: string }>;
   on: (path: string) => boolean;
 };
 
+const FEED: NavItem = { to: "/", label: "Feed", icon: IconFeed, on: (p) => p === "/" };
+const BOARD: NavItem = { to: "/board", label: "Board", icon: IconBoard, on: (p) => p === "/board" || p.startsWith("/coin/") };
+const TRADERS: NavItem = { to: "/traders", label: "Traders", icon: IconTraders, on: (p) => p === "/traders" || p.startsWith("/u/") };
+
 const NAV: NavItem[] = [
-  { to: "/", label: "Board", icon: IconBoard, on: (p) => p === "/" || p.startsWith("/coin/") },
+  FEED,
+  BOARD,
+  TRADERS,
   { to: "/swap", label: "Swap", icon: IconSwap, on: (p) => p === "/swap" },
   { to: "/pools", label: "Pools", icon: IconPools, on: (p) => p === "/pools" || p.startsWith("/pool/") },
   { to: "/analytics", label: "Analytics", icon: IconChart, on: (p) => p === "/analytics" },
@@ -111,9 +119,9 @@ function RailLink({ item, on, label, accent }: { item: NavItem; on: boolean; lab
 function TabBar({ path }: { path: string }) {
   const [more, setMore] = useState(false);
   useEffect(() => setMore(false), [path]);
-  const tabs = [NAV[0]!, NAV[1]!];
-  const after = [NAV[4]!];
-  const hidden = [NAV[2]!, NAV[3]!, NAV[5]!];
+  const tabs = [FEED, BOARD];
+  const after = [TRADERS];
+  const hidden = NAV.filter((item) => item !== FEED && item !== BOARD && item !== TRADERS);
   const moreOn = hidden.some((h) => h.on(path));
   const tab = (item: NavItem) => {
     const Icon = item.icon;
@@ -317,7 +325,13 @@ function Footer() {
         <div className="grid content-start gap-2.5 text-sm">
           <p className="th uppercase">Trade</p>
           <Link to="/" className={link}>
+            Feed
+          </Link>
+          <Link to="/board" className={link}>
             Board
+          </Link>
+          <Link to="/traders" className={link}>
+            Traders
           </Link>
           <Link to="/swap" className={link}>
             Swap

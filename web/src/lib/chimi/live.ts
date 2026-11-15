@@ -283,7 +283,8 @@ export function capBefore(swap: PoolSwap, coin: Pick<Coin, "tokenIs0" | "fee">):
   return Number.isFinite(before) && before > 0 ? before * SUPPLY : undefined;
 }
 
-const capAfter = (swap: PoolSwap, coin: Pick<Coin, "tokenIs0">) => (Number(wethPerToken(swap.sqrtPriceX96, coin.tokenIs0)) / 1e18) * SUPPLY;
+/** The coin's market cap in ETH at the price this trade left. */
+export const capAfter = (swap: PoolSwap, coin: Pick<Coin, "tokenIs0">) => (Number(wethPerToken(swap.sqrtPriceX96, coin.tokenIs0)) / 1e18) * SUPPLY;
 
 /**
  * The market cap a window opened at: where the last trade before it left the price, or, when the window's

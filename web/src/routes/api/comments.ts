@@ -1,5 +1,6 @@
 /**
  * GET /api/comments?token=0x…[&limit=50]: a coin's comments, newest first (public).
+ * GET /api/comments?recent=20&tokens=0x…,0x…: the newest comments across those coins, for the home feed (public).
  * POST /api/comments: one signed action, { token, wallet, action, time, signature } (rules in lib/chimi/comment-rules.ts).
  *
  * Needs the project's Upstash Redis (KV_REST_API_URL / KV_REST_API_TOKEN) to keep anything. CHIMI_ADMIN_TOKEN lets the
@@ -28,6 +29,8 @@ import { giwa } from "@/server/points";
 import { docStore, json, rateLimited } from "@/server/store";
 
 const PAGE = 50;
+/** The home feed asks about the coins on the board; past this many it asks for the busiest ones only. */
+const MAX_RECENT_TOKENS = 60;
 
 const store = (token: string) => docStore<CommentsDoc>(`chimi:comments:v1:${token.toLowerCase()}`);
 
@@ -50,6 +53,25 @@ export const Route = createFileRoute("/api/comments")({
     handlers: {
       GET: async ({ request }) => {
         const url = new URL(request.url);
+        const recent = url.searchParams.get("recent");
+        if (recent !== null) {
+          const tokens = [...new Set((url.searchParams.get("tokens") ?? "").split(",").map((t) => t.trim().toLowerCase()))]
+            .filter((t) => isAddress(t, { strict: false }))
+            .slice(0, MAX_RECENT_TOKENS);
+          const limit = Math.min(PAGE, Math.max(1, Math.floor(Number(recent)) || 20));
+          try {
+            // One coin's comments failing to load shouldn't blank the others.
+            const docs = await Promise.all(tokens.map((t) => store(t).load().then((loaded) => loaded.doc, () => null)));
+            const items = docs
+              .flatMap((doc, i) => (doc?.items ?? []).slice(-limit).map((comment) => ({ ...comment, token: tokens[i]! })))
+              .sort((a, b) => b.time - a.time)
+              .slice(0, limit);
+            return json({ items }, 200, { "cache-control": "public, max-age=10, s-maxage=10, stale-while-revalidate=30" });
+          } catch (e) {
+            console.error("[comments]", e instanceof Error ? e.message : e);
+            return json({ error: "comments unavailable" }, 503);
+          }
+        }
         const token = url.searchParams.get("token") ?? "";
         if (!isAddress(token, { strict: false })) return json({ error: "invalid token" }, 400);
         try {

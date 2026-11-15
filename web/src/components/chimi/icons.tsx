@@ -25,6 +25,27 @@ function Svg({ size = 20, children, ...rest }: IconProps & { children: ReactNode
 export const CHIMI_PATH =
   "M17.2 3.3 21.6 3.4 24.2 5.3 23.6 7.6 20.8 8.6 18.4 8.2 18.6 10 21 14.6 21.6 19.6 23.5 21 24.1 24.4 23.2 26.9 20.6 28.8 17.8 29.3 12.2 29 8.5 26.8 7.6 24.6 7.5 21.2 8.4 19 10.4 17.2 15.6 16.6 16.6 14.4 15.4 12.4 11 12.2 6.8 11 7.2 8 11.4 4.8Z";
 
+export const IconFeed = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 6h16M4 12h16M4 18h10" />
+  </Svg>
+);
+
+export const IconTraders = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="9" cy="8" r="3.5" />
+    <path d="M2.5 20a6.5 6.5 0 0113 0" />
+    <circle cx="17.5" cy="9" r="2.5" />
+    <path d="M17 14.5a5 5 0 014.5 5" />
+  </Svg>
+);
+
+export const IconComment = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M20 12a8 8 0 01-11.8 7L4 20l1-4.2A8 8 0 1120 12z" />
+  </Svg>
+);
+
 export const IconBoard = (p: IconProps) => (
   <Svg {...p}>
     <path d="M3 17l5-5 4 3 8-9" />

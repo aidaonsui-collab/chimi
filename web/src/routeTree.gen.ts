@@ -11,10 +11,12 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
+import { Route as BoardRouteImport } from './routes/board'
 import { Route as LaunchRouteImport } from './routes/launch'
 import { Route as PointsRouteImport } from './routes/points'
 import { Route as PoolsRouteImport } from './routes/pools'
 import { Route as SwapRouteImport } from './routes/swap'
+import { Route as TradersRouteImport } from './routes/traders'
 import { Route as ApiCommentsRouteImport } from './routes/api/comments'
 import { Route as ApiFeedRouteImport } from './routes/api/feed'
 import { Route as ApiFollowsRouteImport } from './routes/api/follows'
@@ -39,6 +41,11 @@ const AnalyticsRoute = AnalyticsRouteImport.update({
   path: '/analytics',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BoardRoute = BoardRouteImport.update({
+  id: '/board',
+  path: '/board',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LaunchRoute = LaunchRouteImport.update({
   id: '/launch',
   path: '/launch',
@@ -57,6 +64,11 @@ const PoolsRoute = PoolsRouteImport.update({
 const SwapRoute = SwapRouteImport.update({
   id: '/swap',
   path: '/swap',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TradersRoute = TradersRouteImport.update({
+  id: '/traders',
+  path: '/traders',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiCommentsRoute = ApiCommentsRouteImport.update({
@@ -128,10 +140,12 @@ const UAddressRoute = UAddressRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
+  '/board': typeof BoardRoute
   '/launch': typeof LaunchRoute
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
+  '/traders': typeof TradersRoute
   '/api/comments': typeof ApiCommentsRoute
   '/api/feed': typeof ApiFeedRoute
   '/api/follows': typeof ApiFollowsRoute
@@ -149,10 +163,12 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
+  '/board': typeof BoardRoute
   '/launch': typeof LaunchRoute
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
+  '/traders': typeof TradersRoute
   '/api/comments': typeof ApiCommentsRoute
   '/api/feed': typeof ApiFeedRoute
   '/api/follows': typeof ApiFollowsRoute
@@ -171,10 +187,12 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
+  '/board': typeof BoardRoute
   '/launch': typeof LaunchRoute
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
+  '/traders': typeof TradersRoute
   '/api/comments': typeof ApiCommentsRoute
   '/api/feed': typeof ApiFeedRoute
   '/api/follows': typeof ApiFollowsRoute
@@ -194,10 +212,12 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/analytics'
+    | '/board'
     | '/launch'
     | '/points'
     | '/pools'
     | '/swap'
+    | '/traders'
     | '/api/comments'
     | '/api/feed'
     | '/api/follows'
@@ -215,10 +235,12 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/analytics'
+    | '/board'
     | '/launch'
     | '/points'
     | '/pools'
     | '/swap'
+    | '/traders'
     | '/api/comments'
     | '/api/feed'
     | '/api/follows'
@@ -236,10 +258,12 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/analytics'
+    | '/board'
     | '/launch'
     | '/points'
     | '/pools'
     | '/swap'
+    | '/traders'
     | '/api/comments'
     | '/api/feed'
     | '/api/follows'
@@ -258,10 +282,12 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AnalyticsRoute: typeof AnalyticsRoute
+  BoardRoute: typeof BoardRoute
   LaunchRoute: typeof LaunchRoute
   PointsRoute: typeof PointsRoute
   PoolsRoute: typeof PoolsRoute
   SwapRoute: typeof SwapRoute
+  TradersRoute: typeof TradersRoute
   ApiCommentsRoute: typeof ApiCommentsRoute
   ApiFeedRoute: typeof ApiFeedRoute
   ApiFollowsRoute: typeof ApiFollowsRoute
@@ -293,6 +319,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AnalyticsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/board': {
+      id: '/board'
+      path: '/board'
+      fullPath: '/board'
+      preLoaderRoute: typeof BoardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/launch': {
       id: '/launch'
       path: '/launch'
@@ -319,6 +352,13 @@ declare module '@tanstack/react-router' {
       path: '/swap'
       fullPath: '/swap'
       preLoaderRoute: typeof SwapRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/traders': {
+      id: '/traders'
+      path: '/traders'
+      fullPath: '/traders'
+      preLoaderRoute: typeof TradersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/comments': {
@@ -418,10 +458,12 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnalyticsRoute: AnalyticsRoute,
+  BoardRoute: BoardRoute,
   LaunchRoute: LaunchRoute,
   PointsRoute: PointsRoute,
   PoolsRoute: PoolsRoute,
   SwapRoute: SwapRoute,
+  TradersRoute: TradersRoute,
   ApiCommentsRoute: ApiCommentsRoute,
   ApiFeedRoute: ApiFeedRoute,
   ApiFollowsRoute: ApiFollowsRoute,

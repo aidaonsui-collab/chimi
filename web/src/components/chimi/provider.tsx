@@ -44,6 +44,11 @@ type ChimiContext = {
   createCoin: (name: string, symbol: string, firstBuy: string) => Promise<Address>;
   /** A sale pays out in ETH: the swap and the unwrap are one transaction, after an approval. */
   trade: (coin: Coin, side: "buy" | "sell", amount: string, minOut?: bigint) => Promise<string>;
+  /**
+   * Buys with a set amount of ETH in one confirmation, for the buttons on feed cards. The minimum comes from a dry
+   * run of this exact swap, so it already allows for the price the buy itself moves, less `slippageBps` (2%).
+   */
+  quickBuy: (coin: Coin, eth: string, slippageBps?: number) => Promise<string>;
   /** Turns wrapped ETH back into ETH: the whole balance, or just `amount`. */
   unwrap: (amount?: bigint) => Promise<string>;
   /**
@@ -385,6 +390,31 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
     [deployment, refresh],
   );
 
+  const quickBuy = useCallback(
+    async (coin: Coin, eth: string, slippageBps = 200) => {
+      if (coin.preview) throw new Error("Preview coin. Launch a real one to trade.");
+      if (!deployment) throw new Error("Factory not loaded.");
+      const { who } = await ready();
+      const qty = parseEther(eth);
+      let expected: bigint;
+      try {
+        const run = await publicClient.simulateContract({
+          account: who,
+          address: deployment.swapRouter,
+          abi: routerAbi,
+          functionName: "exactInputSingle",
+          args: [{ tokenIn: deployment.weth, tokenOut: coin.token, fee: POOL_FEE, recipient: who, amountIn: qty, amountOutMinimum: 0n, sqrtPriceLimitX96: 0n }],
+          value: qty,
+        });
+        expected = run.result;
+      } catch (err) {
+        throw new Error(/insufficient|exceeds|balance|funds/i.test(short(err)) ? `Not enough ETH for a ${eth} ETH buy.` : "Couldn’t price that buy. Try again in a moment.");
+      }
+      return trade(coin, "buy", eth, (expected * BigInt(10_000 - slippageBps)) / 10_000n);
+    },
+    [deployment, trade],
+  );
+
   const unwrap = useCallback(
     async (amount?: bigint) => {
       if (!deployment) throw new Error("Factory not loaded.");
@@ -465,11 +495,12 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       refresh,
       createCoin,
       trade,
+      quickBuy,
       unwrap,
       claimFees,
       signMessage,
     }),
-    [deployment, live, coins, loading, preview, note, account, connect, disconnect, ensureChain, refresh, createCoin, trade, unwrap, claimFees, signMessage],
+    [deployment, live, coins, loading, preview, note, account, connect, disconnect, ensureChain, refresh, createCoin, trade, quickBuy, unwrap, claimFees, signMessage],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

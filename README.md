@@ -40,7 +40,22 @@ npm install
 npm run dev
 ```
 
-The page is the board, the launch sheet, and a coin page. It reads `/deployments.json` and talks to the GIWA Sepolia factory. Until that file has a factory address, the board shows preview coins and launch stays disabled.
+The home page is the feed. The board of every coin, the launch sheet, a page per coin and a page per trader sit beside it. The site reads `/deployments.json` and talks to the GIWA Sepolia factory. Until that file has a factory address, the board shows preview coins and launch stays disabled.
+
+### The home feed
+
+`/` shows what is happening, newest first: buys and sales, launches, comments, a coin crossing a round market cap, and the times someone who follows you bought a coin after you did. The board that used to be the home page is at `/board`, and `/traders` lists everyone trading, by season points, followers or the day's volume.
+
+- **Tabs.** For you is everything; once the feed is crowded, small trades by wallets you don't follow drop out. Following is what the wallets you follow bought, sold, launched and said. New is launches. Top is the coins by the day's volume.
+- **Cards act in place.** A buy has quick-buy buttons (0.01, 0.05 and 0.1 ETH) and Copy, which opens the coin's page with that buyer's size filled in. A stranger's card has Follow. A comment opens its thread (`/coin/<address>?tab=comments`).
+- **Quick buy** is one confirmation. The minimum received comes from a dry run of that exact swap, so it allows for the price the buy itself moves, less 2% (`quickBuy` in `web/src/components/chimi/provider.tsx`).
+- **A quiet chain.** When nothing has happened for an hour the feed leads with the last day in three numbers and a way to start something. Every coin's launch is always in the feed, so it is never empty once a coin exists.
+- **The top of the page.** A first visit gets a hero with the roof, what Chimi is and where to start. After a wallet has connected, or the visitor has closed it, the roof sits behind the heading like every other tab's scene. A line of script in the page's head reads that choice before the first paint (`web/src/components/chimi/feed-hero.tsx`).
+- **The strip under the top bar** shows the last day's trades and launches moving past. It holds still under the pointer and for visitors who ask for less motion.
+
+Nothing new is read from the chain for this. Trades come from the pools the board already follows, launch times from the factory's events, comments from `GET /api/comments?recent=20&tokens=…`, and who follows whom from the follow list. The rules that turn those into one list are in `web/src/lib/chimi/feed-rules.ts`, with tests in `web/test/feed.test.ts`.
+
+Not built yet: an inbox, likes and replies on comments, and house updates in the feed.
 
 ### Token pictures
 
