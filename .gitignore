@@ -1,6 +1,7 @@
 contracts/out/
 contracts/cache/
 contracts/broadcast/
+contracts/node_modules/
 web/node_modules/
 web/dist/
 web/.output/
