@@ -297,6 +297,22 @@ export function suggestTraders(season: readonly { wallet: string; points: number
     .map(([wallet, eth]) => ({ wallet, eth }));
 }
 
+/** Who traded most since `since` (unix seconds), by ETH: the day's busiest wallets, for the list beside the feed. */
+export function topTraders(trades: FeedTrade[], since: number, max = 5): { wallet: string; eth: number; trades: number }[] {
+  const by = new Map<string, { wallet: string; eth: number; trades: number }>();
+  const seen = new Set<string>();
+  for (const t of trades) {
+    if (t.time < since || seen.has(t.key)) continue;
+    seen.add(t.key);
+    const wallet = lower(t.wallet);
+    const row = by.get(wallet) ?? { wallet, eth: 0, trades: 0 };
+    row.eth += t.eth;
+    row.trades += 1;
+    by.set(wallet, row);
+  }
+  return [...by.values()].sort((a, b) => b.eth - a.eth || b.trades - a.trades || (a.wallet < b.wallet ? -1 : 1)).slice(0, max);
+}
+
 /** "third" from 3, for "their third buy of it". Past tenth it is just the number. */
 export function ordinal(n: number): string {
   return ["", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"][n] ?? `${n}th`;

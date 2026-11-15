@@ -9,6 +9,7 @@ import {
   launchesOnly,
   packBig,
   suggestTraders,
+  topTraders,
   unpackBig,
   type CapPoint,
   type FeedComment,
@@ -242,6 +243,8 @@ export function useHomeFeed(nowMs: number | null) {
         now,
       ),
       digest: digest(trades, now),
+      /** The day's busiest wallets, by ETH traded. */
+      busiest: topTraders(trades, now - DAY),
       suggestions: suggestTraders(points?.season ?? [], trades, [me, ...following]),
     };
   }, [live, byPool, record.trades, byToken, times, comments, me, following, followers, ethUsd, stats, points, nowMs]);

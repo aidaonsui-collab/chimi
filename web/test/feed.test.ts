@@ -20,6 +20,7 @@ import {
   ordinal,
   packBig,
   suggestTraders,
+  topTraders,
   unpackBig,
   type FeedTrade,
 } from "../src/lib/chimi/feed-rules.ts";
@@ -327,4 +328,20 @@ test("a burst keeps its key as trades join it, and counts as new each time one d
   assert.notEqual(freshnessKey(before), freshnessKey(after));
   const single = buildFeed({ trades: [trade()], launches: [], comments: [], now: NOW })[0]!;
   assert.equal(freshnessKey(single), single.key);
+});
+
+test("the day's busiest wallets are ranked by what they traded", () => {
+  const old = trade({ wallet: C, eth: 50, time: NOW - 90_000 });
+  const twice = trade({ wallet: B, eth: 0.2 });
+  const top = topTraders([trade({ wallet: A, eth: 0.3 }), twice, twice, trade({ wallet: B.toUpperCase().replace("0X", "0x"), eth: 0.4, buy: false }), old], NOW - 86_400, 5);
+  assert.deepEqual(
+    top.map((t) => [t.wallet, t.trades]),
+    [
+      [B, 2],
+      [A, 1],
+    ],
+    "buys and sales both count, a trade read twice counts once, and yesterday's don't count",
+  );
+  assert.ok(Math.abs(top[0]!.eth - 0.6) < 1e-9);
+  assert.equal(topTraders([trade({ wallet: A }), trade({ wallet: B }), trade({ wallet: C })], NOW - 86_400, 2).length, 2);
 });
