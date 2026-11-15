@@ -184,8 +184,13 @@ export function useHomeFeed(nowMs: number | null) {
     following,
     ethUsd,
     points,
-    /** True until the factory has answered and the pools' trades have been read once. */
-    waiting: loading || (live.length > 0 && !ready && feed.trades.length === 0),
+    /** True until the factory has answered with its coins. */
+    waiting: loading,
+    /**
+     * False while the pools' trades are still being read (or the node refused the read and it is being tried
+     * again). The feed shows what it has meanwhile, and says the trades are on their way.
+     */
+    tradesReady: ready || feed.trades.length > 0 || live.length === 0,
     hasCoins: live.length > 0,
     supply: SUPPLY,
   };

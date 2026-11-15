@@ -180,7 +180,7 @@ function Home() {
               </div>
             ) : (
               <>
-                {tab === "foryou" && feed.quiet ? <QuietLead feed={feed} usd={usd} /> : null}
+                {!feed.tradesReady ? <TradesOnTheWay /> : tab === "foryou" && feed.quiet ? <QuietLead feed={feed} usd={usd} /> : null}
                 {page.length === 0 ? (
                   <div className="card">
                     <Empty mark="조용함" title={tab === "following" ? "Nothing from the wallets you follow yet" : "Nothing here yet"}>
@@ -341,6 +341,19 @@ function TopCoins({ coins, ctx, usd }: { coins: HomeFeed["live"]; ctx: CardConte
         })}
       </ul>
     </section>
+  );
+}
+
+/** Shown above the feed while the pools' trades are still being read, so launches and comments don't wait on them. */
+function TradesOnTheWay() {
+  return (
+    <div className="card flex items-center gap-3 p-4 text-sm text-muted sm:px-5" role="status">
+      <span className="skeleton size-[38px] shrink-0 rounded-full" />
+      <span className="min-w-0 flex-1">
+        <span className="block font-medium text-fg">Reading the latest trades from GIWA…</span>
+        <span className="block">Launches and comments are below. Trades join them as soon as the chain answers.</span>
+      </span>
+    </div>
   );
 }
 
