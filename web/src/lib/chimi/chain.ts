@@ -40,6 +40,20 @@ export const poolAbi = parseAbi([
 
 export const routerAbi = parseAbi([
   "function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96) params) payable returns (uint256 amountOut)",
+  "function unwrapWETH9(uint256 amountMinimum, address recipient) payable",
+  "function multicall(uint256 deadline, bytes[] data) payable returns (bytes[] results)",
+]);
+
+/**
+ * A swap addressed here stays in the router, so the next call in the same transaction can unwrap it
+ * and pay the seller in ETH. (SwapRouter02 reads address 2 as "this contract".)
+ */
+export const ROUTER_KEEPS: Address = "0x0000000000000000000000000000000000000002";
+
+export const lockerAbi = parseAbi([
+  "function collectFees(uint256 tokenId) returns (uint256 amount0, uint256 amount1)",
+  "function collectFeesBatch(uint256[] tokenIds)",
+  "function creatorSplits(uint256 tokenId) view returns (address wallet, uint16 bps)",
 ]);
 
 export const wethAbi = parseAbi([

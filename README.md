@@ -8,7 +8,18 @@ The factory is the Arc Instant factory (`InstantErc20QuoteFactory`) with the quo
 
 ```
 cd contracts
+npm install
 forge test
+```
+
+`npm install` fetches the three libraries the contracts compile against: forge-std, OpenZeppelin 5.7.0 and Uniswap v4-core 1.0.2 (for `TickMath` only). They are pinned in `package-lock.json` to the versions the live contracts were built with, so a fresh build has the same executable code as the contracts on GIWA Sepolia. Only the compiler's metadata hash differs, because it records file paths.
+
+`test/ChimiFull.t.sol` runs the pad, the DEX and the locker together on two local stacks, one for each currency order (the launch token as currency0 and as currency1). The tests named `test_gap_…` describe things the contracts allow today that a launchpad would rather not: no cap on the creator's first buy, and a locker that its proxy admin can replace.
+
+`test/ChimiLive.t.sol` checks the contracts that are live on GIWA Sepolia, at the addresses in `web/public/deployments.json`, on a fork. It sends nothing to the real chain, and is skipped unless `GIWA_RPC` is set:
+
+```
+GIWA_RPC=https://sepolia-rpc.giwa.io forge test --match-contract ChimiLiveForkTest
 ```
 
 Deploy to GIWA Sepolia (chain 91342). Keep `PRIVATE_KEY` in the environment.
@@ -41,6 +52,21 @@ Name and symbol are on-chain; the picture, description, and links are a token pr
 
 Env vars (same names as eve.fun): `BLOB_READ_WRITE_TOKEN`, which Vercel adds when a Blob store is connected, and `KV_REST_API_URL` + `KV_REST_API_TOKEN`, which Vercel adds when an Upstash Redis/KV store is connected (`UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` also work). Without them, reads still work and pictures stay in the creator's browser. A creator can (re)publish from the coin page with "Set picture".
 
+
+### Selling for ETH
+
+A sale is an approval and then one transaction. The site calls the router's `multicall` with two steps: the swap, addressed to the router itself, and `unwrapWETH9`, which turns the pool's wrapped ETH into ETH and pays the seller. Both happen or neither does, the same minimum applies to both, and the sale lapses after 20 minutes. A buy or sale that lands but fails on-chain is reported as failed.
+
+Because the router receives the swap's output, the pool's `Swap` log names the router as the recipient of a sale. The seller is read from the coin's `Transfer` into the pool in the same transaction (`nameSellers` in `web/src/lib/chimi/market.ts`), with one extra log read per window of blocks that has such sales. The points book and the trade record already resolve these through the transaction's sender.
+
+### Creator fees
+
+Each coin's launch liquidity is held by the locker and earns the pool's 1% fee. Of the part paid in ETH, the creator's share (70% today, stamped on the lock at launch) goes to the creator and the rest to the platform; the part paid in the coin is burned. Nothing moves until the position is swept with `collectFees` on the locker, which anyone can call.
+
+- A coin's page shows its creator a **Your creator fees** card with the amount waiting and a Claim button (`web/src/components/chimi/creator-fees.tsx`).
+- A trader's own page lists the fees waiting on each coin they launched, with one button that sweeps them all (`collectFeesBatch`).
+- The locker pays wrapped ETH, so a claim is two confirmations: the sweep, then unwrapping what arrived. Turning down the second leaves the wrapped ETH in the wallet; the trade panel offers to unwrap any the wallet holds.
+- The amount waiting is a dry run of the sweep (`web/src/lib/chimi/fees.ts`).
 
 ### Look and feel
 

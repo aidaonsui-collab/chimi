@@ -14,11 +14,11 @@ const KEEP_MS = 5 * 60_000;
 type Old = { swaps: PoolSwap[]; coveredFrom: number };
 const cache = new Map<string, { at: number; job: Promise<Old> }>();
 
-function loadHistory(coin: Pick<Coin, "pool" | "tokenIs0">): Promise<Old> {
+function loadHistory(coin: Pick<Coin, "pool" | "tokenIs0"> & Partial<Pick<Coin, "token">>): Promise<Old> {
   const key = coin.pool.toLowerCase();
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < KEEP_MS) return hit.job;
-  const job = loadSwapWindow(coin.pool, coin.tokenIs0, REACH_S).then(({ swaps, coveredFrom }) => ({ swaps, coveredFrom }));
+  const job = loadSwapWindow(coin.pool, coin.tokenIs0, REACH_S, coin.token).then(({ swaps, coveredFrom }) => ({ swaps, coveredFrom }));
   cache.set(key, { at: Date.now(), job });
   job.catch(() => cache.delete(key));
   return job;
@@ -30,21 +30,22 @@ const inOrder = (a: PoolSwap, b: PoolSwap) => (a.block === b.block ? (a.index ??
  * Every trade of this coin that can be read, oldest first: the long history joined with `recent`, the day of
  * trades the page keeps fresh. Undefined until the first of the two has arrived.
  */
-export function useSwapHistory(coin: Pick<Coin, "pool" | "tokenIs0" | "preview"> | undefined, recent: PoolSwap[] | undefined): PoolSwap[] | undefined {
+export function useSwapHistory(coin: (Pick<Coin, "pool" | "tokenIs0" | "preview"> & Partial<Pick<Coin, "token">>) | undefined, recent: PoolSwap[] | undefined): PoolSwap[] | undefined {
   const pool = coin && !coin.preview ? coin.pool.toLowerCase() : undefined;
   const tokenIs0 = coin?.tokenIs0;
+  const token = coin?.token;
   const [old, setOld] = useState<{ pool: string; swaps: PoolSwap[] }>();
 
   useEffect(() => {
     if (!pool || tokenIs0 === undefined) return;
     let off = false;
-    loadHistory({ pool: pool as Coin["pool"], tokenIs0 })
+    loadHistory({ pool: pool as Coin["pool"], tokenIs0, token })
       .then((found) => !off && setOld({ pool, swaps: found.swaps }))
       .catch(() => undefined);
     return () => {
       off = true;
     };
-  }, [pool, tokenIs0]);
+  }, [pool, tokenIs0, token]);
 
   return useMemo(() => {
     const older = old && old.pool === pool ? old.swaps : undefined;

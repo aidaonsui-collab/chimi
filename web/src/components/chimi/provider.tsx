@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import {
   createWalletClient,
   custom,
+  encodeFunctionData,
   getAddress,
   parseEther,
   parseEventLogs,
@@ -11,10 +12,12 @@ import {
 } from "viem";
 import {
   POOL_FEE,
+  ROUTER_KEEPS,
   erc20Abi,
   factoryAbi,
   giwaSepolia,
   isDeployed,
+  lockerAbi,
   routerAbi,
   wethAbi,
   type Deployment,
@@ -39,8 +42,15 @@ type ChimiContext = {
   ensureChain: () => Promise<void>;
   refresh: () => Promise<void>;
   createCoin: (name: string, symbol: string, firstBuy: string) => Promise<Address>;
+  /** A sale pays out in ETH: the swap and the unwrap are one transaction, after an approval. */
   trade: (coin: Coin, side: "buy" | "sell", amount: string, minOut?: bigint) => Promise<string>;
-  unwrap: () => Promise<string>;
+  /** Turns wrapped ETH back into ETH: the whole balance, or just `amount`. */
+  unwrap: (amount?: bigint) => Promise<string>;
+  /**
+   * Sweeps the pool fees of these launch positions. Anyone can send it; each creator's share goes to
+   * the wallet stamped on the lock, as wrapped ETH. Answers with what this wallet received.
+   */
+  claimFees: (positionIds: bigint[]) => Promise<{ hash: string; received: bigint }>;
   /** Personal-sign with the connected wallet (used to publish token pictures). */
   signMessage: (message: string) => Promise<`0x${string}`>;
 };
@@ -312,65 +322,127 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
           ],
           value: qty,
         });
-        await publicClient.waitForTransactionReceipt({ hash });
+        const bought = await publicClient.waitForTransactionReceipt({ hash });
+        // A swap that lands but reverts spends only gas. The usual cause is a fill below the minimum received.
+        if (bought.status !== "success") throw new Error("The buy failed on-chain, so nothing was bought. If the price moved past your minimum, try a smaller amount or more slippage.");
         await refresh();
         return hash;
       }
-      const approve = await client.writeContract({
-        account: who,
-        chain: giwaSepolia,
+      // The router may still be allowed to move enough from an earlier sale that didn't go through.
+      const allowed = await publicClient.readContract({
         address: coin.token,
         abi: erc20Abi,
-        functionName: "approve",
-        args: [deployment.swapRouter, qty],
+        functionName: "allowance",
+        args: [who, deployment.swapRouter],
       });
-      await publicClient.waitForTransactionReceipt({ hash: approve });
+      if (allowed < qty) {
+        const approve = await client.writeContract({
+          account: who,
+          chain: giwaSepolia,
+          address: coin.token,
+          abi: erc20Abi,
+          functionName: "approve",
+          args: [deployment.swapRouter, qty],
+        });
+        await publicClient.waitForTransactionReceipt({ hash: approve });
+      }
+      // One transaction: the pool pays its wrapped ETH to the router, which unwraps it and sends ETH on.
+      // Either both happen or neither, and the sale lapses if it hasn't landed in 20 minutes.
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200);
       const hash = await client.writeContract({
         account: who,
         chain: giwaSepolia,
         address: deployment.swapRouter,
         abi: routerAbi,
-        functionName: "exactInputSingle",
+        functionName: "multicall",
         args: [
-          {
-            tokenIn: coin.token,
-            tokenOut: deployment.weth,
-            fee: POOL_FEE,
-            recipient: who,
-            amountIn: qty,
-            amountOutMinimum: minOut,
-            sqrtPriceLimitX96: 0n,
-          },
+          deadline,
+          [
+            encodeFunctionData({
+              abi: routerAbi,
+              functionName: "exactInputSingle",
+              args: [
+                {
+                  tokenIn: coin.token,
+                  tokenOut: deployment.weth,
+                  fee: POOL_FEE,
+                  recipient: ROUTER_KEEPS,
+                  amountIn: qty,
+                  amountOutMinimum: minOut,
+                  sqrtPriceLimitX96: 0n,
+                },
+              ],
+            }),
+            encodeFunctionData({ abi: routerAbi, functionName: "unwrapWETH9", args: [minOut, who] }),
+          ],
         ],
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") throw new Error("The sale failed on-chain, so nothing was sold. If the price moved past your minimum, try a smaller amount or more slippage.");
       await refresh();
       return hash;
     },
     [deployment, refresh],
   );
 
-  const unwrap = useCallback(async () => {
-    if (!deployment) throw new Error("Factory not loaded.");
-    const { who, client } = await ready();
-    const bal = await publicClient.readContract({
-      address: deployment.weth,
-      abi: wethAbi,
-      functionName: "balanceOf",
-      args: [who],
-    });
-    if (bal === 0n) throw new Error("No wrapped ETH to unwrap.");
-    const hash = await client.writeContract({
-      account: who,
-      chain: giwaSepolia,
-      address: deployment.weth,
-      abi: wethAbi,
-      functionName: "withdraw",
-      args: [bal],
-    });
-    await publicClient.waitForTransactionReceipt({ hash });
-    return hash;
-  }, [deployment]);
+  const unwrap = useCallback(
+    async (amount?: bigint) => {
+      if (!deployment) throw new Error("Factory not loaded.");
+      const { who, client } = await ready();
+      const bal = await publicClient.readContract({
+        address: deployment.weth,
+        abi: wethAbi,
+        functionName: "balanceOf",
+        args: [who],
+      });
+      const wad = amount !== undefined && amount < bal ? amount : bal;
+      if (wad === 0n) throw new Error("No wrapped ETH to unwrap.");
+      const hash = await client.writeContract({
+        account: who,
+        chain: giwaSepolia,
+        address: deployment.weth,
+        abi: wethAbi,
+        functionName: "withdraw",
+        args: [wad],
+      });
+      await publicClient.waitForTransactionReceipt({ hash });
+      return hash;
+    },
+    [deployment],
+  );
+
+  const claimFees = useCallback(
+    async (positionIds: bigint[]) => {
+      if (!deployment) throw new Error("Factory not loaded.");
+      if (positionIds.length === 0) throw new Error("Nothing to claim.");
+      const { who, client } = await ready();
+      const wrapped = () => publicClient.readContract({ address: deployment.weth, abi: wethAbi, functionName: "balanceOf", args: [who] });
+      const before = await wrapped();
+      const hash =
+        positionIds.length === 1
+          ? await client.writeContract({
+              account: who,
+              chain: giwaSepolia,
+              address: deployment.locker,
+              abi: lockerAbi,
+              functionName: "collectFees",
+              args: [positionIds[0]!],
+            })
+          : await client.writeContract({
+              account: who,
+              chain: giwaSepolia,
+              address: deployment.locker,
+              abi: lockerAbi,
+              functionName: "collectFeesBatch",
+              args: [positionIds],
+            });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") throw new Error("The claim didn’t go through.");
+      const after = await wrapped();
+      return { hash, received: after > before ? after - before : 0n };
+    },
+    [deployment],
+  );
 
   const signMessage = useCallback(async (message: string) => {
     const { who, client } = await ready(false);
@@ -394,9 +466,10 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       createCoin,
       trade,
       unwrap,
+      claimFees,
       signMessage,
     }),
-    [deployment, live, coins, loading, preview, note, account, connect, disconnect, ensureChain, refresh, createCoin, trade, unwrap, signMessage],
+    [deployment, live, coins, loading, preview, note, account, connect, disconnect, ensureChain, refresh, createCoin, trade, unwrap, claimFees, signMessage],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

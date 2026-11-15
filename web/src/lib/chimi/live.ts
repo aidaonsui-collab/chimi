@@ -76,13 +76,13 @@ const swapStore: Store<number> & { byPool: Map<string, SwapEntry> } = { value: 0
 const SWAP_TTL_MS = 45_000;
 
 /** A pool's trades from about the last day. Answers from memory when they were read moments ago. */
-export function fetchSwaps(coin: Pick<Coin, "pool" | "tokenIs0">, force = false): Promise<PoolSwap[]> {
+export function fetchSwaps(coin: Pick<Coin, "pool" | "tokenIs0" | "token">, force = false): Promise<PoolSwap[]> {
   const key = coin.pool.toLowerCase();
   const entry = swapStore.byPool.get(key) ?? { at: 0 };
   swapStore.byPool.set(key, entry);
   if (entry.job) return entry.job;
   if (!force && entry.swaps && Date.now() - entry.at < SWAP_TTL_MS) return Promise.resolve(entry.swaps);
-  entry.job = loadSwaps(coin.pool, coin.tokenIs0)
+  entry.job = loadSwaps(coin.pool, coin.tokenIs0, coin.token)
     .then((swaps) => {
       entry.swaps = swaps;
       entry.at = Date.now();
@@ -97,7 +97,7 @@ export function fetchSwaps(coin: Pick<Coin, "pool" | "tokenIs0">, force = false)
 }
 
 /** Reads every pool here whose trades are missing or stale, all in one pass over the chain. */
-function fetchSwapsMany(pools: { pool: Address; tokenIs0: boolean }[]) {
+function fetchSwapsMany(pools: { pool: Address; tokenIs0: boolean; token?: Address }[]) {
   const stale = pools.filter((p) => {
     const entry = swapStore.byPool.get(p.pool.toLowerCase());
     return !entry?.job && !(entry?.swaps && Date.now() - entry.at < SWAP_TTL_MS);
@@ -142,13 +142,13 @@ export function useSwaps(coins: Coin[]) {
   );
   const key = coins
     .filter((c) => !c.preview)
-    .map((c) => `${c.pool.toLowerCase()}:${c.tokenIs0 ? 1 : 0}`)
+    .map((c) => `${c.pool.toLowerCase()}:${c.tokenIs0 ? 1 : 0}:${c.token.toLowerCase()}`)
     .join(",");
   useEffect(() => {
     if (!key) return;
     const pools = key.split(",").map((item) => {
-      const [pool, is0] = item.split(":");
-      return { pool: pool as Address, tokenIs0: is0 === "1" };
+      const [pool, is0, token] = item.split(":");
+      return { pool: pool as Address, tokenIs0: is0 === "1", token: token as Address };
     });
     const read = () => {
       if (visible()) fetchSwapsMany(pools);

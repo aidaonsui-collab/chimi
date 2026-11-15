@@ -59,7 +59,7 @@ function AnalyticsPage() {
     void (async () => {
       const [created, rows] = await Promise.all([
         loadLaunchWindow(deployment.factory, DAYS * DAY),
-        Promise.all(live.map(async (coin) => ({ coin, window: await loadSwapWindow(coin.pool, coin.tokenIs0, DAYS * DAY) }))),
+        Promise.all(live.map(async (coin) => ({ coin, window: await loadSwapWindow(coin.pool, coin.tokenIs0, DAYS * DAY, coin.token) }))),
       ]);
       if (cancel) return;
       setLaunches(created.launches);
