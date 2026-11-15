@@ -18,7 +18,9 @@ import {
   score,
   type PointsFile,
   type PointsSettings,
+  type Lead,
 } from "@/lib/chimi/points-rules";
+import { tell } from "@/server/inbox";
 import { docStore, takeLock } from "@/server/store";
 
 const KEY = "chimi:points:v1";
@@ -61,8 +63,18 @@ export async function currentPoints(): Promise<{ file: PointsFile | null; writab
   const release = await takeLock(`${KEY}:lock`, 30_000);
   if (!release) return out(book);
   try {
-    const next = await advance(book, settings);
-    if (await store.save(next, rev)) return out(next);
+    const leads: Lead[] = [];
+    const next = await advance(book, settings, leads);
+    if (await store.save(next, rev)) {
+      // Each wallet that led a buy hears of it, once the book that counted it is kept.
+      await tell(
+        leads.map((l) => ({
+          wallet: l.leader,
+          item: { kind: "led" as const, key: `led:${l.token}:${l.follower}:${l.ts}`, time: l.ts * 1000, from: l.follower, token: l.token, eth: l.eth },
+        })),
+      );
+      return out(next);
+    }
     return out((await store.load()).doc ?? next);
   } catch (e) {
     console.error("[points]", e instanceof Error ? e.message : e);
@@ -72,7 +84,8 @@ export async function currentPoints(): Promise<{ file: PointsFile | null; writab
   }
 }
 
-async function advance(prev: PointsFile | null, settings: PointsSettings): Promise<PointsFile> {
+/** Brings the book up to the chain's head. Every buy that followed a followed wallet's is added to `leads`. */
+async function advance(prev: PointsFile | null, settings: PointsSettings, leads: Lead[]): Promise<PointsFile> {
   const started = Date.now();
   const client = giwa();
   const head = await client.getBlock({ blockTag: "safe" });
@@ -156,12 +169,13 @@ async function advance(prev: PointsFile | null, settings: PointsSettings): Promi
         const weth = pool.wethIs0 ? log.args.amount0 : log.args.amount1;
         const coin = pool.wethIs0 ? log.args.amount1 : log.args.amount0;
         if (!wallet) continue;
-        score(
+        const lead = score(
           book,
           // The pool paying the coin out is someone buying it.
           { wallet, creator: pool.creator, eth: Number(formatEther(weth < 0n ? -weth : weth)), ts: times.get(log.blockNumber)!, token: pool.token, buy: coin < 0n },
           following,
         );
+        if (lead) leads.push(lead);
       }
     }
     book.through = to;

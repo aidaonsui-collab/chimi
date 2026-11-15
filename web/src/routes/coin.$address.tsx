@@ -11,6 +11,8 @@ import { useSwapHistory } from "@/lib/chimi/history";
 import { SUPPLY, capBefore, coinStats, fetchSwaps, useEthUsd } from "@/lib/chimi/live";
 import { estimatedOut, feeLabel, loadCoin, loadHolders, short, shortAddr, wethPerToken, type Coin, type Holder, type PoolSwap } from "@/lib/chimi/market";
 import { saveTokenMeta, shrinkImage } from "@/lib/chimi/meta";
+import { quoteTrade, useQuote } from "@/lib/chimi/quote";
+import { impactLevel, impactText, minimumOut, priceImpact } from "@/lib/chimi/quote-rules";
 import { publishTokenProfile, refreshTokenProfiles, sharedStorageEnabled, useTokenProfile } from "@/lib/chimi/token-image";
 import { CandleChart, type ChartBubble } from "@/components/chimi/candle-chart";
 import {
@@ -37,11 +39,13 @@ import { Blockie, Change, CopyButton, Empty, Modal, Note, Seg, TraderLink } from
 
 export const Route = createFileRoute("/coin/$address")({
   // ?copy=<wallet>&eth=<their size> opens the page ready to copy that wallet's buy (the Copy button in the feed).
-  // ?tab=comments opens it on the thread (a comment card in the feed).
-  validateSearch: (search: Record<string, unknown>): { copy?: string; eth?: number; tab?: "comments" } => ({
+  // ?tab=comments|trades|holders opens it on that list, and ?c=<comment id> brings one comment into view (a comment
+  // card in the feed, a line of the inbox).
+  validateSearch: (search: Record<string, unknown>): { copy?: string; eth?: number; tab?: "comments" | "trades" | "holders"; c?: string } => ({
     copy: typeof search.copy === "string" && /^0x[0-9a-fA-F]{40}$/.test(search.copy) ? search.copy.toLowerCase() : undefined,
     eth: Number.isFinite(Number(search.eth)) && Number(search.eth) > 0 ? Number(search.eth) : undefined,
-    tab: search.tab === "comments" ? "comments" : undefined,
+    tab: search.tab === "comments" || search.tab === "trades" || search.tab === "holders" ? search.tab : undefined,
+    c: typeof search.c === "string" && /^[0-9a-z-]{1,40}$/.test(search.c) ? search.c : undefined,
   }),
   component: CoinPage,
 });
@@ -96,7 +100,8 @@ function CoinPage() {
   const [unit, setUnit] = useState<"mcap" | "price">("mcap");
   const [chartKind, setChartKind] = useState<"candles" | "line">("candles");
   const [traders, setTraders] = useState<BubbleMode>("all");
-  const [panel, setPanel] = useState<"trades" | "holders" | "comments">(search.tab ?? "trades");
+  // What is said about the coin leads, with the day's trades between the threads; the full lists are a tab away.
+  const [panel, setPanel] = useState<"comments" | "trades" | "holders">(search.tab ?? "comments");
   const thread = useComments(coin && !coin.preview ? coin.token : undefined);
   const [shown, setShown] = useState(25);
   const [reload, setReload] = useState(0);
@@ -134,6 +139,13 @@ function CoinPage() {
     setAmount(copySize());
     setTradeNote("");
   }, [search.copy, address]);
+
+  // A link to a list or to one comment (from the feed or the inbox) opens that list, also when the page is already up.
+  useEffect(() => {
+    if (search.c) setPanel("comments");
+    else if (search.tab) setPanel(search.tab);
+    if (search.tab && !search.c) requestAnimationFrame(() => document.getElementById("activity")?.scrollIntoView({ block: "start", behavior: "smooth" }));
+  }, [search.tab, search.c, address]);
 
   // The tab's title follows the coin, so several coins open at once can be told apart.
   useEffect(() => {
@@ -268,8 +280,15 @@ function CoinPage() {
   } catch {
     badAmount = true;
   }
-  const quote = coin && !badAmount ? estimatedOut(parsed, price, side === "buy") : 0n;
-  const minOut = (quote * BigInt(10_000 - slippageBps)) / 10_000n;
+  // What the pool would really pay: the swap run as a call that changes nothing. Until that answer comes (or if the
+  // node can't give one) the panel shows the price on the screen less the fee, which ignores the trade's own weight.
+  const estimate = coin && !badAmount ? estimatedOut(parsed, price, side === "buy") : 0n;
+  const live = useQuote(deployment, coin, side, badAmount ? 0n : parsed, reload);
+  const exact = live.out !== undefined;
+  const quote = live.out ?? estimate;
+  const minOut = minimumOut(quote, slippageBps);
+  const impact = exact && coin ? priceImpact(parsed, quote, price, side === "buy", coin.fee ?? POOL_FEE) : undefined;
+  const impactIs = impact === undefined ? "fine" : impactLevel(impact);
   const short_ = account && payBal !== undefined && parsed > payBal;
 
   async function go() {
@@ -291,8 +310,15 @@ function CoinPage() {
     try {
       setBusy(true);
       setKind("");
+      // Pressed before the pool's answer arrived: ask for it now, so the floor is set from the real payout.
+      let floor = minOut;
+      if (!exact && deployment) {
+        setTradeNote("Pricing the trade…");
+        const out = await quoteTrade(deployment, coin, side, parsed).catch(() => undefined);
+        if (out !== undefined) floor = minimumOut(out, slippageBps);
+      }
       setTradeNote(side === "sell" ? "Approve, then confirm the sale in your wallet." : "Confirm in your wallet.");
-      const hash = await trade(coin, side, amount.trim(), minOut);
+      const hash = await trade(coin, side, amount.trim(), floor);
       setKind("good");
       setTradeNote(side === "buy" ? "Bought." : "Sold. The ETH is in your wallet.");
       toast({
@@ -604,6 +630,7 @@ function CoinPage() {
                 logo={side === "buy" ? coinLogo(24) : <EthLogo size={24} />}
                 value={quote === 0n ? "0" : amountText(quote, 6)}
                 readOnly
+                pending={parsed > 0n && live.loading}
                 usd={ethUsd && quote > 0n ? money((Number(quote) / 1e18) * (side === "buy" ? priceEth : 1) * ethUsd) : undefined}
               />
             </div>
@@ -630,9 +657,26 @@ function CoinPage() {
 
             <dl className="mt-3 space-y-2 px-1.5 text-[13px]">
               <Line label="Rate" value={`1 ${coin.symbol} = ${tinyEth(price)} ETH`} />
-              <Line label="Minimum received" value={quote === 0n ? "—" : `${amountText(minOut, 6)} ${recvSymbol}`} />
+              <Line
+                label="Price impact"
+                value={
+                  parsed === 0n || quote === 0n ? (
+                    "—"
+                  ) : impact === undefined ? (
+                    <span className="text-faint">{live.failed ? "Couldn’t be read" : "Pricing…"}</span>
+                  ) : (
+                    <span className={impactIs === "warning" ? "font-semibold text-down" : impactIs === "caution" ? "text-gold" : ""}>{impactText(impact)}</span>
+                  )
+                }
+              />
+              <Line label={exact || quote === 0n ? "Minimum received" : "Minimum received, about"} value={quote === 0n ? "—" : `${amountText(minOut, 6)} ${recvSymbol}`} />
               <Line label="Pool fee" value={feeLabel(coin.fee ?? POOL_FEE)} />
             </dl>
+            {impact !== undefined && impactIs === "warning" ? (
+              <p role="status" className="mt-2.5 rounded-xl border border-down/30 bg-down/10 px-3.5 py-2.5 text-[13px] leading-relaxed text-fg/90">
+                This trade is large for the pool and moves the price <span className="num font-semibold text-down">{impactText(impact)}</span> against you. A smaller amount gets a better price.
+              </p>
+            ) : null}
 
             <button type="button" disabled={busy || !tradable || !!short_} onClick={() => void go()} className={`btn btn-xl mt-3 w-full ${side === "sell" ? "btn-light" : "btn-primary"}`}>
               {!tradable
@@ -683,24 +727,24 @@ function CoinPage() {
           </section>
         </aside>
 
-        <section className="card min-w-0 overflow-hidden lg:col-start-1">
+        <section id="activity" className="card min-w-0 scroll-mt-20 overflow-hidden lg:col-start-1">
           <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-5">
             <Seg
               label="Activity"
               value={panel}
               onChange={setPanel}
               options={[
+                ["comments", `Comments${thread.view ? ` · ${thread.view.total}` : ""}`],
                 ["trades", `Trades${swaps ? ` · ${swaps.length}` : ""}`],
                 ["holders", `Holders${holders ? ` · ${holders.length}` : ""}`],
-                ["comments", `Comments${thread.view ? ` · ${thread.view.total}` : ""}`],
               ]}
             />
             <span className="hidden truncate text-xs text-faint sm:block lg:hidden xl:block">
-              {panel === "trades" ? "About the last day of trades" : panel === "holders" ? "The pool, the creator and recent traders" : "From wallets with a Dojang"}
+              {panel === "trades" ? "About the last day of trades" : panel === "holders" ? "The pool, the creator and recent traders" : "With the day’s trades in between"}
             </span>
           </div>
           {panel === "comments" ? (
-            <Comments coin={coin} thread={thread} holders={holders} swaps={swaps} />
+            <Comments coin={coin} thread={thread} holders={holders} swaps={swaps} focus={search.c} withTrades onAllTrades={() => setPanel("trades")} />
           ) : panel === "trades" ? (
             !swaps ? (
               <RowsSkeleton />
@@ -859,6 +903,7 @@ function TradeField({
   balance,
   onBalance,
   readOnly,
+  pending,
   usd,
   bad,
 }: {
@@ -870,6 +915,8 @@ function TradeField({
   balance?: bigint;
   onBalance?: () => void;
   readOnly?: boolean;
+  /** The number shown is about to be replaced by the pool's own answer. */
+  pending?: boolean;
   usd?: string;
   bad?: boolean;
 }) {
@@ -887,7 +934,9 @@ function TradeField({
       </div>
       <div className="mt-1.5 flex items-center gap-3">
         {readOnly ? (
-          <p className={`num min-w-0 flex-1 truncate text-[30px] leading-[1.15] font-medium tracking-[-0.03em] ${value === "0" ? "text-faint" : ""}`}>{value}</p>
+          <p aria-busy={pending || undefined} className={`num min-w-0 flex-1 truncate text-[30px] leading-[1.15] font-medium tracking-[-0.03em] transition-opacity duration-150 ${value === "0" ? "text-faint" : ""} ${pending ? "opacity-50" : ""}`}>
+            {value}
+          </p>
         ) : (
           <input
             inputMode="decimal"

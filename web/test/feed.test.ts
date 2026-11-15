@@ -1,19 +1,27 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  BURST_GAP_S,
+  BURST_MIN,
+  BURST_SPAN_S,
   CROWDED,
   buildFeed,
   buyCounts,
   copies,
   digest,
   forYou,
+  freshnessKey,
   fromFollowed,
+  groupBursts,
   isQuiet,
   largestBuy,
   launchesOnly,
   milestoneOf,
   ordinal,
+  packBig,
   suggestTraders,
+  topTraders,
+  unpackBig,
   type FeedTrade,
 } from "../src/lib/chimi/feed-rules.ts";
 
@@ -144,9 +152,12 @@ test("For you keeps everything until the feed is crowded, then drops strangers' 
   const few = buildFeed({ trades: [trade(), trade({ buy: false })], launches: [], comments: [], now: NOW });
   assert.equal(forYou(few).length, 2);
 
-  const small = Array.from({ length: CROWDED }, () => trade({ wallet: C, eth: 0.001 }));
+  // Spread out over the day, so none of them is a burst.
+  let at = NOW - 80_000;
+  const apart = () => (at += BURST_GAP_S + 60);
+  const small = Array.from({ length: CROWDED }, () => trade({ wallet: C, eth: 0.001, time: apart() }));
   // More usual trades than small ones, so the usual size is the middle of the day's trades.
-  const usual = Array.from({ length: CROWDED + 5 }, () => trade({ wallet: C, eth: 0.02 }));
+  const usual = Array.from({ length: CROWDED + 5 }, () => trade({ wallet: C, eth: 0.02, time: apart() }));
   const followedSmall = trade({ wallet: A, eth: 0.0001 });
   const mineSmall = trade({ wallet: ME, eth: 0.0001, buy: false });
   const items = buildFeed({
@@ -222,4 +233,115 @@ test("suggestions are the season's leaders, or the busiest traders, never you or
 test("small numbers read as words", () => {
   assert.equal(ordinal(3), "third");
   assert.equal(ordinal(14), "14th");
+});
+
+test("the remembered feed keeps the chain's big numbers exactly", () => {
+  const price = 2395425843860388930955047330205051n;
+  const kept = { coins: [{ symbol: "GIWAMI", sqrtPriceX96: price, positionId: 2n }], swaps: [{ tokenAmount: 1806759748498150929715812n, buy: true, note: "#big: not a number" }] };
+  const back = unpackBig<typeof kept>(packBig(kept));
+  assert.equal(back.coins[0]!.sqrtPriceX96, price);
+  assert.equal(typeof back.coins[0]!.positionId, "bigint");
+  assert.equal(back.swaps[0]!.tokenAmount, 1806759748498150929715812n);
+  assert.equal(back.swaps[0]!.note, "#big: not a number", "text that only looks marked stays text");
+  assert.throws(() => unpackBig("not json"));
+});
+
+
+test("a run of trades on one coin becomes one card", () => {
+  const t0 = NOW - 3_000;
+  const run = [
+    trade({ wallet: A, eth: 0.05, time: t0 }),
+    trade({ wallet: B, eth: 0.2, time: t0 + 60 }),
+    trade({ wallet: C, eth: 0.01, time: t0 + 200, buy: false }),
+    trade({ wallet: B, eth: 0.1, time: t0 + 260 }),
+  ];
+  // The day's largest buy is on another coin, so every trade of the run can fold.
+  const elsewhere = trade({ wallet: A, token: OTHER, time: t0 + 100, eth: 5 });
+  const late = trade({ wallet: A, eth: 0.03, time: t0 + 260 + BURST_GAP_S + 1 });
+  const items = groupBursts(buildFeed({ trades: [...run, elsewhere, late], launches: [], comments: [], now: NOW }));
+  assert.deepEqual(
+    items.map((i) => i.kind),
+    ["trade", "burst", "trade"],
+    "newest first: the late trade, the burst, the other coin's trade",
+  );
+  const burst = items[1]!;
+  assert.ok(burst.kind === "burst");
+  assert.equal(burst.token, COIN);
+  assert.equal(burst.time, t0 + 260, "it sits in the feed where its newest trade does");
+  assert.equal(burst.since, t0);
+  assert.deepEqual([burst.buys, burst.sells], [3, 1]);
+  assert.ok(Math.abs(burst.eth - 0.36) < 1e-9);
+  assert.deepEqual(burst.wallets, [B, A, C], "biggest spender first, each wallet once");
+  assert.deepEqual(
+    burst.trades.map((t) => t.key),
+    [...run].reverse().map((t) => t.key),
+    "the trades inside are newest first",
+  );
+  assert.equal(items[0]!.key, late.key, "a trade after the gap is not part of it");
+});
+
+test("fewer trades than a burst needs stay cards of their own", () => {
+  const few = Array.from({ length: BURST_MIN - 1 }, (_, i) => trade({ wallet: C, time: NOW - 500 + i }));
+  const items = buildFeed({ trades: few, launches: [], comments: [], now: NOW });
+  assert.equal(groupBursts(items), items, "nothing to fold, so the same list comes back");
+});
+
+test("your trades, your follows' and the largest buy are never folded into a burst", () => {
+  const t0 = NOW - 900;
+  const strangers = [trade({ wallet: C, time: t0 }), trade({ wallet: C, time: t0 + 10 }), trade({ wallet: B, time: t0 + 20 })];
+  const followed = trade({ wallet: A, time: t0 + 5, eth: 0.001 });
+  const mine = trade({ wallet: ME, time: t0 + 15, eth: 0.001 });
+  const biggest = trade({ wallet: B, time: t0 + 25, eth: 3 });
+  const items = forYou(buildFeed({ trades: [...strangers, followed, mine, biggest], launches: [], comments: [], me: ME, following: [A], now: NOW }));
+  const kinds = items.map((i) => (i.kind === "trade" ? i.key : i.kind));
+  assert.deepEqual(kinds, [biggest.key, "burst", mine.key, followed.key]);
+  const burst = items.find((i) => i.kind === "burst");
+  assert.ok(burst?.kind === "burst");
+  assert.equal(burst.trades.length, 3);
+  assert.equal(
+    fromFollowed(buildFeed({ trades: [...strangers, followed], launches: [], comments: [], following: [A], now: NOW })).length,
+    1,
+    "the Following tab never groups: it only has trades you asked to see",
+  );
+});
+
+test("a coin that trades without a pause reads as several bursts, not one", () => {
+  const t0 = NOW - 20_000;
+  // Sales, so none of them is the day's largest buy (which would stay a card of its own).
+  const steady = Array.from({ length: 40 }, (_, i) => trade({ wallet: i % 2 ? B : C, time: t0 + i * 120, buy: false }));
+  const bursts = groupBursts(buildFeed({ trades: steady, launches: [], comments: [], now: NOW })).filter((i) => i.kind === "burst");
+  assert.ok(bursts.length >= 2);
+  for (const b of bursts) assert.ok(b.kind === "burst" && b.time - b.since <= BURST_SPAN_S);
+  assert.equal(
+    bursts.reduce((sum, b) => sum + (b.kind === "burst" ? b.trades.length : 0), 0),
+    40,
+    "every trade is in exactly one burst",
+  );
+});
+
+test("a burst keeps its key as trades join it, and counts as new each time one does", () => {
+  const t0 = NOW - 600;
+  const first = [trade({ wallet: B, time: t0, buy: false }), trade({ wallet: C, time: t0 + 30, buy: false }), trade({ wallet: B, time: t0 + 60, buy: false })];
+  const before = groupBursts(buildFeed({ trades: first, launches: [], comments: [], now: NOW }))[0]!;
+  const after = groupBursts(buildFeed({ trades: [...first, trade({ wallet: C, time: t0 + 90, buy: false })], launches: [], comments: [], now: NOW }))[0]!;
+  assert.equal(before.key, after.key);
+  assert.notEqual(freshnessKey(before), freshnessKey(after));
+  const single = buildFeed({ trades: [trade()], launches: [], comments: [], now: NOW })[0]!;
+  assert.equal(freshnessKey(single), single.key);
+});
+
+test("the day's busiest wallets are ranked by what they traded", () => {
+  const old = trade({ wallet: C, eth: 50, time: NOW - 90_000 });
+  const twice = trade({ wallet: B, eth: 0.2 });
+  const top = topTraders([trade({ wallet: A, eth: 0.3 }), twice, twice, trade({ wallet: B.toUpperCase().replace("0X", "0x"), eth: 0.4, buy: false }), old], NOW - 86_400, 5);
+  assert.deepEqual(
+    top.map((t) => [t.wallet, t.trades]),
+    [
+      [B, 2],
+      [A, 1],
+    ],
+    "buys and sales both count, a trade read twice counts once, and yesterday's don't count",
+  );
+  assert.ok(Math.abs(top[0]!.eth - 0.6) < 1e-9);
+  assert.equal(topTraders([trade({ wallet: A }), trade({ wallet: B }), trade({ wallet: C })], NOW - 86_400, 2).length, 2);
 });

@@ -46,6 +46,39 @@ export const IconComment = (p: IconProps) => (
   </Svg>
 );
 
+/** A heart. Pass fill="currentColor" for the liked state. */
+export const IconHeart = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 20.5s-7.5-4.6-7.5-10.2A4.3 4.3 0 0112 7.6a4.3 4.3 0 017.5 2.7c0 5.6-7.5 10.2-7.5 10.2z" />
+  </Svg>
+);
+
+export const IconReply = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M9 7L4 12l5 5" />
+    <path d="M4 12h9a7 7 0 017 7" />
+  </Svg>
+);
+
+export const IconBell = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M6 9.5a6 6 0 0112 0c0 5 2 6.5 2 6.5H4s2-1.500 2-6.5z" />
+    <path d="M10 19.500a2.200 2.200 0 004 0" />
+  </Svg>
+);
+
+export const IconBolt = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M13 3L5 13.5h6L10 21l8-10.5h-6z" />
+  </Svg>
+);
+
+export const IconArrowUp = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 19V5M6 11l6-6 6 6" />
+  </Svg>
+);
+
 export const IconBoard = (p: IconProps) => (
   <Svg {...p}>
     <path d="M3 17l5-5 4 3 8-9" />

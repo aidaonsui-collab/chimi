@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Address } from "viem";
 import {
   buildFeed,
@@ -7,7 +7,10 @@ import {
   fromFollowed,
   isQuiet,
   launchesOnly,
+  packBig,
   suggestTraders,
+  topTraders,
+  unpackBig,
   type CapPoint,
   type FeedComment,
   type FeedItem,
@@ -17,7 +20,7 @@ import {
 import { followersOf, followingOf } from "@/lib/chimi/follow-rules";
 import { useFeed as useFollowedRecord, useFollows } from "@/lib/chimi/follows";
 import { SUPPLY, capAfter, capBefore, coinStats, useEthUsd, useSwaps, type CoinStats } from "@/lib/chimi/live";
-import { loadLaunchWindow, type Coin } from "@/lib/chimi/market";
+import { loadLaunchWindow, type Coin, type PoolSwap } from "@/lib/chimi/market";
 import { usePoints } from "@/lib/chimi/rewards";
 import { useChimi } from "@/components/chimi/provider";
 
@@ -61,11 +64,11 @@ function useLaunchTimes(factory: Address | undefined, coins: number) {
   return times;
 }
 
-type RecentComment = { id: string; wallet: string; text: string; time: number; token: string };
+type RecentComment = { id: string; wallet: string; text: string; time: number; token: string; likes?: number; liked?: boolean; replies?: number; replyTo?: string };
 
-/** The newest comments across these coins, read again every 45 seconds while the page is in view. */
-function useRecentComments(tokens: string[]): FeedComment[] {
-  const key = tokens.join(",");
+/** The newest comments across these coins, read again every 45 seconds while the page is in view. `me` is who is asking, so the answer can say which ones they like. */
+function useRecentComments(tokens: string[], me: string | undefined): FeedComment[] {
+  const key = tokens.join(",") + (me ? `&wallet=${me}` : "");
   const [found, setFound] = useState<{ of: string; items: FeedComment[] }>({ of: "", items: [] });
   useEffect(() => {
     if (!key) return;
@@ -77,7 +80,10 @@ function useRecentComments(tokens: string[]): FeedComment[] {
         const body = (await res.json().catch(() => null)) as { items?: RecentComment[] } | null;
         if (off || !res.ok || !body?.items) return;
         // Comments carry the server's clock in milliseconds; the feed runs on seconds, like the chain.
-        setFound({ of: key, items: body.items.map((c) => ({ id: c.id, token: c.token, wallet: c.wallet, text: c.text, time: Math.floor(c.time / 1000) })) });
+        setFound({
+          of: key,
+          items: body.items.map((c) => ({ id: c.id, token: c.token, wallet: c.wallet, text: c.text, time: Math.floor(c.time / 1000), likes: c.likes, liked: c.liked, replies: c.replies, replyTo: c.replyTo })),
+        });
       } catch {
         /* the feed simply has no comments this round */
       }
@@ -92,6 +98,47 @@ function useRecentComments(tokens: string[]): FeedComment[] {
   return found.of === key ? found.items : [];
 }
 
+/*
+ * The last feed this browser saw. A visit paints it at once and the chain's answer replaces it a moment later, so
+ * the page never opens on placeholders for someone who has been here before.
+ */
+
+type Snapshot = { v: 1; factory: string; at: number; coins: Coin[]; byPool: Record<string, PoolSwap[]> };
+
+const SNAPSHOT_KEY = "chimi.feed.last";
+const SNAPSHOT_COINS = 40;
+const SNAPSHOT_SWAPS = 60;
+/** Older than this and it is more misleading than useful. */
+const SNAPSHOT_MAX_AGE_MS = 3 * 24 * 60 * 60_000;
+
+function readSnapshot(): Snapshot | null {
+  try {
+    const raw = localStorage.getItem(SNAPSHOT_KEY);
+    if (!raw) return null;
+    const found = unpackBig<Snapshot>(raw);
+    if (found?.v !== 1 || !Array.isArray(found.coins) || Date.now() - found.at > SNAPSHOT_MAX_AGE_MS) return null;
+    return found;
+  } catch {
+    return null;
+  }
+}
+
+function writeSnapshot(factory: string, coins: Coin[], byPool: Record<string, PoolSwap[]>) {
+  const kept = coins.slice(0, SNAPSHOT_COINS);
+  const snapshot: Snapshot = {
+    v: 1,
+    factory: factory.toLowerCase(),
+    at: Date.now(),
+    coins: kept,
+    byPool: Object.fromEntries(kept.map((c) => [c.pool.toLowerCase(), (byPool[c.pool.toLowerCase()] ?? []).slice(-SNAPSHOT_SWAPS)])),
+  };
+  try {
+    localStorage.setItem(SNAPSHOT_KEY, packBig(snapshot));
+  } catch {
+    /* private mode, or the store is full: the next visit just loads the usual way */
+  }
+}
+
 /** A coin's place in the order coins were launched stands in for a time when the real one is too old to read. */
 const UNKNOWN_BEFORE = 1_000_000_000;
 
@@ -103,9 +150,35 @@ export type HomeFeed = ReturnType<typeof useHomeFeed>;
 /** Everything the home page shows: the feed's tabs, the coins beside it, and the quiet-day digest. */
 export function useHomeFeed(nowMs: number | null) {
   const { coins, deployment, account, loading } = useChimi();
-  const live = useMemo(() => coins.filter((c) => !c.preview), [coins]);
-  const { byPool, ready } = useSwaps(live);
+  const fromChain = useMemo(() => coins.filter((c) => !c.preview), [coins]);
+  const { byPool: read, ready } = useSwaps(fromChain, { live: true });
   const ethUsd = useEthUsd();
+
+  // Until the chain has answered, show what this browser saw last time.
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  useEffect(() => setSnapshot(readSnapshot()), []);
+  const factory = deployment?.factory.toLowerCase();
+  const remembered = snapshot && (!factory || snapshot.factory === factory) ? snapshot : null;
+  const fromMemory = loading && fromChain.length === 0 && !!remembered;
+  const live = fromMemory ? remembered.coins : fromChain;
+  const byPool = useMemo(() => {
+    if (!remembered) return read;
+    // A pool keeps its remembered trades until its own read lands, so the feed never empties on the way.
+    const merged: Record<string, PoolSwap[]> = {};
+    for (const coin of live) {
+      const pool = coin.pool.toLowerCase();
+      const swaps = read[pool] ?? remembered.byPool[pool];
+      if (swaps) merged[pool] = swaps;
+    }
+    return merged;
+  }, [read, remembered, live]);
+  const lastSaved = useRef(0);
+  useEffect(() => {
+    if (!factory || loading || !ready || fromChain.length === 0 || Date.now() - lastSaved.current < 20_000) return;
+    lastSaved.current = Date.now();
+    writeSnapshot(factory, fromChain, read);
+  }, [factory, loading, ready, fromChain, read]);
+
   const { data: follows } = useFollows();
   const { data: points } = usePoints();
   const me = account?.toLowerCase();
@@ -115,7 +188,7 @@ export function useHomeFeed(nowMs: number | null) {
   const record = useFollowedRecord(me, follows?.state);
   const times = useLaunchTimes(deployment?.factory, live.length);
   const tokens = useMemo(() => live.map((c) => c.token.toLowerCase()), [live]);
-  const comments = useRecentComments(tokens);
+  const comments = useRecentComments(tokens, me);
 
   const byToken = useMemo(() => new Map(live.map((c) => [c.token.toLowerCase(), c])), [live]);
 
@@ -170,6 +243,8 @@ export function useHomeFeed(nowMs: number | null) {
         now,
       ),
       digest: digest(trades, now),
+      /** The day's busiest wallets, by ETH traded. */
+      busiest: topTraders(trades, now - DAY),
       suggestions: suggestTraders(points?.season ?? [], trades, [me, ...following]),
     };
   }, [live, byPool, record.trades, byToken, times, comments, me, following, followers, ethUsd, stats, points, nowMs]);
@@ -184,13 +259,15 @@ export function useHomeFeed(nowMs: number | null) {
     following,
     ethUsd,
     points,
-    /** True until the factory has answered with its coins. */
-    waiting: loading,
+    /** True until there is a coin list to show: the factory's answer, or the one remembered from the last visit. */
+    waiting: loading && !fromMemory,
     /**
      * False while the pools' trades are still being read (or the node refused the read and it is being tried
      * again). The feed shows what it has meanwhile, and says the trades are on their way.
      */
-    tradesReady: ready || feed.trades.length > 0 || live.length === 0,
+    tradesReady: ready || feed.trades.length > 0 || live.length === 0 || live.every((c) => byPool[c.pool.toLowerCase()] !== undefined),
+    /** True while what is showing is remembered, or still being brought up to date. */
+    refreshing: fromMemory || (live.length > 0 && !ready),
     hasCoins: live.length > 0,
     supply: SUPPLY,
   };

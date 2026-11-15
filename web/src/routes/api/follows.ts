@@ -8,6 +8,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { isAddress, isHex, recoverMessageAddress } from "viem";
 import { SIGNATURE_TTL_MS, applyFollow, emptyFollows, followMessage, type FollowAction, type FollowsState } from "@/lib/chimi/follow-rules";
 import { readProfiles } from "@/lib/chimi/identity";
+import { tell } from "@/server/inbox";
 import { giwa } from "@/server/points";
 import { docStore, json, rateLimited } from "@/server/store";
 
@@ -77,7 +78,12 @@ async function post(request: Request) {
     const out = applyFollow(state, wallet, action, { verified });
     if ("error" in out) return json({ error: out.error }, out.status);
     out.state.lastAction[wallet] = time;
-    if (await s.save(out.state, rev)) return json({ state: out.state, writable: true });
+    if (await s.save(out.state, rev)) {
+      // A new follower is news to the wallet followed. Following someone you already follow is not.
+      const isNew = action.type === "follow" && !(state.following[wallet] ?? []).includes(action.wallet);
+      if (isNew) await tell([{ wallet: action.wallet, item: { kind: "follow", key: `follow:${wallet}`, time: Date.now(), from: wallet } }]);
+      return json({ state: out.state, writable: true });
+    }
   }
   return json({ error: "Busy. Try again." }, 503);
 }
