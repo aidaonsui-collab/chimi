@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { isAddress } from "viem";
 import { giwaSepolia } from "@/lib/chimi/chain";
-import { ago, compactCount, compactUsd, ethText, money } from "@/lib/chimi/format";
+import { ago, amountText, compactCount, compactUsd, ethText, money } from "@/lib/chimi/format";
 import { houseOfWallet } from "@/lib/chimi/house-rules";
 import { position, standing, type CoinTally, type Position } from "@/lib/chimi/ledger-rules";
 import { SUPPLY, useEthUsd } from "@/lib/chimi/live";
@@ -13,6 +13,7 @@ import { useTokenImages } from "@/lib/chimi/token-image";
 import { useBalances, useTrader } from "@/lib/chimi/trader";
 import { followersOf, followingOf } from "@/lib/chimi/follow-rules";
 import { useFollows } from "@/lib/chimi/follows";
+import { LaunchedFeesBar, useCreatorFees } from "@/components/chimi/creator-fees";
 import { FollowButton, WalletListModal } from "@/components/chimi/follow";
 import { HouseSeal } from "@/components/chimi/house-seal";
 import { IconChevronRight, IconExternal, IconPlus, IconSwap } from "@/components/chimi/icons";
@@ -52,6 +53,11 @@ function TraderPage() {
   const held = useBalances(wallet, live);
   const [tab, setTab] = useState<Tab>("holdings");
   const [shown, setShown] = useState(25);
+  // On your own page, the pool fees waiting on the coins you launched. Read again after a claim.
+  const mine = !!wallet && account?.toLowerCase() === wallet;
+  const launched = useMemo(() => live.filter((c) => c.creator.toLowerCase() === wallet), [live, wallet]);
+  const [claimed, setClaimed] = useState(0);
+  const { fees } = useCreatorFees(launched, mine, claimed);
 
   const profile = wallet ? profiles[wallet] : undefined;
   const name = profile?.name ?? undefined;
@@ -108,9 +114,7 @@ function TraderPage() {
   }
 
   const explorer = giwaSepolia.blockExplorers.default.url;
-  const mine = account?.toLowerCase() === wallet;
   const total = held ? standing(book, held, prices) : undefined;
-  const launched = live.filter((c) => c.creator.toLowerCase() === wallet);
   const season = points?.season.find((s) => s.wallet === wallet);
   const today = points?.live?.standings.find((s) => s.wallet === wallet);
   const league = season && points ? leagueOf(season.rank, points.season.length) : null;
@@ -375,23 +379,33 @@ function TraderPage() {
               }
             />
           ) : (
-            launched.map((coin) => {
-              const cap = (prices[coin.token.toLowerCase()] ?? 0) * SUPPLY;
-              return (
-                <Link key={coin.token} to="/coin/$address" params={{ address: coin.token }} className="row-hover flex items-center gap-3 border-b border-line/70 px-4 py-3 last:border-0 sm:px-5">
-                  <TokenLogo symbol={coin.symbol} image={images[coin.token.toLowerCase()]} size={40} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] font-semibold">{coin.name}</span>
-                    <span className="block truncate text-[13px] text-muted">${coin.symbol}</span>
-                  </span>
-                  <span className="text-right">
-                    <span className="num block text-[15px] font-medium">{ethUsd ? compactUsd(cap * ethUsd) : `${ethText(cap)} ETH`}</span>
-                    <span className="block text-xs text-muted">Market cap</span>
-                  </span>
-                  <IconChevronRight size={16} className="shrink-0 text-faint" />
-                </Link>
-              );
-            })
+            <>
+              {mine ? <LaunchedFeesBar fees={fees} onDone={() => setClaimed((n) => n + 1)} /> : null}
+              {launched.map((coin) => {
+                const cap = (prices[coin.token.toLowerCase()] ?? 0) * SUPPLY;
+                const due = mine ? fees[coin.token.toLowerCase()] : undefined;
+                return (
+                  <Link key={coin.token} to="/coin/$address" params={{ address: coin.token }} className="row-hover flex items-center gap-3 border-b border-line/70 px-4 py-3 last:border-0 sm:px-5">
+                    <TokenLogo symbol={coin.symbol} image={images[coin.token.toLowerCase()]} size={40} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15px] font-semibold">{coin.name}</span>
+                      <span className="block truncate text-[13px] text-muted">${coin.symbol}</span>
+                    </span>
+                    {due ? (
+                      <span className="hidden text-right sm:block">
+                        <span className="num block text-[15px] font-medium">{amountText(due.creator, 6)} ETH</span>
+                        <span className="block text-xs text-muted">Fees to claim</span>
+                      </span>
+                    ) : null}
+                    <span className="text-right">
+                      <span className="num block text-[15px] font-medium">{ethUsd ? compactUsd(cap * ethUsd) : `${ethText(cap)} ETH`}</span>
+                      <span className="block text-xs text-muted">Market cap</span>
+                    </span>
+                    <IconChevronRight size={16} className="shrink-0 text-faint" />
+                  </Link>
+                );
+              })}
+            </>
           )}
         </section>
 

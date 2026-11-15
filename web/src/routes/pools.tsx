@@ -94,7 +94,7 @@ function PoolsPage() {
         const [weth, token, history] = await Promise.all([
           publicClient.readContract({ address: deployment.weth, abi: erc20Abi, functionName: "balanceOf", args: [coin.pool] }),
           publicClient.readContract({ address: coin.token, abi: erc20Abi, functionName: "balanceOf", args: [coin.pool] }),
-          loadSwapWindow(coin.pool, coin.tokenIs0, 30 * DAY),
+          loadSwapWindow(coin.pool, coin.tokenIs0, 30 * DAY, coin.token),
         ]);
         const now = Math.floor(Date.now() / 1000);
         const price = Number(wethPerToken(coin.sqrtPriceX96, coin.tokenIs0)) / 1e18;

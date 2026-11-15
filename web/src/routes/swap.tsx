@@ -100,11 +100,11 @@ function SwapPage() {
       setNote(payEth ? "Confirm in your wallet." : "Approve, then confirm the sale in your wallet.");
       const hash = await trade(coin, payEth ? "buy" : "sell", amount.trim(), minOut);
       setKind("good");
-      setNote(payEth ? "Bought." : "Sold for wrapped ETH.");
+      setNote(payEth ? "Bought." : "Sold. The ETH is in your wallet.");
       toast({
         kind: "good",
         title: payEth ? `Bought ${coin.symbol}` : `Sold ${coin.symbol}`,
-        body: payEth ? undefined : "You received wrapped ETH. Unwrap it from the coin’s page.",
+        body: payEth ? undefined : `${amount.trim()} ${coin.symbol} sold for ETH.`,
         href: `${giwaSepolia.blockExplorers.default.url}/tx/${hash}`,
       });
       setAmount("");

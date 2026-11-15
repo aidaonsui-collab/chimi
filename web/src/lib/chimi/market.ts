@@ -1,6 +1,7 @@
-import { decodeEventLog, formatEther, parseAbiItem, toEventSelector, zeroAddress, type Address } from "viem";
+import { decodeEventLog, formatEther, pad, parseAbiItem, toEventSelector, zeroAddress, type Address } from "viem";
 import { POOL_FEE, erc20Abi, factoryAbi, giwaSepolia, isDeployed, poolAbi, type Deployment } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
+import { blocksOf, nameSellers, routerKept, sellersFromRawTransfers, sellersFromTransfers, type Unnamed as UnnamedSale } from "@/lib/chimi/sale-rules";
 
 export type Coin = {
   token: Address;
@@ -8,6 +9,8 @@ export type Coin = {
   symbol: string;
   pool: Address;
   creator: Address;
+  /** The launch position, held by the locker. Its fees are what the creator claims. */
+  positionId?: bigint;
   sqrtPriceX96: bigint;
   tokenIs0: boolean;
   liquidity: bigint;
@@ -87,6 +90,7 @@ export async function loadCoins(dep: Deployment): Promise<Coin[]> {
           symbol,
           pool: pool.uniPool,
           creator: pool.creator,
+          positionId: pool.positionId,
           sqrtPriceX96: slot0[0],
           tokenIs0: token0.toLowerCase() === token.toLowerCase(),
           liquidity: pool.liquidity,
@@ -123,6 +127,7 @@ export async function loadCoin(dep: Deployment, token: Address): Promise<Coin | 
     symbol,
     pool: pool.uniPool,
     creator: pool.creator,
+    positionId: pool.positionId,
     sqrtPriceX96: slot0[0],
     tokenIs0: token0.toLowerCase() === token.toLowerCase(),
     liquidity: pool.liquidity,
@@ -136,6 +141,7 @@ export type PoolSwap = {
   /** Position in the block, so two trades in one block keep their order. */
   index?: number;
   time: number;
+  /** The trader: who received the coins on a buy, who sold them on a sale. */
   recipient: Address;
   buy: boolean;
   tokenAmount: bigint;
@@ -154,6 +160,8 @@ export type Holder = {
 const swapEvent = parseAbiItem(
   "event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)",
 );
+
+const transferEvent = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 
 const createdEvent = parseAbiItem(
   "event InstantQuoteTokenCreated(address indexed token, address indexed creator, address pool, uint256 positionId)",
@@ -228,8 +236,37 @@ type SwapLog = {
   transactionHash: `0x${string}` | null;
   logIndex: number | null;
   blockNumber: bigint | null;
-  args: { recipient?: Address; amount0?: bigint; amount1?: bigint; sqrtPriceX96?: bigint };
+  args: { sender?: Address; recipient?: Address; amount0?: bigint; amount1?: bigint; sqrtPriceX96?: bigint };
 };
+
+type Unnamed = UnnamedSale<PoolSwap>;
+
+/**
+ * Names the seller on sales that were paid out through the router (see sale-rules). Reads the coin transfers
+ * into the pools over the blocks those sales cover, in one request per window. A read that fails leaves the
+ * router's address on the sale rather than losing the trade.
+ */
+async function sellersFromNode(groups: { unnamed: Unnamed[]; tokens: Map<string, Address | undefined> }[]) {
+  await Promise.all(
+    groups.map(({ unnamed, tokens }) =>
+      logLane(async () => {
+        if (unnamed.length === 0) return;
+        const pools = [...new Set(unnamed.map((u) => u.pool))] as Address[];
+        const coins = pools.map((pool) => tokens.get(pool));
+        const { from, to } = blocksOf(unnamed);
+        const logs = await publicClient.getLogs({
+          // Without every coin's address the read still works; it just isn't narrowed to those contracts.
+          address: coins.every(Boolean) ? (coins as Address[]) : undefined,
+          event: transferEvent,
+          args: { to: pools },
+          fromBlock: from,
+          toBlock: to,
+        });
+        nameSellers(unnamed, sellersFromTransfers(logs));
+      }).catch(() => undefined),
+    ),
+  );
+}
 
 /** One Swap log as a trade seen from the coin's side. Block times assume GIWA's one-second blocks. */
 function toSwap(log: SwapLog, tokenIs0: boolean, head: { number: bigint; time: number }, fallbackBlock: bigint): PoolSwap {
@@ -251,18 +288,19 @@ function toSwap(log: SwapLog, tokenIs0: boolean, head: { number: bigint; time: n
   };
 }
 
-export async function loadSwaps(pool: Address, tokenIs0: boolean): Promise<PoolSwap[]> {
-  return (await loadSwapsFor([{ pool, tokenIs0 }])).get(pool.toLowerCase()) ?? [];
+export async function loadSwaps(pool: Address, tokenIs0: boolean, token?: Address): Promise<PoolSwap[]> {
+  return (await loadSwapsFor([{ pool, tokenIs0, token }])).get(pool.toLowerCase()) ?? [];
 }
 
 /**
  * About a day of swaps for many pools at once. Each window of blocks is one request covering every pool,
  * so a board of a hundred coins costs the same ten requests as a single coin.
  */
-export async function loadSwapsFor(pools: { pool: Address; tokenIs0: boolean }[]): Promise<Map<string, PoolSwap[]>> {
+export async function loadSwapsFor(pools: { pool: Address; tokenIs0: boolean; token?: Address }[]): Promise<Map<string, PoolSwap[]>> {
   const out = new Map<string, PoolSwap[]>(pools.map((p) => [p.pool.toLowerCase(), []]));
   if (pools.length === 0) return out;
   const side = new Map(pools.map((p) => [p.pool.toLowerCase(), p.tokenIs0]));
+  const tokens = new Map(pools.map((p) => [p.pool.toLowerCase(), p.token]));
   const latest = await publicClient.getBlock();
   const head = { number: latest.number, time: Number(latest.timestamp) };
   const spans = logSpans(latest.number, 10);
@@ -276,6 +314,7 @@ export async function loadSwapsFor(pools: { pool: Address; tokenIs0: boolean }[]
     ),
   );
   const seen = new Set<string>();
+  const unnamed = new Map<bigint, Unnamed[]>();
   for (const { span, logs } of pages) {
     for (const log of logs) {
       const key = `${log.transactionHash}:${log.logIndex}`;
@@ -283,9 +322,12 @@ export async function loadSwapsFor(pools: { pool: Address; tokenIs0: boolean }[]
       const rows = out.get(pool);
       if (!rows || seen.has(key)) continue;
       seen.add(key);
-      rows.push(toSwap(log, side.get(pool) ?? true, head, span.to));
+      const swap = toSwap(log, side.get(pool) ?? true, head, span.to);
+      rows.push(swap);
+      if (routerKept(swap, log.args.sender)) unnamed.set(span.to, [...(unnamed.get(span.to) ?? []), { swap, pool }]);
     }
   }
+  await sellersFromNode([...unnamed.values()].map((list) => ({ unnamed: list, tokens })));
   for (const rows of out.values()) rows.sort(bySwapOrder);
   return out;
 }
@@ -311,6 +353,7 @@ export type SwapWindow = {
 };
 
 const SWAP_TOPIC = toEventSelector(swapEvent);
+const TRANSFER_TOPIC = toEventSelector(transferEvent);
 
 type ExplorerLog = {
   blockNumber: string;
@@ -325,12 +368,13 @@ type ExplorerLog = {
 const EXPLORER_KNOWS_CHAIN = !import.meta.env.VITE_GIWA_RPC;
 
 /** Every log for one event on one address between two blocks, from the chain's Blockscout indexer. */
-async function explorerLogs(address: Address, topic0: `0x${string}`, fromBlock: bigint, toBlock: bigint): Promise<ExplorerLog[]> {
+async function explorerLogs(address: Address, topic0: `0x${string}`, fromBlock: bigint, toBlock: bigint, topic2?: `0x${string}`): Promise<ExplorerLog[]> {
   if (!EXPLORER_KNOWS_CHAIN) throw new Error("explorer unavailable on a custom RPC");
   const rows: ExplorerLog[] = [];
   const pageSize = 1000;
+  const narrowed = topic2 ? `&topic2=${topic2}&topic0_2_opr=and` : "";
   for (let page = 1; page <= 30; page++) {
-    const url = `${giwaSepolia.blockExplorers.default.url}/api?module=logs&action=getLogs&address=${address}&topic0=${topic0}&fromBlock=${fromBlock}&toBlock=${toBlock}&page=${page}&offset=${pageSize}`;
+    const url = `${giwaSepolia.blockExplorers.default.url}/api?module=logs&action=getLogs&address=${address}&topic0=${topic0}${narrowed}&fromBlock=${fromBlock}&toBlock=${toBlock}&page=${page}&offset=${pageSize}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`explorer ${res.status}`);
     const body = (await res.json()) as { status?: string; message?: string; result?: ExplorerLog[] | string };
@@ -354,6 +398,14 @@ async function blockSecondsAgo(latest: { number: bigint; timestamp: bigint }, se
   return latest.number > blocksBack ? latest.number - blocksBack : 0n;
 }
 
+/** The explorer's copy of `sellersFromNode`, for one pool: the coin's transfers into it, over the blocks the unnamed sales cover. */
+async function sellersFromExplorer(unnamed: Unnamed[], pool: Address, token: Address | undefined) {
+  if (!token) return;
+  const { from, to } = blocksOf(unnamed);
+  const logs = await explorerLogs(token, TRANSFER_TOPIC, from, to, pad(pool).toLowerCase() as `0x${string}`);
+  nameSellers(unnamed, sellersFromRawTransfers(logs, pool));
+}
+
 // The explorer writes zero as a bare "0x".
 const hexNumber = (hex: string | undefined) => (hex && hex !== "0x" ? Number(BigInt(hex)) : 0);
 
@@ -362,12 +414,13 @@ const hexNumber = (hex: string | undefined) => (hex && hex !== "0x" ? Number(Big
  * so long windows read from the chain's Blockscout indexer. If the indexer is down, falls back
  * to the RPC scan (about a day) and reports the shorter coverage so callers can show a dash.
  */
-export async function loadSwapWindow(pool: Address, tokenIs0: boolean, seconds: number): Promise<SwapWindow> {
+export async function loadSwapWindow(pool: Address, tokenIs0: boolean, seconds: number, token?: Address): Promise<SwapWindow> {
   const latest = await publicClient.getBlock();
   const now = Number(latest.timestamp);
   try {
     const fromBlock = await blockSecondsAgo(latest, seconds);
     const rows: PoolSwap[] = [];
+    const unnamed: Unnamed[] = [];
     const seen = new Set<string>();
     for (const log of await explorerLogs(pool, SWAP_TOPIC, fromBlock, latest.number)) {
       const key = `${log.transactionHash}:${log.logIndex}`;
@@ -378,7 +431,7 @@ export async function loadSwapWindow(pool: Address, tokenIs0: boolean, seconds: 
       const args = decoded.args;
       const tokenAmt = tokenIs0 ? args.amount0 : args.amount1;
       const ethAmt = tokenIs0 ? args.amount1 : args.amount0;
-      rows.push({
+      const swap: PoolSwap = {
         tx: log.transactionHash,
         block: BigInt(log.blockNumber),
         index: hexNumber(log.logIndex),
@@ -388,12 +441,15 @@ export async function loadSwapWindow(pool: Address, tokenIs0: boolean, seconds: 
         tokenAmount: tokenAmt < 0n ? -tokenAmt : tokenAmt,
         ethAmount: ethAmt < 0n ? -ethAmt : ethAmt,
         sqrtPriceX96: args.sqrtPriceX96,
-      });
+      };
+      rows.push(swap);
+      if (routerKept(swap, args.sender)) unnamed.push({ swap, pool });
     }
+    if (unnamed.length > 0) await sellersFromExplorer(unnamed, pool, token).catch(() => undefined);
     rows.sort(bySwapOrder);
     return { swaps: rows, coveredFrom: now - seconds, source: "explorer" };
   } catch {
-    const swaps = await loadSwaps(pool, tokenIs0);
+    const swaps = await loadSwaps(pool, tokenIs0, token);
     // loadSwaps reads 10 windows of 9,000 blocks.
     const back = await publicClient.getBlock({ blockNumber: latest.number > 90_000n ? latest.number - 90_000n : 0n });
     return { swaps, coveredFrom: back.number === 0n ? 0 : Number(back.timestamp), source: "rpc" };

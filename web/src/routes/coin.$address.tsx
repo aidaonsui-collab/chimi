@@ -30,6 +30,7 @@ import { useChimi } from "@/components/chimi/provider";
 import { Comments } from "@/components/chimi/comments";
 import { useComments } from "@/lib/chimi/comments";
 import { CopyNotice, copySize } from "@/components/chimi/copy";
+import { CreatorFeesCard } from "@/components/chimi/creator-fees";
 import { toast } from "@/components/chimi/toast";
 import { EthLogo, TokenLogo } from "@/components/chimi/token-logo";
 import { Blockie, Change, CopyButton, Empty, Modal, Note, Seg, TraderLink } from "@/components/chimi/ui";
@@ -142,7 +143,7 @@ function CoinPage() {
     };
   }, [coin?.name, coin?.symbol]);
 
-  // The wallet's balance of whatever it would pay with, and any wrapped ETH left over from selling.
+  // The wallet's balance of whatever it would pay with, and any wrapped ETH it holds (from a fee claim, or an older sale).
   useEffect(() => {
     if (!coin || !deployment || !account || coin.preview) {
       setPayBal(undefined);
@@ -291,11 +292,11 @@ function CoinPage() {
       setTradeNote(side === "sell" ? "Approve, then confirm the sale in your wallet." : "Confirm in your wallet.");
       const hash = await trade(coin, side, amount.trim(), minOut);
       setKind("good");
-      setTradeNote(side === "buy" ? "Bought." : "Sold for wrapped ETH.");
+      setTradeNote(side === "buy" ? "Bought." : "Sold. The ETH is in your wallet.");
       toast({
         kind: "good",
         title: side === "buy" ? `Bought ${coin.symbol}` : `Sold ${coin.symbol}`,
-        body: side === "buy" ? `${amount.trim()} ETH in.${copying ? ` Copied from ${shortAddr(copying)}.` : ""}` : "You received wrapped ETH. Unwrap it below the trade button.",
+        body: side === "buy" ? `${amount.trim()} ETH in.${copying ? ` Copied from ${shortAddr(copying)}.` : ""}` : `${amount.trim()} ${coin.symbol} sold for ETH.`,
         href: `${explorer}/tx/${hash}`,
       });
       if (side === "buy") setCopying(undefined);
@@ -647,7 +648,7 @@ function CoinPage() {
             {wethBal !== undefined && wethBal > 0n ? (
               <button type="button" disabled={busy} onClick={() => void doUnwrap()} className="mt-2 flex w-full items-center justify-between rounded-xl bg-raise px-3.5 py-2.5 text-[13px] hover:bg-raise2">
                 <span className="text-muted">
-                  You hold <span className="num text-fg">{amountText(wethBal, 5)} WETH</span> from selling
+                  You hold <span className="num text-fg">{amountText(wethBal, 5)} WETH</span> (wrapped ETH)
                 </span>
                 <span className="font-semibold text-gold">Unwrap</span>
               </button>
@@ -656,6 +657,8 @@ function CoinPage() {
               {tradeNote}
             </Note>
           </section>
+
+          <CreatorFeesCard coin={coin} bump={reload} />
 
           <section className="card p-5">
             <h2 className="text-[15px] font-semibold">About {coin.symbol}</h2>
