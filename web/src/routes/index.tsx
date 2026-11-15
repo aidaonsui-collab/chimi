@@ -1,18 +1,18 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { compactUsd, ethText } from "@/lib/chimi/format";
 import { useHomeFeed, type HomeFeed } from "@/lib/chimi/feed";
-import type { FeedItem, Suggestion } from "@/lib/chimi/feed-rules";
+import { freshnessKey, type FeedItem, type Suggestion } from "@/lib/chimi/feed-rules";
 import { usePoolEth } from "@/lib/chimi/live";
 import { short } from "@/lib/chimi/market";
 import { DAILY_POOL, dayEndMs, today, type Profile } from "@/lib/chimi/points-rules";
 import { fmtPoints, useProfiles } from "@/lib/chimi/rewards";
 import { useTokenImages } from "@/lib/chimi/token-image";
 import { CreatorFeesMini } from "@/components/chimi/creator-fees";
-import { FeedCard, QuickBuy, Ticker, walletsIn, type CardContext } from "@/components/chimi/feed-cards";
+import { CardSkeleton, FeedCard, QuickAmount, QuickBuy, Ticker, walletsIn, type CardContext } from "@/components/chimi/feed-cards";
 import { HomeTop, type HeroStat } from "@/components/chimi/feed-hero";
 import { FollowButton } from "@/components/chimi/follow";
-import { IconChevronRight, IconPlus, IconPoints } from "@/components/chimi/icons";
+import { IconArrowUp, IconChevronRight, IconPlus, IconPoints } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
 import { DojangMark, duration, useNow } from "@/components/chimi/rewards-bits";
 import { toast } from "@/components/chimi/toast";
@@ -59,6 +59,49 @@ function Home() {
 
   const list: FeedItem[] = tab === "top" ? [] : feed.tabs[tab];
   const page = list.slice(0, shown);
+
+  // Cards that arrive while the page is open rise into place; the ones it opened with stay still. If the reader
+  // has scrolled down, a pill says how many came in above.
+  const seen = useRef<{ tab: Tab; keys: Set<string> } | null>(null);
+  const [fresh, setFresh] = useState<Set<string>>(() => new Set());
+  const [unseen, setUnseen] = useState(0);
+  const settled = !feed.waiting && feed.tradesReady && !feed.refreshing;
+  useEffect(() => {
+    if (!settled) return;
+    const keys = list.map(freshnessKey);
+    if (!seen.current || seen.current.tab !== tab) {
+      seen.current = { tab, keys: new Set(keys) };
+      setFresh(new Set());
+      setUnseen(0);
+      return;
+    }
+    const added = keys.filter((key) => !seen.current!.keys.has(key));
+    if (added.length === 0) return;
+    for (const key of added) seen.current.keys.add(key);
+    // A flood (the page woke after a long sleep) is a reload, not news.
+    if (added.length > 8) return;
+    setFresh(new Set(added));
+    if (window.scrollY > 480) setUnseen((n) => n + added.length);
+  }, [list, tab, settled]);
+  useEffect(() => {
+    if (unseen === 0) return;
+    const onScroll = () => {
+      if (window.scrollY < 240) setUnseen(0);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [unseen]);
+
+  // The tabs stick under the top bar once the heading has scrolled away, and take a backing when they do.
+  const mark = useRef<HTMLDivElement>(null);
+  const [stuck, setStuck] = useState(false);
+  useEffect(() => {
+    const el = mark.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const watch = new IntersectionObserver(([entry]) => setStuck(!!entry && !entry.isIntersecting && entry.boundingClientRect.top < 80), { rootMargin: "-65px 0px 0px 0px" });
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, []);
   const profiles = useProfiles(
     useMemo(() => [...new Set([...walletsIn(feed.items.slice(0, 40)), ...feed.suggestions.map((s) => s.wallet)])], [feed.items, feed.suggestions]),
     feed.points?.file.profiles,
@@ -103,13 +146,20 @@ function Home() {
 
       <HomeTop stats={heroStats} live={!preview} />
 
-      <section className="page pt-8 sm:pt-10">
-        <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-5">
+      <section className="page pt-7 sm:pt-9">
+        <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
           <div className="min-w-0 max-w-xl">
             <p className="eyebrow">Who is trading what</p>
-            <h2 className="mt-2 text-[34px] leading-[1.05] font-semibold tracking-[-0.03em] sm:text-[42px]">{account ? "Your feed" : "The feed"}</h2>
-            <p className="mt-3 text-[15px] leading-relaxed text-fg/75">Buys, launches and comments from the wallets you follow, and what is moving on GIWA.</p>
+            <h2 className="mt-2 text-[32px] leading-[1.05] font-semibold tracking-[-0.03em] sm:text-[40px]">{account ? "Your feed" : "The feed"}</h2>
+            {account ? null : <p className="mt-2.5 text-[15px] leading-relaxed text-fg/75">Buys, launches and comments as they happen on GIWA. Connect to see the wallets you follow first.</p>}
           </div>
+          <QuickAmount />
+        </div>
+      </section>
+
+      <div ref={mark} aria-hidden className="h-4" />
+      <div className="feed-bar sticky top-16 z-20" data-stuck={stuck ? "" : undefined}>
+        <div className="page flex items-center justify-between gap-3 py-2.5">
           <Seg
             label="Which feed"
             value={tab}
@@ -121,10 +171,38 @@ function Home() {
               ["top", "Top"],
             ]}
           />
+          <span className="hidden shrink-0 items-center gap-2 text-[12.5px] text-muted sm:flex" role="status">
+            {feed.waiting || feed.refreshing ? (
+              <>
+                <span className="spinner" aria-hidden />
+                Updating
+              </>
+            ) : (
+              <>
+                <span className="live-dot text-ok" />
+                Live
+              </>
+            )}
+          </span>
         </div>
+      </div>
+      {unseen > 0 ? (
+        <button
+          type="button"
+          onClick={() => {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+            setUnseen(0);
+          }}
+          className="new-pill"
+        >
+          <IconArrowUp size={14} />
+          {unseen} new
+        </button>
+      ) : null}
 
-        <div className="mt-7 grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="grid min-w-0 grid-cols-1 gap-4">
+      <section className="page pt-3">
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="grid min-w-0 grid-cols-1 gap-3">
             {feed.waiting ? (
               <FeedSkeleton />
             ) : failed ? (
@@ -188,7 +266,7 @@ function Home() {
                     </Empty>
                   </div>
                 ) : (
-                  page.map((item) => <FeedCard key={item.key} item={item} ctx={ctx} />)
+                  page.map((item) => <FeedCard key={item.key} item={item} ctx={ctx} fresh={fresh.has(freshnessKey(item))} />)
                 )}
                 {list.length > shown ? (
                   <button type="button" onClick={() => setShown((n) => n + PAGE)} className="btn btn-secondary w-full">
@@ -205,7 +283,7 @@ function Home() {
             )}
           </div>
 
-          <aside className="grid min-w-0 grid-cols-1 gap-5">
+          <aside className="feed-rail grid min-w-0 grid-cols-1 gap-4">
             {feed.hasCoins ? (
               <section className="card p-5">
                 <div className="flex items-center justify-between gap-3">
@@ -335,7 +413,7 @@ function TopCoins({ coins, ctx, usd }: { coins: HomeFeed["live"]; ctx: CardConte
                 </span>
               </Link>
               <Change value={stats?.change} className="shrink-0 text-sm" />
-              <QuickBuy coin={coin} amounts={["0.01"]} />
+              <QuickBuy coin={coin} />
             </li>
           );
         })}
@@ -348,7 +426,9 @@ function TopCoins({ coins, ctx, usd }: { coins: HomeFeed["live"]; ctx: CardConte
 function TradesOnTheWay() {
   return (
     <div className="card flex items-center gap-3 p-4 text-sm text-muted sm:px-5" role="status">
-      <span className="skeleton size-[38px] shrink-0 rounded-full" />
+      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-raise">
+        <span className="spinner" aria-hidden />
+      </span>
       <span className="min-w-0 flex-1">
         <span className="block font-medium text-fg">Reading the latest trades from GIWA…</span>
         <span className="block">Launches and comments are below. Trades join them as soon as the chain answers.</span>
@@ -360,17 +440,8 @@ function TradesOnTheWay() {
 function FeedSkeleton() {
   return (
     <>
-      {Array.from({ length: 4 }, (_, i) => (
-        <div key={i} className="card space-y-3.5 p-5" aria-hidden>
-          <div className="flex items-center gap-3">
-            <span className="skeleton size-[38px] rounded-full" />
-            <span className="flex-1 space-y-2">
-              <span className="skeleton block h-4 w-2/3" />
-              <span className="skeleton block h-3 w-1/3" />
-            </span>
-          </div>
-          <span className="skeleton block h-16 w-full rounded-xl" />
-        </div>
+      {Array.from({ length: 6 }, (_, i) => (
+        <CardSkeleton key={i} />
       ))}
     </>
   );

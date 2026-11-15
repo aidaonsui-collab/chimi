@@ -47,15 +47,20 @@ The home page is the feed. The board of every coin, the launch sheet, a page per
 `/` shows what is happening, newest first: buys and sales, launches, comments, a coin crossing a round market cap, and the times someone who follows you bought a coin after you did. The board that used to be the home page is at `/board`, and `/traders` lists everyone trading, by season points, followers or the day's volume.
 
 - **Tabs.** For you is everything; once the feed is crowded, small trades by wallets you don't follow drop out. Following is what the wallets you follow bought, sold, launched and said. New is launches. Top is the coins by the day's volume.
-- **Cards act in place.** A buy has quick-buy buttons (0.01, 0.05 and 0.1 ETH) and Copy, which opens the coin's page with that buyer's size filled in. A stranger's card has Follow. A comment opens its thread (`/coin/<address>?tab=comments`).
-- **Quick buy** is one confirmation. The minimum received comes from a dry run of that exact swap, so it allows for the price the buy itself moves, less 2% (`quickBuy` in `web/src/components/chimi/provider.tsx`).
+- **Bursts.** Three or more trades on one coin, each within five minutes of the one before, are one card in For you: how many wallets, which way, how much and how fast, with the trades a press away (`groupBursts` in `feed-rules.ts`). A burst covers 30 minutes at most, so a coin that trades all day reads as several cards. Your own trades, those of wallets you follow and the day's largest buy always keep a card of their own. A burst that gains a trade moves to the top like a new card.
+- **Comments in the feed** carry their likes and their number of replies. The heart works from the card; Reply opens the comment on the coin's page.
+- **A card is two lines:** who did what, then the coin with the one thing to do about it. Buying is the same single button on every card. Copy opens the coin's page with that buyer's size filled in, a stranger's card has Follow, and a comment has Reply (`/coin/<address>?tab=comments`).
+- **Quick buy** spends one amount, chosen once above the feed and remembered in the browser (`web/src/lib/chimi/quick.ts`). It is one confirmation. The minimum received comes from a dry run of that exact swap, so it allows for the price the buy itself moves, less 2% (`quickBuy` in `web/src/components/chimi/provider.tsx`). The button says what is happening: asking the wallet, then done.
+- **It opens at once.** The last feed a browser saw is kept and painted immediately on the next visit, then replaced by the chain's answer (`chimi.feed.last` in localStorage; written by `web/src/lib/chimi/feed.ts`).
+- **It stays live.** Every 8 seconds the page asks for just the trades since its last read, in one request for all pools (`loadSwapsSince` in `market.ts`, `tailSwaps` in `live.ts`). A new card rises into place, and a reader who has scrolled down gets a "3 new" pill instead of a jump. The full ten-request read still runs every ten minutes.
+- **The tabs stick** under the top bar, and the rail beside the feed stays in view while the feed scrolls.
 - **A quiet chain.** When nothing has happened for an hour the feed leads with the last day in three numbers and a way to start something. Every coin's launch is always in the feed, so it is never empty once a coin exists.
 - **The top of the page.** A first visit gets a hero with the roof, what Chimi is and where to start. After a wallet has connected, or the visitor has closed it, the roof sits behind the heading like every other tab's scene. A line of script in the page's head reads that choice before the first paint (`web/src/components/chimi/feed-hero.tsx`).
 - **The strip under the top bar** shows the last day's trades and launches moving past. It holds still under the pointer and for visitors who ask for less motion.
 
 Nothing new is read from the chain for this. Trades come from the pools the board already follows, launch times from the factory's events, comments from `GET /api/comments?recent=20&tokens=…`, and who follows whom from the follow list. The rules that turn those into one list are in `web/src/lib/chimi/feed-rules.ts`, with tests in `web/test/feed.test.ts`.
 
-Not built yet: an inbox, likes and replies on comments, and house updates in the feed.
+Not built yet: house updates in the feed.
 
 ### Token pictures
 
@@ -67,6 +72,15 @@ Name and symbol are on-chain; the picture, description, and links are a token pr
 
 Env vars (same names as eve.fun): `BLOB_READ_WRITE_TOKEN`, which Vercel adds when a Blob store is connected, and `KV_REST_API_URL` + `KV_REST_API_TOKEN`, which Vercel adds when an Upstash Redis/KV store is connected (`UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` also work). Without them, reads still work and pictures stay in the creator's browser. A creator can (re)publish from the coin page with "Set picture".
 
+
+### The quote in the trade panel
+
+The coin page's trade panel shows what the pool would really pay for the amount typed, the price impact, and the minimum received. GIWA has no quoter contract, so the page runs the swap itself as a call that changes nothing (`web/src/lib/chimi/quote.ts`): the node is asked what the router would pay a stand-in wallet that, for the length of that one call, is given the ETH or the coins to spend (an `eth_call` with a state override; for a sale the stand-in's balance and allowance are written into the coin's storage, which is OpenZeppelin's standard layout). The answer accounts for the fee, the pool's depth and every range the price crosses.
+
+- The quote is asked for a moment after typing stops, again every 12 seconds while an amount sits there, and again when the pool's price changes.
+- **Price impact** is what the trade loses to its own weight beyond the pool's fee (`web/src/lib/chimi/quote-rules.ts`). From 1% it is shown in gold; from 5% in red, with a note that a smaller amount gets a better price.
+- **Minimum received** is the quote less the chosen slippage, and it is the floor sent with the trade. If Buy or Sell is pressed before the quote has arrived, the page asks for it first.
+- If the node can't answer, the panel falls back to the price on the screen less the fee and says "Minimum received, about". That estimate ignores the trade's own weight, so a large trade made on it can fail on its floor rather than fill badly.
 
 ### Selling for ETH
 
@@ -123,14 +137,30 @@ It applies from the day this ships; earlier days are unchanged. A trader's page 
 
 ### Comments
 
-Every coin's page has a **Comments** tab beside Trades and Holders. Each comment shows who wrote it and what they hold of the coin at this moment: "holds 1.2%", "sold", or "Creator".
+What is said about a coin leads the list under its chart: **Comments** is the first tab, beside Trades and Holders. Each comment shows who wrote it and what they hold of the coin at this moment: "holds 1.2%", "sold", or "Creator". The day's trades run between the threads as single lines ("8 trades · 0.06 ETH · 6 buys, 2 sales"), opened on request, so the talk and the tape read as one story (`web/src/lib/chimi/activity-rules.ts`). `?tab=comments|trades|holders` opens a list and `?c=<comment id>` brings one comment into view.
 
 - A comment is a message the wallet signs, with no transaction (`web/src/lib/chimi/comment-rules.ts`, `POST /api/comments`). A signature is good for five minutes and only once.
 - Only a wallet with a GIWA Dojang can comment, and only on a coin the factory made.
 - Text only, up to 280 characters, and no links. One wallet can comment on one coin every 15 seconds at most.
+- **Replies.** A comment can answer another. Threads are one level deep: an answer to an answer joins the same thread and names whom it answers. A thread shows its last three replies until the rest are asked for. When a comment is deleted its replies stay, as a thread of their own.
+- **Likes.** A wallet with a Dojang can like a comment that isn't its own, once, and take the like back. Likes ride on a pass: the first like in a browser asks the wallet to sign one message that lets that browser like and unlike as the wallet for seven days, so every like after it is one press. The pass is kept in that browser only (`chimi.likes.pass.<wallet>` in localStorage), is checked on every like, and allows nothing else: writing, replying and deleting still take a signature each.
 - A wallet can delete its own comments. The operator can take any comment out: `POST /api/comments` with `{ "admin": "delete", "token": "0x…", "id": "…" }` and the `CHIMI_ADMIN_TOKEN` bearer token.
-- Each coin's comments are one document in Redis (`chimi:comments:v1:<token>`), which keeps the latest 500. `GET /api/comments?token=0x…` answers with the newest 50 (`&limit=` for more).
+- Each coin's comments are one document in Redis (`chimi:comments:v1:<token>`), which keeps the latest 500 and their likes. `GET /api/comments?token=0x…` answers with the newest 50 threads and every reply to them (`&limit=` for more threads, `&wallet=0x…` to learn which ones that wallet likes).
 - What a commenter holds is read from the chain in the browser. "Sold" means the balance is zero and the trade record, or the trades the page has read itself, shows a buy.
+
+### The inbox
+
+A connected wallet has a bell in the top bar. It lists what other wallets did that concerns it, newest first, with a count of what is new:
+
+- someone replied to its comment, or replied to someone else in a thread it started;
+- someone liked its comment (likes of one comment are one line);
+- someone commented on a coin it launched;
+- someone followed it;
+- a wallet that follows it bought a coin after it did (the buy that earns lead points).
+
+The server adds an item when the thing happens: in `POST /api/comments` and `POST /api/follows`, and when the points book counts a led buy (`web/src/server/inbox.ts`; rules in `web/src/lib/chimi/inbox-rules.ts`). Adding to an inbox never fails the action that caused it. Each wallet's inbox is one document in Redis (`chimi:inbox:v1:<wallet>`) holding its latest 100 items, read with `GET /api/inbox?wallet=0x…`. Everything in an inbox is public already (comments, likes, follows and trades are), so reading takes no signature. What has been seen is remembered in the browser (`chimi.inbox.seen.<wallet>`), so the count is per browser. A line opens the comment on its coin's page, the coin, or the follower's page.
+
+Not built: push or email notifications, and a count that follows the wallet across browsers.
 
 ### The coin chart
 

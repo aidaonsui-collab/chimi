@@ -2,7 +2,7 @@ import { useEffect, useMemo, useSyncExternalStore } from "react";
 import type { Address } from "viem";
 import { erc20Abi } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
-import { loadSwaps, loadSwapsFor, wethPerToken, type Coin, type PoolSwap } from "@/lib/chimi/market";
+import { loadSwaps, loadSwapsSince, loadSwapsThrough, wethPerToken, type Coin, type PoolSwap } from "@/lib/chimi/market";
 
 /*
  * Live numbers every page shares: the ETH price, each pool's recent trades and its ETH reserve.
@@ -71,7 +71,12 @@ export function useEthUsd(): number | undefined {
 
 /* Recent trades per pool ------------------------------------------------------------------- */
 
-type SwapEntry = { swaps?: PoolSwap[]; at: number; job?: Promise<PoolSwap[]> };
+/**
+ * `through` is the block the pool's trades are known up to, once a full read has said so; a tail read picks up
+ * from it. `fullAt` is when the last full read landed: tail reads keep a pool fresh, and a full read still runs
+ * now and then to drop trades older than a day and mend anything a tail read missed.
+ */
+type SwapEntry = { swaps?: PoolSwap[]; at: number; job?: Promise<PoolSwap[]>; through?: bigint; fullAt?: number };
 const swapStore: Store<number> & { byPool: Map<string, SwapEntry> } = { value: 0, listeners: new Set(), byPool: new Map() };
 const SWAP_TTL_MS = 45_000;
 
@@ -103,15 +108,17 @@ function fetchSwapsMany(pools: { pool: Address; tokenIs0: boolean; token?: Addre
     return !entry?.job && !(entry?.swaps && Date.now() - entry.at < SWAP_TTL_MS);
   });
   if (stale.length === 0) return;
-  const all = loadSwapsFor(stale);
+  const all = loadSwapsThrough(stale);
   for (const p of stale) {
     const key = p.pool.toLowerCase();
     const entry = swapStore.byPool.get(key) ?? { at: 0 };
     swapStore.byPool.set(key, entry);
     entry.job = all
-      .then((byPool) => {
+      .then(({ byPool, through }) => {
         entry.swaps = byPool.get(key) ?? [];
         entry.at = Date.now();
+        entry.fullAt = entry.at;
+        entry.through = through;
         return entry.swaps;
       })
       .finally(() => {
@@ -128,13 +135,60 @@ function fetchSwapsMany(pools: { pool: Address; tokenIs0: boolean; token?: Addre
     });
 }
 
+const TAIL_MS = 8_000;
+const FULL_EVERY_MS = 10 * 60_000;
+let tailing = false;
+
+/**
+ * Picks up the trades since the last read, for every pool here that has been read in full once: one request,
+ * however many pools. New trades are added to what is held and everyone listening is told. A pool that hasn't had
+ * its full read yet, or is having one now, is left to that.
+ */
+async function tailSwaps(pools: { pool: Address; tokenIs0: boolean; token?: Address }[]) {
+  if (tailing) return;
+  const known = pools.filter((p) => {
+    const entry = swapStore.byPool.get(p.pool.toLowerCase());
+    return entry?.swaps && entry.through !== undefined && !entry.job;
+  });
+  if (known.length === 0) return;
+  const since = known.map((p) => swapStore.byPool.get(p.pool.toLowerCase())!.through!).reduce((a, b) => (a < b ? a : b));
+  tailing = true;
+  try {
+    const { byPool, through } = await loadSwapsSince(known, since);
+    let added = false;
+    for (const p of known) {
+      const key = p.pool.toLowerCase();
+      const entry = swapStore.byPool.get(key);
+      // A full read may have started, or landed, while this one was on its way; it knows more.
+      if (!entry?.swaps || entry.job || entry.through === undefined || entry.through > through) continue;
+      const have = new Set(entry.swaps.map((s) => `${s.tx}:${s.index ?? 0}`));
+      const fresh = (byPool.get(key) ?? []).filter((s) => s.block > entry.through! && !have.has(`${s.tx}:${s.index ?? 0}`));
+      if (fresh.length > 0) {
+        entry.swaps = [...entry.swaps, ...fresh];
+        added = true;
+      }
+      entry.through = through;
+      // Fresh enough that the slower full read can wait, until it is due anyway.
+      if (Date.now() - (entry.fullAt ?? 0) < FULL_EVERY_MS) entry.at = Date.now();
+    }
+    if (added) {
+      swapStore.value++;
+      emit(swapStore);
+    }
+  } catch {
+    // Too far behind, or the node said no: the next full read catches up.
+  } finally {
+    tailing = false;
+  }
+}
+
 const subscribeSwaps = subscribeTo(swapStore);
 
 /**
  * Trades for each of these coins' pools, keyed by lowercase pool address. A pool is missing from the
  * answer until its first read lands; `ready` is true once every pool has answered.
  */
-export function useSwaps(coins: Coin[]) {
+export function useSwaps(coins: Coin[], { live = false }: { live?: boolean } = {}) {
   const version = useSyncExternalStore(
     subscribeSwaps,
     () => swapStore.value,
@@ -155,8 +209,17 @@ export function useSwaps(coins: Coin[]) {
     };
     read();
     const timer = setInterval(read, 60_000);
-    return () => clearInterval(timer);
-  }, [key]);
+    // A live page also asks every few seconds for just the trades since its last read.
+    const tail = live
+      ? setInterval(() => {
+          if (visible()) void tailSwaps(pools);
+        }, TAIL_MS)
+      : undefined;
+    return () => {
+      clearInterval(timer);
+      clearInterval(tail);
+    };
+  }, [key, live]);
   return useMemo(() => {
     const byPool: Record<string, PoolSwap[]> = {};
     let ready = true;

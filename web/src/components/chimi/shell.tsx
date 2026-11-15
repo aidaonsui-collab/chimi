@@ -5,6 +5,7 @@ import { useBlockNumber, useEthUsd } from "@/lib/chimi/live";
 import { shortAddr } from "@/lib/chimi/market";
 import { PageBackdrop } from "@/components/chimi/backdrop";
 import { HowItWorks } from "@/components/chimi/how-it-works";
+import { InboxButton } from "@/components/chimi/inbox";
 import { CommandPalette } from "@/components/chimi/command";
 import {
   ChimiMark,
@@ -287,6 +288,7 @@ export function Shell({ children }: { children: ReactNode }) {
               <IconPlus size={17} />
               Launch
             </Link>
+            <InboxButton />
             <WalletButton />
           </div>
         </div>

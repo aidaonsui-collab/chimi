@@ -128,8 +128,10 @@ const close = (x: number, y: number) => assert.ok(Math.abs(x - y) < 1e-12, `${x}
 test("a follower's buy after yours earns you a tenth of it", () => {
   const b = book();
   const f = follows({ [B]: [A] });
-  score(b, { wallet: A, creator: C, eth: 1, ts: ts("2026-10-24T01:00:00Z"), token: COIN, buy: true }, f);
-  score(b, { wallet: B, creator: C, eth: 0.4, ts: ts("2026-10-24T02:00:00Z"), token: COIN, buy: true }, f);
+  assert.equal(score(b, { wallet: A, creator: C, eth: 1, ts: ts("2026-10-24T01:00:00Z"), token: COIN, buy: true }, f), undefined, "the first buy follows nobody");
+  const lead = score(b, { wallet: B, creator: C, eth: 0.4, ts: ts("2026-10-24T02:00:00Z"), token: COIN, buy: true }, f);
+  // The lead comes back, so the leader can be told in their inbox.
+  assert.deepEqual(lead, { leader: A, follower: B, token: COIN.toLowerCase(), eth: 0.4, ts: ts("2026-10-24T02:00:00Z") });
   close(weights(b)[A]!, 1 + 0.04);
   close(weights(b)[B]!, 0.4); // nothing is taken from the buyer
   close(weights(b)[C]!, 0.14); // the creator's cut is unchanged

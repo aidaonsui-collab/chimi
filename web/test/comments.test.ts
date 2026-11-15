@@ -4,15 +4,23 @@ import assert from "node:assert/strict";
 import {
   MAX_KEPT,
   MAX_LENGTH,
+  MAX_LIKES,
   MIN_GAP_MS,
   NEED_DOJANG,
+  NEED_DOJANG_TO_LIKE,
+  PASS_TTL_MS,
   applyComment,
+  checkPass,
   checkText,
   cleanText,
   commentMessage,
   emptyComments,
+  likePassMessage,
+  likesOf,
+  pageOf,
   removeComment,
   stance,
+  threadsOf,
   type CommentsDoc,
 } from "../src/lib/chimi/comment-rules.ts";
 
@@ -127,4 +135,123 @@ test("a commenter's position is said in a few words", () => {
   assert.equal(stance(0.00001, true), "holds <0.01%");
   assert.equal(stance(0, true), "sold");
   assert.equal(stance(0, false), null);
+});
+
+const C = "0x00000000000000000000000000000000000000c3";
+
+/** A, then B answering A, then C answering B: one thread, three comments. */
+function thread() {
+  let d = ok(applyComment(emptyComments(COIN), A, { type: "post", text: "is the pool locked?" }, T0, yes));
+  const root = d.items[0]!;
+  const first = applyComment(d, B, { type: "post", text: "yes, 100 years", replyTo: root.id }, T0 + 1_000, yes);
+  d = ok(first);
+  const reply = d.items[1]!;
+  const second = applyComment(d, C, { type: "post", text: "good to know", replyTo: reply.id }, T0 + 2_000, yes);
+  d = ok(second);
+  return { d, root, reply, nested: d.items[2]!, first, second };
+}
+
+test("an answer joins its thread, and an answer to an answer stays in the same thread", () => {
+  const { d, root, reply, nested, first, second } = thread();
+  assert.equal(reply.replyTo, root.id);
+  assert.equal(reply.to, undefined, "answering the top comment needs no name");
+  assert.equal(nested.replyTo, root.id, "one level deep: it hangs off the top comment");
+  assert.equal(nested.to, B, "and remembers whose answer it answers");
+  // What happened, for whoever should hear of it.
+  assert.ok("effect" in first && first.effect?.type === "reply" && first.effect.parent.id === root.id && first.effect.root.id === root.id);
+  assert.ok("effect" in second && second.effect?.type === "reply" && second.effect.parent.id === reply.id && second.effect.root.id === root.id);
+  const top = applyComment(d, B, { type: "post", text: "new thread" }, T0 + 60_000, yes);
+  assert.ok("effect" in top && top.effect?.type === "comment");
+  refused(applyComment(d, B, { type: "post", text: "to nobody", replyTo: "gone" }, T0 + 60_000, yes), 404);
+  refused(applyComment(d, B, { type: "post", text: "no dojang", replyTo: root.id }, T0 + 60_000, no), 403);
+});
+
+test("comments read as threads, newest thread first, answers oldest first", () => {
+  let { d, root, reply, nested } = thread();
+  d = ok(applyComment(d, B, { type: "post", text: "second thread" }, T0 + 60_000, yes));
+  const later = d.items[3]!;
+  const threads = threadsOf(d.items);
+  assert.deepEqual(
+    threads.map((t) => [t.root.id, t.replies.map((r) => r.id)]),
+    [
+      [later.id, []],
+      [root.id, [reply.id, nested.id]],
+    ],
+  );
+  // A page is whole threads: the newest one alone, or both with every answer.
+  assert.deepEqual(pageOf(d, 1), { items: [later], threads: 2 });
+  assert.deepEqual(
+    pageOf(d, 5).items.map((c) => c.id),
+    [later.id, nested.id, reply.id, root.id],
+  );
+  assert.deepEqual(pageOf(null, 5), { items: [], threads: 0 });
+});
+
+test("when a comment is deleted its answers stay, as a thread of their own", () => {
+  const { d, root, reply, nested } = thread();
+  const after = ok(applyComment(d, A, { type: "delete", id: root.id }, T0 + 5_000, no));
+  assert.deepEqual(
+    after.items.map((c) => c.id),
+    [reply.id, nested.id],
+  );
+  const threads = threadsOf(after.items);
+  assert.deepEqual(
+    threads.map((t) => t.root.id),
+    [nested.id, reply.id],
+    "nothing that was said disappears with someone else's comment",
+  );
+});
+
+test("a wallet with a Dojang likes a comment once, and can take it back", () => {
+  const { d, root } = thread();
+  refused(applyComment(d, A, { type: "like", id: root.id }, T0 + 9_000, yes), 400);
+  assert.equal(refused(applyComment(d, B, { type: "like", id: root.id }, T0 + 9_000, no), 403), NEED_DOJANG_TO_LIKE);
+  refused(applyComment(d, B, { type: "like", id: "gone" }, T0 + 9_000, yes), 404);
+  const liked = applyComment(d, B, { type: "like", id: root.id }, T0 + 9_000, yes);
+  let next = ok(liked);
+  assert.ok("effect" in liked && liked.effect?.type === "like" && liked.effect.by === B && liked.effect.comment.wallet === A);
+  // Liking again changes nothing and tells nobody twice.
+  const again = applyComment(next, B, { type: "like", id: root.id }, T0 + 9_500, yes);
+  assert.deepEqual(ok(again).likes, next.likes);
+  assert.ok("doc" in again && again.effect === undefined);
+  next = ok(applyComment(next, C, { type: "like", id: root.id }, T0 + 10_000, yes));
+  assert.deepEqual(likesOf(next, [root.id, "other"], C), { likes: { [root.id]: 2 }, liked: [root.id] });
+  assert.deepEqual(likesOf(next, [root.id], A.toUpperCase().replace("0X", "0x")), { likes: { [root.id]: 2 }, liked: [] });
+  // Taking a like back needs no Dojang, and taking back one never given is not an error.
+  next = ok(applyComment(next, B, { type: "unlike", id: root.id }, T0 + 11_000, no));
+  next = ok(applyComment(next, B, { type: "unlike", id: root.id }, T0 + 11_500, no));
+  assert.deepEqual(next.likes, { [root.id]: [C] });
+  next = ok(applyComment(next, C, { type: "unlike", id: root.id }, T0 + 12_000, no));
+  assert.deepEqual(next.likes, {});
+});
+
+test("likes go when their comment goes, and a comment holds only so many", () => {
+  const { d, root, reply } = thread();
+  let next = ok(applyComment(d, B, { type: "like", id: root.id }, T0 + 9_000, yes));
+  next = ok(applyComment(next, A, { type: "like", id: reply.id }, T0 + 9_000, yes));
+  const after = ok(applyComment(next, A, { type: "delete", id: root.id }, T0 + 10_000, no));
+  assert.deepEqual(Object.keys(after.likes ?? {}), [reply.id]);
+  assert.deepEqual(Object.keys(removeComment(next, reply.id)!.likes ?? {}), [root.id]);
+  const full = structuredClone(d);
+  full.likes = { [root.id]: Array.from({ length: MAX_LIKES }, (_, n) => `0x${(n + 0x1000).toString(16).padStart(40, "0")}`) };
+  refused(applyComment(full, B, { type: "like", id: root.id }, T0 + 9_000, yes), 409);
+});
+
+test("an answer is signed for with the comment it answers, and a like pass names what it allows", () => {
+  const { root } = thread();
+  assert.equal(
+    commentMessage({ type: "post", text: " yes ", replyTo: root.id }, COIN, B, T0),
+    `Chimi comments: reply to ${root.id} on ${COIN.toLowerCase()}:\nyes\n\nWallet: ${B}\nTime: 2026-11-10T12:00:00.000Z`,
+  );
+  // The same words signed as a top-level comment can't be passed off as an answer, or the other way round.
+  assert.notEqual(commentMessage({ type: "post", text: "yes", replyTo: root.id }, COIN, B, T0), commentMessage({ type: "post", text: "yes" }, COIN, B, T0));
+  const until = T0 + PASS_TTL_MS;
+  const pass = likePassMessage(A.toUpperCase().replace("0X", "0x"), until);
+  assert.match(pass, /^Chimi likes: let this browser like and unlike comments as me until 2026-11-17T12:00:00.000Z/);
+  assert.match(pass, /can't post, follow, trade or move anything/);
+  assert.ok(pass.endsWith(`Wallet: ${A}`));
+  assert.equal(checkPass(until, T0), null);
+  assert.match(checkPass(until, until)!, /run out/);
+  assert.match(checkPass(T0 + PASS_TTL_MS * 3, T0)!, /too long/);
+  assert.match(checkPass(Number.NaN, T0)!, /run out/);
 });

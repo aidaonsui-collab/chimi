@@ -16,7 +16,20 @@ const label = (wallet: string, name?: string | null) => (name ? name.replace(/\.
  * Follow or stop following a wallet. Following is a signature, not a transaction. Shows nothing on your own wallet,
  * or while the site has nowhere to keep follows.
  */
-export function FollowButton({ wallet, name, size = "md", className = "" }: { wallet: string; name?: string | null; size?: "sm" | "md" | "lg"; className?: string }) {
+export function FollowButton({
+  wallet,
+  name,
+  size = "md",
+  quiet = false,
+  className = "",
+}: {
+  wallet: string;
+  name?: string | null;
+  size?: "sm" | "md" | "lg";
+  /** An outline instead of the bright button, for places where something else is the main action. */
+  quiet?: boolean;
+  className?: string;
+}) {
   const { account } = useChimi();
   const { data } = useFollows();
   const { run, pending } = useFollowAction();
@@ -59,7 +72,7 @@ export function FollowButton({ wallet, name, size = "md", className = "" }: { wa
       onMouseLeave={() => setHover(false)}
       onFocus={() => setHover(true)}
       onBlur={() => setHover(false)}
-      className={`btn ${sizing} ${on ? (hover ? "border-down/50 bg-down/10 text-down" : "btn-secondary") : "btn-light"} ${className}`}
+      className={`btn ${sizing} ${on ? (hover ? "border-down/50 bg-down/10 text-down" : "btn-secondary") : quiet ? "btn-secondary" : "btn-light"} ${className}`}
     >
       {busy ? (
         "Sign in your wallet…"

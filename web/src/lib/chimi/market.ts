@@ -297,11 +297,18 @@ export async function loadSwaps(pool: Address, tokenIs0: boolean, token?: Addres
  * so a board of a hundred coins costs the same ten requests as a single coin.
  */
 export async function loadSwapsFor(pools: { pool: Address; tokenIs0: boolean; token?: Address }[]): Promise<Map<string, PoolSwap[]>> {
+  return (await loadSwapsThrough(pools)).byPool;
+}
+
+type PoolRef = { pool: Address; tokenIs0: boolean; token?: Address };
+
+/** `loadSwapsFor`, and the block it read up to, so a later read can pick up from there (`loadSwapsSince`). */
+export async function loadSwapsThrough(pools: PoolRef[]): Promise<{ byPool: Map<string, PoolSwap[]>; through: bigint }> {
   const out = new Map<string, PoolSwap[]>(pools.map((p) => [p.pool.toLowerCase(), []]));
-  if (pools.length === 0) return out;
+  const latest = await publicClient.getBlock();
+  if (pools.length === 0) return { byPool: out, through: latest.number };
   const side = new Map(pools.map((p) => [p.pool.toLowerCase(), p.tokenIs0]));
   const tokens = new Map(pools.map((p) => [p.pool.toLowerCase(), p.token]));
-  const latest = await publicClient.getBlock();
   const head = { number: latest.number, time: Number(latest.timestamp) };
   const spans = logSpans(latest.number, 10);
   const addresses = [...out.keys()] as Address[];
@@ -329,7 +336,40 @@ export async function loadSwapsFor(pools: { pool: Address; tokenIs0: boolean; to
   }
   await sellersFromNode([...unnamed.values()].map((list) => ({ unnamed: list, tokens })));
   for (const rows of out.values()) rows.sort(bySwapOrder);
-  return out;
+  return { byPool: out, through: latest.number };
+}
+
+/** The most blocks one tail read may cover. A tab that slept longer than this takes a full read instead. */
+export const TAIL_REACH = 5_000n;
+
+/**
+ * Only the swaps after block `since`, for every pool here, in one request. This is what keeps the feed live: a
+ * full read costs ten requests, this costs one, so it can run every few seconds. Throws when `since` is too far
+ * back for one request to cover.
+ */
+export async function loadSwapsSince(pools: PoolRef[], since: bigint): Promise<{ byPool: Map<string, PoolSwap[]>; through: bigint }> {
+  const out = new Map<string, PoolSwap[]>(pools.map((p) => [p.pool.toLowerCase(), []]));
+  const latest = await publicClient.getBlock();
+  if (pools.length === 0 || latest.number <= since) return { byPool: out, through: latest.number > since ? latest.number : since };
+  if (latest.number - since > TAIL_REACH) throw new Error("too far behind for a tail read");
+  const side = new Map(pools.map((p) => [p.pool.toLowerCase(), p.tokenIs0]));
+  const tokens = new Map(pools.map((p) => [p.pool.toLowerCase(), p.token]));
+  const head = { number: latest.number, time: Number(latest.timestamp) };
+  const addresses = [...out.keys()] as Address[];
+  const groups = Array.from({ length: Math.ceil(addresses.length / 300) }, (_, i) => addresses.slice(i * 300, (i + 1) * 300));
+  const pages = await Promise.all(groups.map((address) => logLane(() => publicClient.getLogs({ address, event: swapEvent, fromBlock: since + 1n, toBlock: latest.number }))));
+  const unnamed: Unnamed[] = [];
+  for (const log of pages.flat()) {
+    const pool = log.address.toLowerCase();
+    const rows = out.get(pool);
+    if (!rows) continue;
+    const swap = toSwap(log, side.get(pool) ?? true, head, latest.number);
+    rows.push(swap);
+    if (routerKept(swap, log.args.sender)) unnamed.push({ swap, pool });
+  }
+  await sellersFromNode([{ unnamed, tokens }]);
+  for (const rows of out.values()) rows.sort(bySwapOrder);
+  return { byPool: out, through: latest.number };
 }
 
 export async function loadHolders(token: Address, pool: Address, traders: Address[]): Promise<Holder[]> {

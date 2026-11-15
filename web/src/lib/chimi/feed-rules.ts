@@ -9,15 +9,25 @@ export type FeedTrade = { key: string; time: number; wallet: string; token: stri
 
 export type FeedLaunch = { token: string; creator: string; time: number };
 
-export type FeedComment = { id: string; token: string; wallet: string; text: string; time: number };
+export type FeedComment = { id: string; token: string; wallet: string; text: string; time: number; likes?: number; liked?: boolean; replies?: number; replyTo?: string };
 
 /** A coin's market cap around one trade, oldest first. `before` is unknown for a trade whose size can't be read back. */
 export type CapPoint = { time: number; before?: number; after: number };
 
+/** One trade as the feed shows it. */
+export type TradeItem = { kind: "trade"; followed: boolean; mine: boolean; largest: boolean; nth: number } & FeedTrade;
+
+/**
+ * Several trades on one coin in quick succession, shown as one card. `trades` is newest first; `time` is the
+ * newest of them and `since` the oldest; `wallets` are the traders, biggest spender first.
+ */
+export type BurstItem = { kind: "burst"; key: string; time: number; since: number; token: string; trades: TradeItem[]; wallets: string[]; buys: number; sells: number; eth: number };
+
 export type FeedItem =
-  | ({ kind: "trade"; followed: boolean; mine: boolean; largest: boolean; nth: number } & FeedTrade)
+  | TradeItem
+  | BurstItem
   | { kind: "launch"; key: string; time: number; token: string; creator: string; followed: boolean; earlier: number }
-  | { kind: "comment"; key: string; time: number; token: string; wallet: string; text: string; followed: boolean; mine: boolean }
+  | { kind: "comment"; key: string; time: number; token: string; wallet: string; text: string; followed: boolean; mine: boolean; id: string; likes: number; liked: boolean; replies: number; replyTo?: string }
   | { kind: "milestone"; key: string; time: number; token: string; cap: number }
   | { kind: "copied"; key: string; time: number; token: string; by: string[]; eth: number };
 
@@ -31,6 +41,13 @@ export const MIN_BUYS_FOR_LARGEST = 3;
 
 /** For you shows every trade until there are this many; past it, strangers' small trades drop out. */
 export const CROWDED = 30;
+
+/** Trades on one coin this close together are one burst. */
+export const BURST_GAP_S = 5 * 60;
+/** A burst covers this long at most, so a coin that trades all day reads as several cards, not one. */
+export const BURST_SPAN_S = 30 * 60;
+/** Fewer trades than this stay cards of their own. */
+export const BURST_MIN = 3;
 
 const lower = (s: string) => s.toLowerCase();
 const newestFirst = (a: { time: number; key: string }, b: { time: number; key: string }) => b.time - a.time || (a.key < b.key ? 1 : -1);
@@ -144,7 +161,21 @@ export function buildFeed(input: FeedInput): FeedItem[] {
 
   for (const c of input.comments) {
     const wallet = lower(c.wallet);
-    items.push({ kind: "comment", key: `comment:${lower(c.token)}:${c.id}`, time: c.time, token: lower(c.token), wallet, text: c.text, followed: followed.has(wallet), mine: wallet === me });
+    items.push({
+      kind: "comment",
+      key: `comment:${lower(c.token)}:${c.id}`,
+      time: c.time,
+      token: lower(c.token),
+      wallet,
+      text: c.text,
+      followed: followed.has(wallet),
+      mine: wallet === me,
+      id: c.id,
+      likes: c.likes ?? 0,
+      liked: c.liked ?? false,
+      replies: c.replies ?? 0,
+      replyTo: c.replyTo,
+    });
   }
 
   for (const [token, cap] of Object.entries(input.caps ?? {})) {
@@ -157,16 +188,74 @@ export function buildFeed(input: FeedInput): FeedItem[] {
 }
 
 /**
- * The For you tab: everything, until the feed is crowded. Then trades by strangers that are smaller than the usual
- * trade drop out, and what stays is what you follow, what you did, launches, comments, milestones and the big buys.
+ * Folds runs of trades on one coin into single cards. A run is `min` or more trades, each within `gapS` of the one
+ * before and all within `spanS`. Trades by you, by wallets you follow, and the day's largest buy are never folded:
+ * they are why you opened the feed. Everything else passes through, and the list stays newest first.
  */
-export function forYou(items: FeedItem[]): FeedItem[] {
-  const trades = items.filter((i): i is Extract<FeedItem, { kind: "trade" }> => i.kind === "trade");
+export function groupBursts(items: FeedItem[], gapS = BURST_GAP_S, spanS = BURST_SPAN_S, min = BURST_MIN): FeedItem[] {
+  const byToken = new Map<string, TradeItem[]>();
+  for (const item of items) {
+    if (item.kind !== "trade" || item.followed || item.mine || item.largest) continue;
+    const list = byToken.get(item.token);
+    if (list) list.push(item);
+    else byToken.set(item.token, [item]);
+  }
+  const folded = new Set<string>();
+  const bursts: BurstItem[] = [];
+  for (const [token, list] of byToken) {
+    if (list.length < min) continue;
+    const oldestFirst = [...list].sort((a, b) => a.time - b.time || (a.key < b.key ? -1 : 1));
+    let run: TradeItem[] = [];
+    const close = () => {
+      if (run.length >= min) {
+        const spent = new Map<string, number>();
+        for (const t of run) {
+          folded.add(t.key);
+          spent.set(t.wallet, (spent.get(t.wallet) ?? 0) + t.eth);
+        }
+        bursts.push({
+          kind: "burst",
+          // Named for its first trade, so the card stays the same card as more trades join it.
+          key: `burst:${token}:${run[0]!.key}`,
+          time: run[run.length - 1]!.time,
+          since: run[0]!.time,
+          token,
+          trades: [...run].reverse(),
+          wallets: [...spent.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([wallet]) => wallet),
+          buys: run.filter((t) => t.buy).length,
+          sells: run.filter((t) => !t.buy).length,
+          eth: run.reduce((sum, t) => sum + t.eth, 0),
+        });
+      }
+      run = [];
+    };
+    for (const t of oldestFirst) {
+      const last = run[run.length - 1];
+      if (last && (t.time - last.time > gapS || t.time - run[0]!.time > spanS)) close();
+      run.push(t);
+    }
+    close();
+  }
+  if (bursts.length === 0) return items;
+  return [...items.filter((i) => i.kind !== "trade" || !folded.has(i.key)), ...bursts].sort(newestFirst);
+}
+
+/**
+ * The For you tab: everything, with runs of trades on one coin folded into one card each. If it is still crowded,
+ * trades by strangers that are smaller than the usual trade drop out, and what stays is what you follow, what you
+ * did, launches, comments, milestones, bursts and the big buys.
+ */
+export function forYou(all: FeedItem[]): FeedItem[] {
+  const items = groupBursts(all);
+  const trades = items.filter((i): i is TradeItem => i.kind === "trade");
   if (trades.length <= CROWDED) return items;
   const sizes = trades.map((t) => t.eth).sort((a, b) => a - b);
   const usual = sizes[Math.floor(sizes.length / 2)] ?? 0;
   return items.filter((i) => i.kind !== "trade" || i.followed || i.mine || i.largest || (i.buy && i.eth >= usual));
 }
+
+/** What tells one showing of an item from the next: a burst counts as new again each time a trade joins it. */
+export const freshnessKey = (item: FeedItem) => (item.kind === "burst" ? `${item.key}#${item.trades.length}` : item.key);
 
 /** The Following tab: what the wallets you follow bought, sold, launched and said. */
 export function fromFollowed(items: FeedItem[]): FeedItem[] {
@@ -212,3 +301,20 @@ export function suggestTraders(season: readonly { wallet: string; points: number
 export function ordinal(n: number): string {
   return ["", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"][n] ?? `${n}th`;
 }
+
+/*
+ * The remembered feed is kept as JSON, which has no way to write the chain's big whole numbers. They are written as
+ * marked text and read back as numbers, so a price or an amount survives the round trip exactly.
+ */
+const BIG = "#big:";
+
+/** JSON text for anything that may hold bigints. */
+export function packBig(value: unknown): string {
+  return JSON.stringify(value, (_key, v) => (typeof v === "bigint" ? `${BIG}${v}` : v));
+}
+
+/** The reverse of `packBig`. Throws on text that isn't JSON, like JSON.parse. */
+export function unpackBig<T>(text: string): T {
+  return JSON.parse(text, (_key, v) => (typeof v === "string" && v.startsWith(BIG) && /^-?\d+$/.test(v.slice(BIG.length)) ? BigInt(v.slice(BIG.length)) : v)) as T;
+}
+

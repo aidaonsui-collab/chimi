@@ -64,6 +64,9 @@ export type PointsFile = {
   led?: Record<string, { n: number; eth: number }>;
 };
 
+/** A buy that followed another: `follower` bought `token` after `leader`, whom it follows. `eth` is what counts. */
+export type Lead = { leader: string; follower: string; token: string; eth: number; ts: number };
+
 /** One swap as the points see it. `token` and `buy` are what let a buy be led; without them only the trade counts. */
 export type ScoredSwap = { wallet: string; creator: string; eth: number; ts: number; token?: string; buy?: boolean };
 
@@ -88,9 +91,9 @@ export function sameSettings(f: PointsFile, s: PointsSettings) {
 /**
  * Adds one swap to its day's weights. Closed days never change. Mutates `book`. Swaps must come in chain order.
  * `following` answers who a wallet follows (lowercase); with it, a buy made after a followed wallet's buy of the same
- * coin also earns that wallet its lead.
+ * coin also earns that wallet its lead, and the lead is returned so the leader can be told.
  */
-export function score(book: PointsFile, swap: ScoredSwap, following?: (wallet: string) => readonly string[]) {
+export function score(book: PointsFile, swap: ScoredSwap, following?: (wallet: string) => readonly string[]): Lead | undefined {
   const day = kstDay(swap.ts);
   const wallet = swap.wallet.toLowerCase();
   const creator = swap.creator.toLowerCase();
@@ -111,15 +114,18 @@ export function score(book: PointsFile, swap: ScoredSwap, following?: (wallet: s
   const follows = new Set(following?.(wallet) ?? []);
   let leader: (typeof recent)[number] | undefined;
   for (let i = recent.length - 1; i >= 0 && !leader; i--) if (recent[i]!.w !== wallet && follows.has(recent[i]!.w)) leader = recent[i];
+  let lead: Lead | undefined;
   if (leader) {
     const eth = Math.min(swap.eth, leader.e);
     open.weights[leader.w] = (open.weights[leader.w] ?? 0) + eth * LEAD_SHARE;
     const led = ((book.led ??= {})[leader.w] ??= { n: 0, eth: 0 });
     led.n++;
     led.eth += eth;
+    lead = { leader: leader.w, follower: wallet, token, eth, ts: swap.ts };
   }
   recent.push({ w: wallet, t: swap.ts, e: swap.eth });
   buys[token] = recent.slice(-LEAD_MEMORY);
+  return lead;
 }
 
 /** Open days the book has read past (their every swap is in), oldest first. */

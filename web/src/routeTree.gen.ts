@@ -21,6 +21,7 @@ import { Route as ApiCommentsRouteImport } from './routes/api/comments'
 import { Route as ApiFeedRouteImport } from './routes/api/feed'
 import { Route as ApiFollowsRouteImport } from './routes/api/follows'
 import { Route as ApiHousesRouteImport } from './routes/api/houses'
+import { Route as ApiInboxRouteImport } from './routes/api/inbox'
 import { Route as ApiPointsRouteImport } from './routes/api/points'
 import { Route as ApiTokenMetaRouteImport } from './routes/api/token-meta'
 import { Route as ApiTraderRouteImport } from './routes/api/trader'
@@ -91,6 +92,11 @@ const ApiHousesRoute = ApiHousesRouteImport.update({
   path: '/api/houses',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiInboxRoute = ApiInboxRouteImport.update({
+  id: '/api/inbox',
+  path: '/api/inbox',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPointsRoute = ApiPointsRouteImport.update({
   id: '/api/points',
   path: '/api/points',
@@ -150,6 +156,7 @@ export interface FileRoutesByFullPath {
   '/api/feed': typeof ApiFeedRoute
   '/api/follows': typeof ApiFollowsRoute
   '/api/houses': typeof ApiHousesRoute
+  '/api/inbox': typeof ApiInboxRoute
   '/api/points': typeof ApiPointsRoute
   '/api/token-meta': typeof ApiTokenMetaRoute
   '/api/trader': typeof ApiTraderRoute
@@ -173,6 +180,7 @@ export interface FileRoutesByTo {
   '/api/feed': typeof ApiFeedRoute
   '/api/follows': typeof ApiFollowsRoute
   '/api/houses': typeof ApiHousesRoute
+  '/api/inbox': typeof ApiInboxRoute
   '/api/points': typeof ApiPointsRoute
   '/api/token-meta': typeof ApiTokenMetaRoute
   '/api/trader': typeof ApiTraderRoute
@@ -197,6 +205,7 @@ export interface FileRoutesById {
   '/api/feed': typeof ApiFeedRoute
   '/api/follows': typeof ApiFollowsRoute
   '/api/houses': typeof ApiHousesRoute
+  '/api/inbox': typeof ApiInboxRoute
   '/api/points': typeof ApiPointsRoute
   '/api/token-meta': typeof ApiTokenMetaRoute
   '/api/trader': typeof ApiTraderRoute
@@ -222,6 +231,7 @@ export interface FileRouteTypes {
     | '/api/feed'
     | '/api/follows'
     | '/api/houses'
+    | '/api/inbox'
     | '/api/points'
     | '/api/token-meta'
     | '/api/trader'
@@ -245,6 +255,7 @@ export interface FileRouteTypes {
     | '/api/feed'
     | '/api/follows'
     | '/api/houses'
+    | '/api/inbox'
     | '/api/points'
     | '/api/token-meta'
     | '/api/trader'
@@ -268,6 +279,7 @@ export interface FileRouteTypes {
     | '/api/feed'
     | '/api/follows'
     | '/api/houses'
+    | '/api/inbox'
     | '/api/points'
     | '/api/token-meta'
     | '/api/trader'
@@ -292,6 +304,7 @@ export interface RootRouteChildren {
   ApiFeedRoute: typeof ApiFeedRoute
   ApiFollowsRoute: typeof ApiFollowsRoute
   ApiHousesRoute: typeof ApiHousesRoute
+  ApiInboxRoute: typeof ApiInboxRoute
   ApiPointsRoute: typeof ApiPointsRoute
   ApiTokenMetaRoute: typeof ApiTokenMetaRoute
   ApiTraderRoute: typeof ApiTraderRoute
@@ -389,6 +402,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiHousesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/inbox': {
+      id: '/api/inbox'
+      path: '/api/inbox'
+      fullPath: '/api/inbox'
+      preLoaderRoute: typeof ApiInboxRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/points': {
       id: '/api/points'
       path: '/api/points'
@@ -468,6 +488,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiFeedRoute: ApiFeedRoute,
   ApiFollowsRoute: ApiFollowsRoute,
   ApiHousesRoute: ApiHousesRoute,
+  ApiInboxRoute: ApiInboxRoute,
   ApiPointsRoute: ApiPointsRoute,
   ApiTokenMetaRoute: ApiTokenMetaRoute,
   ApiTraderRoute: ApiTraderRoute,
