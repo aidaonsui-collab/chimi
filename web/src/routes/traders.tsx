@@ -29,7 +29,7 @@ function Traders() {
   const { coins, account, loading } = useChimi();
   const live = useMemo(() => coins.filter((c) => !c.preview), [coins]);
   const { byPool, ready } = useSwaps(live);
-  const { data: points } = usePoints();
+  const { data: points, loading: pointsLoading } = usePoints();
   const { data: follows } = useFollows();
   const ethUsd = useEthUsd();
   const [sort, setSort] = useState<Sort>("points");
@@ -61,6 +61,15 @@ function Traders() {
       r.points = s.points;
       r.rank = s.rank;
     }
+    // Everyone the points book has seen trade belongs here, with or without a Dojang: a wallet without one earns
+    // no points, but it still traded.
+    const file = points?.file;
+    for (const wallet of Object.keys(file?.profiles ?? {})) row(wallet);
+    for (const day of file?.days ?? []) {
+      for (const wallet of Object.keys(day.points)) row(wallet);
+      for (const wallet of day.unverified) row(wallet);
+    }
+    for (const day of file?.open ?? []) for (const wallet of Object.keys(day.weights)) row(wallet);
     for (const [wallet, n] of followerCounts(follows?.state)) row(wallet).followers = n;
     for (const [wallet, led] of Object.entries(points?.file.led ?? {})) {
       const r = row(wallet);
@@ -93,7 +102,8 @@ function Traders() {
   );
   const mine = useMemo(() => new Set(followingOf(follows?.state, me)), [follows, me]);
   const cash = (eth: number) => (eth === 0 ? "—" : ethUsd ? compactUsd(eth * ethUsd) : `${ethText(eth)} ETH`);
-  const waiting = loading || (live.length > 0 && !ready && rows.length === 0);
+  // The list is mostly the points book, so it isn't called empty until that has answered.
+  const waiting = loading || (pointsLoading && rows.length === 0) || (live.length > 0 && !ready && rows.length === 0);
 
   return (
     <main className="page pt-2 pb-16">
@@ -143,14 +153,14 @@ function Traders() {
         ) : sorted.length === 0 ? (
           <Empty
             mark="첫 거래"
-            title="Nobody has traded yet"
+            title="No traders to show yet"
             action={
               <Link to="/board" className="btn btn-primary">
                 Find a coin
               </Link>
             }
           >
-            The first wallets to buy or sell a Chimi coin show up here.
+            Wallets show up here once they buy or sell a Chimi coin.
           </Empty>
         ) : (
           page.map((r, i) => {
@@ -169,7 +179,9 @@ function Traders() {
                       {you ? <span className="chip h-5 px-1.5 text-[11px] text-gold">You</span> : null}
                       {mine.has(r.wallet) ? <span className="chip h-5 px-1.5 text-[11px]">Following</span> : null}
                     </span>
-                    <span className="num block truncate text-[13px] text-muted">{r.trades > 0 ? `${r.trades} ${r.trades === 1 ? "trade" : "trades"} today` : r.rank ? `Rank #${r.rank} this season` : "No trades today"}</span>
+                    <span className="num block truncate text-[13px] text-muted">
+                      {r.trades > 0 ? `${r.trades} ${r.trades === 1 ? "trade" : "trades"} today` : r.rank ? `Rank #${r.rank} this season` : profile?.verified === false ? "No Dojang, so no points yet" : "No trades today"}
+                    </span>
                   </span>
                 </Link>
                 <span className="num text-right text-[15px] font-medium md:hidden">{order === "followers" ? r.followers : order === "today" ? cash(r.todayEth) : fmtPoints(r.points)}</span>
