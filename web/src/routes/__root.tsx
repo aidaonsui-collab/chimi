@@ -1,4 +1,5 @@
 import { createRootRoute, HeadContent, Link, Outlet, Scripts } from "@tanstack/react-router";
+import { HOME_MODE_SCRIPT } from "@/components/chimi/feed-hero";
 import { ChimiProvider } from "@/components/chimi/provider";
 import { Shell } from "@/components/chimi/shell";
 import { Empty } from "@/components/chimi/ui";
@@ -39,6 +40,8 @@ export const Route = createRootRoute({
       // The serif is for the Korean accents and the house seals.
       { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@900&family=Song+Myung&display=swap" },
     ],
+    // Decides before the first paint whether the home page opens on the hero or on the feed (feed-hero.tsx).
+    scripts: [{ children: HOME_MODE_SCRIPT }],
   }),
   notFoundComponent: () => (
     <main className="page pt-10 pb-16">
@@ -48,7 +51,7 @@ export const Route = createRootRoute({
           title="There’s nothing at this address"
           action={
             <Link to="/" className="btn btn-primary">
-              Back to the board
+              Back to the feed
             </Link>
           }
         >
@@ -58,7 +61,8 @@ export const Route = createRootRoute({
     </main>
   ),
   component: () => (
-    <html lang="en">
+    // The script above may have marked <html> before React woke up; that difference is expected.
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>

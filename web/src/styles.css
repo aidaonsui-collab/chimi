@@ -833,3 +833,63 @@
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * The home page's top (feed-hero.tsx). A first visit shows the hero; after that the roof sits behind the heading.
+ * A script in <head> marks <html> before the first paint, so the one that isn't wanted never shows.
+ */
+html[data-home="plain"] .home-hero {
+  display: none;
+}
+html:not([data-home="plain"]) .home-roof {
+  display: none;
+}
+
+/*
+ * The strip of live trades under the top bar (feed-cards.tsx). Two copies of the row sit end to end and slide left
+ * by one copy's width, so the loop has no seam. It holds still under the pointer, and for less-motion visitors.
+ */
+.ticker {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  font-size: 13px;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+.ticker-window {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
+}
+.ticker-track {
+  display: flex;
+  width: max-content;
+}
+.ticker-row {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2rem;
+  padding-right: 2rem;
+  padding-left: 0.5rem;
+}
+.ticker-moving .ticker-track {
+  animation: ticker var(--ticker-s, 60s) linear infinite;
+}
+.ticker-moving:hover .ticker-track,
+.ticker-moving:focus-within .ticker-track {
+  animation-play-state: paused;
+}
+@keyframes ticker {
+  to {
+    transform: translateX(-50%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ticker-moving .ticker-track {
+    animation: none;
+  }
+}

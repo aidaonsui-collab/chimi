@@ -1,557 +1,367 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { compactUsd, ethText, tokenUsd } from "@/lib/chimi/format";
-import { coinStats, useEthUsd, usePoolEth, useSwaps, type CoinStats } from "@/lib/chimi/live";
-import { shortAddr, type Coin } from "@/lib/chimi/market";
-import { DAILY_POOL, dayEndMs, today } from "@/lib/chimi/points-rules";
-import { fmtPoints } from "@/lib/chimi/rewards";
+import { useEffect, useMemo, useState } from "react";
+import { compactUsd, ethText } from "@/lib/chimi/format";
+import { useHomeFeed, type HomeFeed } from "@/lib/chimi/feed";
+import type { FeedItem, Suggestion } from "@/lib/chimi/feed-rules";
+import { usePoolEth } from "@/lib/chimi/live";
+import { short } from "@/lib/chimi/market";
+import { DAILY_POOL, dayEndMs, today, type Profile } from "@/lib/chimi/points-rules";
+import { fmtPoints, useProfiles } from "@/lib/chimi/rewards";
 import { useTokenImages } from "@/lib/chimi/token-image";
-import {
-  IconArrowDown,
-  IconChevronLeft,
-  IconChevronRight,
-  IconClock,
-  IconFlame,
-  IconGrid,
-  IconHouse,
-  IconInfo,
-  IconList,
-  IconPlus,
-  IconPoints,
-  IconSearch,
-  IconTrophy,
-} from "@/components/chimi/icons";
-import { HowItWorks } from "@/components/chimi/how-it-works";
+import { CreatorFeesMini } from "@/components/chimi/creator-fees";
+import { FeedCard, QuickBuy, Ticker, walletsIn, type CardContext } from "@/components/chimi/feed-cards";
+import { HomeTop, type HeroStat } from "@/components/chimi/feed-hero";
+import { FollowButton } from "@/components/chimi/follow";
+import { IconChevronRight, IconPlus, IconPoints } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
-import { duration, useNow } from "@/components/chimi/rewards-bits";
-import { LoopVideo, ROOF } from "@/components/chimi/loop-video";
-import { Tape } from "@/components/chimi/tape";
-import { TokenArt, TokenLogo } from "@/components/chimi/token-logo";
-import { Change, Empty, Seg, Sparkline } from "@/components/chimi/ui";
+import { DojangMark, duration, useNow } from "@/components/chimi/rewards-bits";
+import { toast } from "@/components/chimi/toast";
+import { TokenLogo } from "@/components/chimi/token-logo";
+import { Change, Empty, Seg, TraderLink } from "@/components/chimi/ui";
 
+/**
+ * The home page is the feed: who is buying, selling, launching and saying what, newest first, with the coins that
+ * are moving and the traders worth following beside it. The board of every coin lives at /board.
+ */
 export const Route = createFileRoute("/")({ component: Home });
 
-type Sort = "trending" | "top" | "new";
-type View = "list" | "grid";
-type Row = { coin: Coin; stats: CoinStats; image?: string; liqEth?: number; order: number };
+type Tab = "foryou" | "following" | "new" | "top";
 
-const VIEW_KEY = "chimi.board.view";
+const TAB_KEY = "chimi.feed.tab";
+const PAGE = 12;
 
 function Home() {
-  const { coins, preview, loading, deployment, note, refresh } = useChimi();
-  const ethUsd = useEthUsd();
-  const { byPool, ready } = useSwaps(coins);
-  const reserves = usePoolEth(coins, deployment?.weth);
-  const images = useTokenImages(useMemo(() => coins.map((coin) => coin.token), [coins]));
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<Sort>("trending");
-  const [view, setView] = useState<View>("list");
+  const { account, connect, deployment, preview, note, refresh, loading } = useChimi();
+  const nowMs = useNow(30_000);
+  const feed = useHomeFeed(nowMs);
+  const images = useTokenImages(useMemo(() => feed.live.map((coin) => coin.token), [feed.live]));
+  const reserves = usePoolEth(feed.live, deployment?.weth);
+  const [tab, setTab] = useState<Tab>("foryou");
+  const [shown, setShown] = useState(PAGE);
 
   useEffect(() => {
     try {
-      if (localStorage.getItem(VIEW_KEY) === "grid") setView("grid");
+      const saved = localStorage.getItem(TAB_KEY);
+      if (saved === "following" || saved === "new" || saved === "top") setTab(saved);
     } catch {
       /* private mode */
     }
   }, []);
-  const pickView = (next: View) => {
-    setView(next);
+  const pick = (next: Tab) => {
+    setTab(next);
+    setShown(PAGE);
     try {
-      localStorage.setItem(VIEW_KEY, next);
+      localStorage.setItem(TAB_KEY, next);
     } catch {
       /* private mode */
     }
   };
 
-  const rows = useMemo<Row[]>(
-    () =>
-      coins.map((coin, order) => {
-        const pool = coin.pool.toLowerCase();
-        const wei = reserves[pool];
-        return {
-          coin,
-          order,
-          stats: coinStats(coin, coin.preview ? [] : byPool[pool]),
-          image: images[coin.token.toLowerCase()],
-          liqEth: wei === undefined ? undefined : Number(wei) / 1e18,
-        };
-      }),
-    [coins, byPool, reserves, images],
+  const list: FeedItem[] = tab === "top" ? [] : feed.tabs[tab];
+  const page = list.slice(0, shown);
+  const profiles = useProfiles(
+    useMemo(() => [...new Set([...walletsIn(feed.items.slice(0, 40)), ...feed.suggestions.map((s) => s.wallet)])], [feed.items, feed.suggestions]),
+    feed.points?.file.profiles,
   );
+  const ctx: CardContext = { byToken: feed.byToken, images, stats: feed.stats, profiles, ethUsd: feed.ethUsd, now: feed.now, me: feed.me };
 
-  const sorted = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const list = q ? rows.filter((r) => r.coin.name.toLowerCase().includes(q) || r.coin.symbol.toLowerCase().includes(q) || r.coin.token.toLowerCase() === q) : [...rows];
-    if (sort === "new") list.sort((a, b) => a.order - b.order);
-    else if (sort === "top") list.sort((a, b) => b.stats.capEth - a.stats.capEth);
-    else list.sort((a, b) => (b.stats.volEth ?? 0) - (a.stats.volEth ?? 0) || b.stats.capEth - a.stats.capEth);
-    return list;
-  }, [rows, query, sort]);
-
-  const featured = useMemo(() => [...rows].sort((a, b) => (b.stats.volEth ?? 0) - (a.stats.volEth ?? 0) || b.stats.capEth - a.stats.capEth).slice(0, 4), [rows]);
-
+  const usd = (eth: number | undefined) => (eth === undefined ? "—" : feed.ethUsd ? compactUsd(eth * feed.ethUsd) : `${ethText(eth)} ETH`);
   const totals = useMemo(() => {
-    const live = rows.filter((r) => !r.coin.preview);
+    const all = Object.values(feed.stats);
+    const pools = feed.live.map((c) => reserves[c.pool.toLowerCase()]);
     return {
-      coins: live.length,
-      capEth: live.reduce((sum, r) => sum + r.stats.capEth, 0),
-      volEth: ready ? live.reduce((sum, r) => sum + (r.stats.volEth ?? 0), 0) : undefined,
-      trades: ready ? live.reduce((sum, r) => sum + (r.stats.trades ?? 0), 0) : undefined,
-      liqEth: live.length > 0 && live.every((r) => r.liqEth !== undefined) ? live.reduce((sum, r) => sum + (r.liqEth ?? 0), 0) : undefined,
+      capEth: all.reduce((sum, s) => sum + s.capEth, 0),
+      volEth: all.every((s) => s.volEth !== undefined) ? all.reduce((sum, s) => sum + (s.volEth ?? 0), 0) : undefined,
+      liqEth: pools.length > 0 && pools.every((wei) => wei !== undefined) ? pools.reduce((sum, wei) => sum + Number(wei) / 1e18, 0) : undefined,
     };
-  }, [rows, ready]);
+  }, [feed.stats, feed.live, reserves]);
+  const heroStats: HeroStat[] = [
+    ["Coins", loading ? null : feed.live.length.toLocaleString("en-US")],
+    ["24h volume", loading ? null : usd(totals.volEth)],
+    ["Market cap", loading ? null : usd(feed.hasCoins ? totals.capEth : undefined)],
+    ["Liquidity", loading ? null : usd(totals.liqEth)],
+  ];
 
-  const usd = (eth: number | undefined) => (eth === undefined ? "—" : ethUsd ? compactUsd(eth * ethUsd) : `${ethText(eth)} ETH`);
-  const price = (eth: number) => (ethUsd ? tokenUsd(eth * ethUsd) : `${ethText(eth)} ETH`);
-  const failed = !loading && coins.length === 0 && !!note;
+  const byVolume = useMemo(
+    () => [...feed.live].sort((a, b) => (feed.stats[b.token.toLowerCase()]?.volEth ?? 0) - (feed.stats[a.token.toLowerCase()]?.volEth ?? 0) || (feed.stats[b.token.toLowerCase()]?.capEth ?? 0) - (feed.stats[a.token.toLowerCase()]?.capEth ?? 0)),
+    [feed.live, feed.stats],
+  );
+  const failed = !loading && !feed.hasCoins && !preview && !!note;
+  const joinIn = () =>
+    void connect().catch((err: unknown) => {
+      const text = short(err);
+      if (!/reject|denied|cancel/i.test(text)) toast({ kind: "bad", title: "Couldn’t connect", body: text });
+    });
 
   return (
-    <main>
-      <section className="page pt-1">
-        <Hero featured={featured} totals={totals} usd={usd} price={price} preview={preview} loading={loading} />
-      </section>
+    <main className="pb-16">
+      <div className="border-b border-line/70 bg-bg/45 backdrop-blur-sm">
+        <div className="page">
+          <Ticker items={feed.items} ctx={ctx} />
+        </div>
+      </div>
 
-      <section id="board" className="page scroll-mt-20 pt-12">
-        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
-          <div>
-            <p className="eyebrow">{preview ? "Preview coins" : "Live from the factory"}</p>
-            <h2 className="mt-2 text-[30px] leading-none font-semibold tracking-[-0.03em] sm:text-[34px]">The board</h2>
+      <HomeTop stats={heroStats} live={!preview} />
+
+      <section className="page pt-8 sm:pt-10">
+        <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-5">
+          <div className="min-w-0 max-w-xl">
+            <p className="eyebrow">Who is trading what</p>
+            <h2 className="mt-2 text-[34px] leading-[1.05] font-semibold tracking-[-0.03em] sm:text-[42px]">{account ? "Your feed" : "The feed"}</h2>
+            <p className="mt-3 text-[15px] leading-relaxed text-fg/75">Buys, launches and comments from the wallets you follow, and what is moving on GIWA.</p>
           </div>
-          <div className="flex w-full flex-wrap items-center gap-2.5 sm:w-auto">
-            <Seg
-              label="Sort coins"
-              value={sort}
-              onChange={setSort}
-              options={[
-                [
-                  "trending",
-                  <span key="t" className="flex items-center gap-1.5">
-                    <IconFlame size={14} />
-                    Trending
-                  </span>,
-                ],
-                [
-                  "top",
-                  <span key="p" className="flex items-center gap-1.5">
-                    <IconTrophy size={14} />
-                    Top
-                  </span>,
-                ],
-                [
-                  "new",
-                  <span key="n" className="flex items-center gap-1.5">
-                    <IconClock size={14} />
-                    New
-                  </span>,
-                ],
-              ]}
-            />
-            <label className="field flex min-h-0 flex-1 items-center gap-2.5 bg-chip py-0 sm:w-[240px] sm:flex-none">
-              <IconSearch size={16} className="shrink-0 text-faint" />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter coins" aria-label="Filter coins" className="h-[38px] min-w-0 flex-1 bg-transparent text-sm outline-none" />
-            </label>
-            <div className="seg" role="group" aria-label="Layout">
-              <button type="button" aria-pressed={view === "list"} aria-label="Table" title="Table" onClick={() => pickView("list")} className="!px-2">
-                <IconList size={16} />
-              </button>
-              <button type="button" aria-pressed={view === "grid"} aria-label="Cards" title="Cards" onClick={() => pickView("grid")} className="!px-2">
-                <IconGrid size={16} />
-              </button>
-            </div>
-          </div>
+          <Seg
+            label="Which feed"
+            value={tab}
+            onChange={pick}
+            options={[
+              ["foryou", "For you"],
+              ["following", `Following${feed.me && feed.following.length ? ` · ${feed.following.length}` : ""}`],
+              ["new", "New"],
+              ["top", "Top"],
+            ]}
+          />
         </div>
 
-        {preview ? (
-          <p className="mt-5 flex items-start gap-2.5 rounded-xl border border-gold/25 bg-gold/8 px-4 py-3 text-sm text-fg/90">
-            <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-gold" />
-            Nothing has launched on the factory yet, so these rows are placeholders showing how the board looks. They can’t be traded.
-          </p>
-        ) : null}
-
-        <div className="mt-5">
-          {loading ? (
-            <BoardSkeleton view={view} />
-          ) : failed ? (
-            <div className="card">
-              <Empty
-                mark="끊김"
-                title="Couldn’t reach GIWA"
-                action={
-                  <button type="button" onClick={() => void refresh().catch(() => undefined)} className="btn btn-secondary">
-                    Try again
+        <div className="mt-7 grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="grid min-w-0 grid-cols-1 gap-4">
+            {feed.waiting ? (
+              <FeedSkeleton />
+            ) : failed ? (
+              <div className="card">
+                <Empty
+                  mark="끊김"
+                  title="Couldn’t reach GIWA"
+                  action={
+                    <button type="button" onClick={() => void refresh().catch(() => undefined)} className="btn btn-secondary">
+                      Try again
+                    </button>
+                  }
+                >
+                  The feed reads straight from the chain and the node didn’t answer. {note}
+                </Empty>
+              </div>
+            ) : !feed.hasCoins ? (
+              <div className="card">
+                <Empty
+                  mark="첫 코인"
+                  title="Nothing has launched yet"
+                  action={
+                    <Link to="/launch" className="btn btn-primary">
+                      <IconPlus size={17} />
+                      Launch the first coin
+                    </Link>
+                  }
+                >
+                  The feed fills with buys, launches and comments as soon as there is a coin to trade.
+                </Empty>
+              </div>
+            ) : tab === "top" ? (
+              <TopCoins coins={byVolume} ctx={ctx} usd={usd} />
+            ) : tab === "following" && !feed.me ? (
+              <div className="card">
+                <Empty
+                  mark="팔로우"
+                  title="See what the traders you follow are doing"
+                  action={
+                    <button type="button" onClick={joinIn} className="btn btn-light">
+                      Connect wallet
+                    </button>
+                  }
+                >
+                  Follow a wallet and every buy, sale, launch and comment it makes on Chimi shows up here.
+                </Empty>
+              </div>
+            ) : tab === "following" && feed.following.length === 0 ? (
+              <div className="card p-5">
+                <p className="text-[15px] font-semibold">You aren’t following anyone yet</p>
+                <p className="mt-1 text-sm text-muted">Start with a few of the busiest traders. Following is a signature, not a transaction, and needs a Dojang.</p>
+                <Suggestions items={feed.suggestions} profiles={profiles} usd={usd} />
+              </div>
+            ) : (
+              <>
+                {tab === "foryou" && feed.quiet ? <QuietLead feed={feed} usd={usd} /> : null}
+                {page.length === 0 ? (
+                  <div className="card">
+                    <Empty mark="조용함" title={tab === "following" ? "Nothing from the wallets you follow yet" : "Nothing here yet"}>
+                      {tab === "following" ? `When any of the ${feed.following.length} you follow buys, sells, launches or comments, it shows up here.` : "When someone trades, launches or comments, it shows up here within a minute."}
+                    </Empty>
+                  </div>
+                ) : (
+                  page.map((item) => <FeedCard key={item.key} item={item} ctx={ctx} />)
+                )}
+                {list.length > shown ? (
+                  <button type="button" onClick={() => setShown((n) => n + PAGE)} className="btn btn-secondary w-full">
+                    Show more ({list.length - shown} left)
                   </button>
-                }
-              >
-                The board reads straight from the chain and the node didn’t answer. {note}
-              </Empty>
-            </div>
-          ) : sorted.length === 0 ? (
-            <div className="card">
-              <Empty mark="없음" title={`No coin matches “${query.trim()}”`}>
-                Try a name, a ticker, or paste a token address.
-              </Empty>
-            </div>
-          ) : view === "list" ? (
-            <BoardTable rows={sorted} usd={usd} price={price} ready={ready} />
-          ) : (
-            <BoardGrid rows={sorted} usd={usd} />
-          )}
+                ) : null}
+                {tab === "following" && feed.following.length > 0 && feed.following.length < 3 && feed.suggestions.length > 0 ? (
+                  <div className="card p-5">
+                    <p className="th uppercase">More to follow</p>
+                    <Suggestions items={feed.suggestions.slice(0, 3)} profiles={profiles} usd={usd} />
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
+
+          <aside className="grid min-w-0 grid-cols-1 gap-5">
+            {feed.hasCoins ? (
+              <section className="card p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-[15px] font-semibold">Moving now</h3>
+                  <Link to="/board" className="text-[13px] font-semibold text-gold hover:underline">
+                    The board
+                  </Link>
+                </div>
+                <ul className="mt-3 grid gap-1">
+                  {byVolume.slice(0, 5).map((coin) => {
+                    const stats = feed.stats[coin.token.toLowerCase()];
+                    return (
+                      <li key={coin.token}>
+                        <Link to="/coin/$address" params={{ address: coin.token }} className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-raise">
+                          <TokenLogo symbol={coin.symbol} image={images[coin.token.toLowerCase()]} size={34} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-semibold">{coin.name}</span>
+                            <span className="num block text-xs text-muted">{usd(stats?.capEth)}</span>
+                          </span>
+                          <Change value={stats?.change} className="shrink-0 text-sm" />
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            ) : null}
+
+            {feed.suggestions.length > 0 ? (
+              <section className="card p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-[15px] font-semibold">Who to follow</h3>
+                  <Link to="/traders" className="text-[13px] font-semibold text-gold hover:underline">
+                    All traders
+                  </Link>
+                </div>
+                <Suggestions items={feed.suggestions.slice(0, 3)} profiles={profiles} usd={usd} />
+              </section>
+            ) : null}
+
+            <CreatorFeesMini coins={feed.live} />
+            <PointsCard />
+          </aside>
         </div>
       </section>
-
-      <section className="reveal page grid gap-5 pt-12 pb-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
-        <Tape listed={rows} byPool={byPool} ready={ready} loading={loading} />
-        <div className="grid content-start gap-5">
-          <PointsCard />
-          <Link to="/houses" className="card card-lift group flex items-center gap-4 p-5">
-            <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-raise2 text-gold">
-              <IconHouse size={24} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[17px] font-semibold tracking-[-0.01em]">Trade under one seal</span>
-              <span className="mt-0.5 block text-sm text-muted">Found a house or join one. Every point you earn counts for it too.</span>
-            </span>
-            <IconChevronRight size={18} className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-fg" />
-          </Link>
-        </div>
-      </section>
-
     </main>
   );
 }
 
-/* Hero --------------------------------------------------------------------------------------- */
-
-type Totals = { coins: number; capEth: number; volEth?: number; trades?: number; liqEth?: number };
-
-function Hero({
-  featured,
-  totals,
-  usd,
-  price,
-  preview,
-  loading,
-}: {
-  featured: Row[];
-  totals: Totals;
-  usd: (eth: number | undefined) => string;
-  price: (eth: number) => string;
-  preview: boolean;
-  loading: boolean;
-}) {
-  const slides = 1 + featured.length;
-  const [at, setAt] = useState(0);
-  const hold = useRef(false);
-  const index = at % slides;
-
-  useEffect(() => {
-    if (slides < 2) return;
-    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const timer = setInterval(() => {
-      if (!hold.current && document.visibilityState === "visible") setAt((n) => (n + 1) % slides);
-    }, 7000);
-    return () => clearInterval(timer);
-  }, [slides]);
-
-  const go = (n: number) => setAt(((n % slides) + slides) % slides);
-
+/** Wallets worth following, each with the reason and a Follow button. */
+function Suggestions({ items, profiles, usd }: { items: Suggestion[]; profiles: Record<string, Profile>; usd: (eth: number | undefined) => string }) {
   return (
-    <div
-      className="roof-frame relative isolate overflow-hidden rounded-3xl border border-line bg-[#0d1024]"
-      onMouseEnter={() => (hold.current = true)}
-      onMouseLeave={() => (hold.current = false)}
-      onFocusCapture={() => (hold.current = true)}
-      onBlurCapture={() => (hold.current = false)}
-      aria-roledescription="carousel"
-      aria-label="Featured"
-    >
-      <picture>
-        <source media="(max-width: 640px)" srcSet="/banner-960.webp" />
-        <img src="/banner.webp" alt="" fetchPriority="high" className="absolute inset-0 -z-20 size-full object-cover object-[center_38%]" />
-      </picture>
-      <LoopVideo wide={ROOF.wide} narrow={ROOF.narrow} className="absolute inset-0 -z-20 size-full object-cover object-[center_38%]" />
-      <div className="banner-fog -z-10" />
-      <div className="banner-fog banner-fog-b -z-10" />
-      <div className="roof-scrim absolute inset-0 -z-10" />
-
-      <div className="relative grid min-h-[440px] sm:min-h-[460px]">
-        {/* Slide 0: what Chimi is. */}
-        <Slide on={index === 0}>
-          <div className="flex h-full flex-col justify-end p-5 sm:p-8 lg:p-10">
-            <p className="flex items-center gap-2 text-[13px] font-medium text-fg/90">
-              <span className={`live-dot ${preview ? "text-gold" : "text-ok"}`} />
-              {preview ? "Preview" : "Live on GIWA Sepolia"}
-              <span className="font-serif text-[15px] text-gold">치미</span>
-            </p>
-            <h1 className="mt-3 max-w-[14ch] text-[44px] leading-[0.98] font-semibold tracking-[-0.04em] text-balance sm:text-[64px]">The crown goes on first.</h1>
-            <p className="mt-4 max-w-[46ch] text-[15px] leading-relaxed text-fg/80 sm:text-[17px]">
-              Every coin starts where others finish: in a locked pool, trading from block one. One transaction, no bonding curve.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-2.5">
-              <Link to="/launch" className="btn btn-lg btn-primary">
-                <IconPlus size={18} />
-                Launch a coin
-              </Link>
-              <a href="#board" className="btn btn-lg btn-glass">
-                Explore the board
-                <IconArrowDown size={16} />
-              </a>
-              <HowItWorks className="btn btn-lg gap-2 px-3 text-fg/85 underline-offset-4 hover:text-fg hover:underline">
-                <IconInfo size={17} />
-                How it works
-              </HowItWorks>
-            </div>
-            <StatBar
-              items={[
-                ["Coins", loading ? null : totals.coins.toLocaleString("en-US")],
-                ["24h volume", loading ? null : usd(totals.volEth)],
-                ["Market cap", loading ? null : usd(totals.coins ? totals.capEth : undefined)],
-                ["Liquidity", loading ? null : usd(totals.liqEth)],
-              ]}
-            />
-          </div>
-        </Slide>
-
-        {featured.map((row, i) => (
-          <Slide key={row.coin.token} on={index === i + 1}>
-            <div className="flex h-full items-end justify-between gap-8 p-5 sm:p-8 lg:p-10">
-              <div className="min-w-0 flex-1">
-                <p className="flex items-center gap-2 text-[13px] font-medium text-fg/90">
-                  <IconFlame size={15} className="text-gold" />
-                  {i === 0 ? "Leading the board" : `#${i + 1} on the board`}
-                  {row.coin.preview ? <span className="chip h-5 px-1.5 text-[11px]">preview</span> : null}
-                </p>
-                <div className="mt-4 flex items-center gap-4">
-                  <TokenLogo symbol={row.coin.symbol} image={row.image} size={64} shape="rounded" className="shadow-[0_12px_30px_-8px_rgba(0,0,0,.7)]" />
-                  <div className="min-w-0">
-                    <h2 className="truncate text-[36px] leading-[1.05] font-semibold tracking-[-0.035em] sm:text-[48px]">{row.coin.name}</h2>
-                    <p className="mt-1 flex items-center gap-2 text-[15px] text-fg/75">
-                      <span className="font-medium text-fg">${row.coin.symbol}</span>
-                      <span className="text-fg/40">·</span>
-                      <span className="num">by {shortAddr(row.coin.creator)}</span>
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-6 flex flex-wrap gap-2.5">
-                  <Link to="/coin/$address" params={{ address: row.coin.token }} className="btn btn-lg btn-light">
-                    Trade {row.coin.symbol}
-                    <IconChevronRight size={16} />
-                  </Link>
-                </div>
-                <StatBar
-                  items={[
-                    ["Market cap", usd(row.stats.capEth)],
-                    ["Price", price(row.stats.priceEth)],
-                    ["24h", <Change key="c" value={row.stats.change} />],
-                    ["24h volume", row.coin.preview ? "—" : usd(row.stats.volEth)],
-                  ]}
-                />
-              </div>
-              <Link
-                to="/coin/$address"
-                params={{ address: row.coin.token }}
-                tabIndex={-1}
-                aria-hidden
-                className="mb-2 hidden aspect-square w-[240px] shrink-0 rotate-3 overflow-hidden rounded-3xl border border-white/15 shadow-[0_30px_70px_-20px_rgba(0,0,0,.85)] transition-transform duration-300 [container-type:inline-size] hover:rotate-1 lg:block xl:w-[280px]"
-              >
-                <TokenArt symbol={row.coin.symbol} image={row.image} />
-              </Link>
-            </div>
-          </Slide>
-        ))}
-      </div>
-
-      {slides > 1 ? (
-        <div className="absolute top-5 right-5 z-10 flex items-center gap-2 sm:top-7 sm:right-8">
-          <div className="glass flex items-center gap-1.5 rounded-full px-2.5 py-2">
-            {Array.from({ length: slides }, (_, i) => (
-              <button
-                key={i}
-                type="button"
-                aria-label={`Slide ${i + 1} of ${slides}`}
-                aria-current={i === index}
-                onClick={() => go(i)}
-                className={`h-1.5 rounded-full transition-all duration-300 ${i === index ? "w-6 bg-fg" : "w-1.5 bg-fg/35 hover:bg-fg/60"}`}
-              />
-            ))}
-          </div>
-          <button type="button" aria-label="Previous" onClick={() => go(index - 1)} className="glass hidden size-9 place-items-center rounded-full text-fg hover:bg-white/10 sm:grid">
-            <IconChevronLeft size={16} />
-          </button>
-          <button type="button" aria-label="Next" onClick={() => go(index + 1)} className="glass hidden size-9 place-items-center rounded-full text-fg hover:bg-white/10 sm:grid">
-            <IconChevronRight size={16} />
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function Slide({ on, children }: { on: boolean; children: ReactNode }) {
-  return (
-    <div
-      aria-hidden={!on}
-      inert={!on}
-      className={`col-start-1 row-start-1 transition-[opacity,transform] duration-500 ease-out ${on ? "opacity-100" : "pointer-events-none translate-y-2 opacity-0"}`}
-    >
-      {children}
-    </div>
-  );
-}
-
-function StatBar({ items }: { items: [string, ReactNode | null][] }) {
-  return (
-    <dl className="glass mt-7 grid max-w-[640px] grid-cols-2 gap-y-3 rounded-2xl px-1 py-3.5 sm:grid-cols-4">
-      {items.map(([label, value], i) => (
-        <div key={label} className={`min-w-0 px-4 ${i % 2 ? "border-l border-white/10" : ""} ${i ? "sm:border-l sm:border-white/10" : ""}`}>
-          <dt className="text-xs text-fg/60">{label}</dt>
-          <dd className="num mt-0.5 truncate text-[19px] font-semibold tracking-[-0.02em]">{value === null ? (
-              <span className="skeleton mt-1 h-5 w-16 opacity-60" />
-            ) : (
-              <span key={typeof value === "string" ? value : undefined} className="settle">
-                {value}
-              </span>
-            )}
-          </dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
-/* Board -------------------------------------------------------------------------------------- */
-
-const GRID =
-  "grid items-center gap-x-4 px-4 sm:px-5 grid-cols-[1.5rem_minmax(0,1fr)_auto] md:grid-cols-[2rem_minmax(0,1.5fr)_repeat(3,minmax(0,1fr))] xl:grid-cols-[2rem_minmax(0,1.6fr)_repeat(5,minmax(0,1fr))_7.5rem]";
-
-function BoardTable({ rows, usd, price, ready }: { rows: Row[]; usd: (eth: number | undefined) => string; price: (eth: number) => string; ready: boolean }) {
-  return (
-    <div className="card overflow-hidden">
-      <div className={`${GRID} th border-b border-line py-3`}>
-        <span>#</span>
-        <span>Coin</span>
-        <span className="text-right md:hidden">Market cap</span>
-        <span className="hidden text-right md:block">Price</span>
-        <span className="hidden text-right md:block">24h</span>
-        <span className="hidden text-right md:block">Market cap</span>
-        <span className="hidden text-right xl:block">24h volume</span>
-        <span className="hidden text-right xl:block">Liquidity</span>
-        <span className="hidden text-right xl:block">Last 24h</span>
-      </div>
-      {rows.map((row, i) => {
-        const waiting = !row.coin.preview && !ready && row.stats.volEth === undefined;
-        return (
-          <Link key={row.coin.token} to="/coin/$address" params={{ address: row.coin.token }} className={`${GRID} row-hover border-b border-line/70 py-3 last:border-0`}>
-            <span className="num text-sm text-faint">{i + 1}</span>
-            <span className="flex min-w-0 items-center gap-3">
-              <TokenLogo symbol={row.coin.symbol} image={row.image} size={40} />
-              <span className="min-w-0">
-                <span className="flex items-center gap-2">
-                  <span className="truncate text-[15px] font-semibold">{row.coin.name}</span>
-                  {row.coin.preview ? <span className="chip h-5 shrink-0 px-1.5 text-[11px]">preview</span> : null}
-                </span>
-                <span className="block truncate text-[13px] text-muted">${row.coin.symbol}</span>
-              </span>
+    <ul className="mt-3 grid gap-1">
+      {items.map((s) => (
+        <li key={s.wallet} className="-mx-2 flex items-center justify-between gap-3 rounded-xl px-2 py-2 hover:bg-raise">
+          <span className="min-w-0">
+            <span className="flex items-center gap-1.5 text-[15px] font-medium">
+              <TraderLink address={s.wallet} name={profiles[s.wallet]?.name} size={28} className="gap-3" />
+              <DojangMark verified={profiles[s.wallet]?.verified} />
             </span>
-            <span className="text-right md:hidden">
-              <span className="num block text-[15px] font-medium">{usd(row.stats.capEth)}</span>
-              <Change value={row.stats.change} className="text-xs" />
-            </span>
-            <span className="num hidden text-right text-[15px] md:block">{price(row.stats.priceEth)}</span>
-            <span className="hidden text-right text-[15px] md:block">{waiting ? <Dots /> : <Change value={row.stats.change} />}</span>
-            <span className="num hidden text-right text-[15px] font-medium md:block">{usd(row.stats.capEth)}</span>
-            <span className="num hidden text-right text-[15px] xl:block">{row.coin.preview ? "—" : waiting ? <Dots /> : usd(row.stats.volEth)}</span>
-            <span className="num hidden text-right text-[15px] xl:block">{row.coin.preview ? "—" : usd(row.liqEth)}</span>
-            <span className="hidden justify-end xl:flex">{waiting ? <span className="skeleton h-8 w-[104px]" /> : <Sparkline values={row.stats.spark} width={104} height={34} />}</span>
-          </Link>
-        );
-      })}
-    </div>
-  );
-}
-
-function Dots() {
-  return <span className="skeleton ml-auto h-4 w-12" />;
-}
-
-function BoardGrid({ rows, usd }: { rows: Row[]; usd: (eth: number | undefined) => string }) {
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-      {rows.map((row) => (
-        <Link key={row.coin.token} to="/coin/$address" params={{ address: row.coin.token }} className="card card-lift group overflow-hidden">
-          <div className="relative aspect-square overflow-hidden bg-raise [container-type:inline-size]">
-            <div className="size-full transition-transform duration-500 ease-out group-hover:scale-[1.04]">
-              <TokenArt symbol={row.coin.symbol} image={row.image} />
-            </div>
-            {row.coin.preview ? <span className="chip absolute top-2.5 left-2.5 h-6 bg-bg/70 backdrop-blur">preview</span> : null}
-            <span className="glass absolute right-2.5 bottom-2.5 rounded-lg px-2 py-1 text-xs font-medium">
-              <Change value={row.stats.change} />
-            </span>
-          </div>
-          <div className="p-3.5 sm:p-4">
-            <p className="truncate text-[15px] font-semibold">{row.coin.name}</p>
-            <p className="truncate text-[13px] text-muted">${row.coin.symbol}</p>
-            <div className="mt-3 flex items-end justify-between gap-2 border-t border-line pt-3">
-              <div className="min-w-0">
-                <p className="text-[11px] text-faint">Market cap</p>
-                <p className="num truncate text-[15px] font-semibold">{usd(row.stats.capEth)}</p>
-              </div>
-              <div className="min-w-0 text-right">
-                <p className="text-[11px] text-faint">24h volume</p>
-                <p className="num truncate text-[15px] font-medium text-muted">{row.coin.preview ? "—" : usd(row.stats.volEth)}</p>
-              </div>
-            </div>
-          </div>
-        </Link>
-      ))}
-      <Link to="/launch" className="group flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-edge p-5 text-center transition-colors hover:border-seal/70 hover:bg-seal/5">
-        <span className="grid size-12 place-items-center rounded-2xl bg-raise2 text-fg transition-colors group-hover:bg-seal group-hover:text-onseal">
-          <IconPlus size={22} />
-        </span>
-        <span>
-          <span className="block text-[15px] font-semibold">Your coin here</span>
-          <span className="mt-0.5 block text-[13px] text-muted">Launch in one transaction</span>
-        </span>
-      </Link>
-    </div>
-  );
-}
-
-function BoardSkeleton({ view }: { view: View }) {
-  if (view === "grid") {
-    return (
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-        {Array.from({ length: 4 }, (_, i) => (
-          <div key={i} className="card overflow-hidden">
-            <span className="skeleton aspect-square rounded-none" />
-            <div className="space-y-2 p-4">
-              <span className="skeleton h-4 w-2/3" />
-              <span className="skeleton h-3 w-1/3" />
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-  return (
-    <div className="card divide-y divide-line/70">
-      {Array.from({ length: 5 }, (_, i) => (
-        <div key={i} className="flex items-center gap-4 px-5 py-3.5">
-          <span className="skeleton h-4 w-4" />
-          <span className="skeleton size-10 rounded-full" />
-          <span className="flex-1 space-y-2">
-            <span className="skeleton h-4 w-40 max-w-full" />
-            <span className="skeleton h-3 w-16" />
+            <span className="num mt-0.5 block pl-10 text-xs text-muted">{s.points !== undefined ? `${fmtPoints(s.points)} points this season` : `${usd(s.eth)} traded today`}</span>
           </span>
-          <span className="skeleton hidden h-4 w-20 md:block" />
-          <span className="skeleton h-4 w-20" />
-        </div>
+          <FollowButton wallet={s.wallet} name={profiles[s.wallet]?.name} size="sm" />
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
 
-/* Below the board ---------------------------------------------------------------------------- */
+/** What leads the feed when nobody has traded for an hour: the last day in numbers, and a way to start something. */
+function QuietLead({ feed, usd }: { feed: HomeFeed; usd: (eth: number | undefined) => string }) {
+  const { trades, eth, wallets } = feed.digest;
+  return (
+    <section className="card p-5">
+      <h3 className="text-[19px] font-semibold tracking-[-0.01em]">Quiet on GIWA right now</h3>
+      <p className="mt-1 text-sm text-muted">{trades === 0 ? "No trades in the last day. Buy a coin or launch one and the feed starts here." : "No trades in the last hour. Here is the last day."}</p>
+      <dl className="mt-4 grid grid-cols-3 gap-2.5">
+        {(
+          [
+            ["Trades", trades.toLocaleString("en-US")],
+            ["Volume", usd(eth)],
+            ["Wallets trading", wallets.toLocaleString("en-US")],
+          ] as const
+        ).map(([label, value]) => (
+          <div key={label} className="rounded-xl bg-raise px-3.5 py-3">
+            <dt className="text-xs text-muted">{label}</dt>
+            <dd className="num mt-0.5 truncate text-[19px] font-semibold tracking-[-0.02em]">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="mt-4 flex flex-wrap gap-2.5">
+        <Link to="/launch" className="btn btn-primary">
+          <IconPlus size={17} />
+          Launch a coin
+        </Link>
+        <Link to="/board" className="btn btn-secondary">
+          Open the board
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+/** The Top tab: the coins by what traded today, each one press from a buy. */
+function TopCoins({ coins, ctx, usd }: { coins: HomeFeed["live"]; ctx: CardContext; usd: (eth: number | undefined) => string }) {
+  return (
+    <section className="card overflow-hidden">
+      <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3.5 sm:px-5">
+        <h3 className="text-[15px] font-semibold">Most traded today</h3>
+        <Link to="/board" className="text-[13px] font-semibold text-gold hover:underline">
+          Open the board
+        </Link>
+      </div>
+      <ul>
+        {coins.slice(0, 20).map((coin, i) => {
+          const stats = ctx.stats[coin.token.toLowerCase()];
+          return (
+            <li key={coin.token} className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line/70 px-4 py-3 last:border-0 sm:px-5">
+              <span className="num w-5 text-sm text-faint">{i + 1}</span>
+              <Link to="/coin/$address" params={{ address: coin.token }} className="flex min-w-0 flex-1 items-center gap-3">
+                <TokenLogo symbol={coin.symbol} image={ctx.images[coin.token.toLowerCase()]} size={38} />
+                <span className="min-w-0">
+                  <span className="block truncate text-[15px] font-semibold hover:text-gold">{coin.name}</span>
+                  <span className="num block truncate text-[13px] text-muted">
+                    {usd(stats?.capEth)} cap · {usd(stats?.volEth)} today
+                  </span>
+                </span>
+              </Link>
+              <Change value={stats?.change} className="shrink-0 text-sm" />
+              <QuickBuy coin={coin} amounts={["0.01"]} />
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function FeedSkeleton() {
+  return (
+    <>
+      {Array.from({ length: 4 }, (_, i) => (
+        <div key={i} className="card space-y-3.5 p-5" aria-hidden>
+          <div className="flex items-center gap-3">
+            <span className="skeleton size-[38px] rounded-full" />
+            <span className="flex-1 space-y-2">
+              <span className="skeleton block h-4 w-2/3" />
+              <span className="skeleton block h-3 w-1/3" />
+            </span>
+          </div>
+          <span className="skeleton block h-16 w-full rounded-xl" />
+        </div>
+      ))}
+    </>
+  );
+}
 
 function PointsCard() {
   const now = useNow();
@@ -564,15 +374,15 @@ function PointsCard() {
           <IconPoints size={14} />
           Season 1
         </p>
-        <p className="mt-3 text-[26px] leading-[1.1] font-semibold tracking-[-0.03em]">{fmtPoints(DAILY_POOL)} points, every day</p>
-        <p className="mt-2 text-sm text-muted">Shared by everyone with a Dojang who trades Chimi coins. Creators earn on their coin’s volume too.</p>
-        <div className="mt-5 flex items-end justify-between gap-3 border-t border-line pt-4">
+        <p className="mt-3 text-[22px] leading-[1.15] font-semibold tracking-[-0.03em]">{fmtPoints(DAILY_POOL)} points, every day</p>
+        <p className="mt-2 text-sm text-muted">Shared by everyone with a Dojang who trades Chimi coins. Leading a buy and launching a coin earn too.</p>
+        <div className="mt-4 flex items-end justify-between gap-3 border-t border-line pt-4">
           <div>
             <p className="text-xs text-faint">Today’s pool is shared out in</p>
-            <p className="num mt-0.5 text-xl font-semibold tracking-[-0.02em]">{left === null ? "—" : left > 0 ? duration(left) : "now…"}</p>
+            <p className="num mt-0.5 text-lg font-semibold tracking-[-0.02em]">{left === null ? "—" : left > 0 ? duration(left) : "now…"}</p>
           </div>
           <span className="flex items-center gap-1 text-sm font-medium text-fg">
-            See the board
+            Points
             <IconChevronRight size={15} className="transition-transform group-hover:translate-x-0.5" />
           </span>
         </div>
@@ -580,4 +390,3 @@ function PointsCard() {
     </Link>
   );
 }
-

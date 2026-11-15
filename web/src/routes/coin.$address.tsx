@@ -37,9 +37,11 @@ import { Blockie, Change, CopyButton, Empty, Modal, Note, Seg, TraderLink } from
 
 export const Route = createFileRoute("/coin/$address")({
   // ?copy=<wallet>&eth=<their size> opens the page ready to copy that wallet's buy (the Copy button in the feed).
-  validateSearch: (search: Record<string, unknown>): { copy?: string; eth?: number } => ({
+  // ?tab=comments opens it on the thread (a comment card in the feed).
+  validateSearch: (search: Record<string, unknown>): { copy?: string; eth?: number; tab?: "comments" } => ({
     copy: typeof search.copy === "string" && /^0x[0-9a-fA-F]{40}$/.test(search.copy) ? search.copy.toLowerCase() : undefined,
     eth: Number.isFinite(Number(search.eth)) && Number(search.eth) > 0 ? Number(search.eth) : undefined,
+    tab: search.tab === "comments" ? "comments" : undefined,
   }),
   component: CoinPage,
 });
@@ -94,7 +96,7 @@ function CoinPage() {
   const [unit, setUnit] = useState<"mcap" | "price">("mcap");
   const [chartKind, setChartKind] = useState<"candles" | "line">("candles");
   const [traders, setTraders] = useState<BubbleMode>("all");
-  const [panel, setPanel] = useState<"trades" | "holders" | "comments">("trades");
+  const [panel, setPanel] = useState<"trades" | "holders" | "comments">(search.tab ?? "trades");
   const thread = useComments(coin && !coin.preview ? coin.token : undefined);
   const [shown, setShown] = useState(25);
   const [reload, setReload] = useState(0);
@@ -339,7 +341,7 @@ function CoinPage() {
               mark="없음"
               title="This coin isn’t on Chimi’s factory"
               action={
-                <Link to="/" className="btn btn-secondary">
+                <Link to="/board" className="btn btn-secondary">
                   Back to the board
                 </Link>
               }
@@ -375,7 +377,7 @@ function CoinPage() {
   return (
     <main className="page pt-2 pb-16">
       <nav className="flex items-center gap-1.5 text-sm text-muted" aria-label="Breadcrumb">
-        <Link to="/" className="hover:text-fg">
+        <Link to="/board" className="hover:text-fg">
           Board
         </Link>
         <IconChevronRight size={13} className="text-faint" />

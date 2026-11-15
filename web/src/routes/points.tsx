@@ -161,7 +161,7 @@ function BoardRows({
         title={query ? "Nobody on this board matches" : board === "today" ? "No trades today yet" : board === "last" ? "No day has closed yet" : "No points yet this season"}
         action={
           query ? null : (
-            <Link to="/" className="btn btn-primary">
+            <Link to="/board" className="btn btn-primary">
               Find a coin
             </Link>
           )
