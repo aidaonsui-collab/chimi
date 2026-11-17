@@ -6,10 +6,8 @@ import {
   forYou,
   fromFollowed,
   isQuiet,
-  launchesOnly,
   packBig,
   suggestTraders,
-  topTraders,
   unpackBig,
   type CapPoint,
   type FeedComment,
@@ -147,7 +145,7 @@ export const knownTime = (time: number) => time >= UNKNOWN_BEFORE;
 
 export type HomeFeed = ReturnType<typeof useHomeFeed>;
 
-/** Everything the home page shows: the feed's tabs, the coins beside it, and the quiet-day digest. */
+/** Everything the home page shows: the feed's tabs, the coins for the board under it, and the quiet-day digest. */
 export function useHomeFeed(nowMs: number | null) {
   const { coins, deployment, account, loading } = useChimi();
   const fromChain = useMemo(() => coins.filter((c) => !c.preview), [coins]);
@@ -237,14 +235,12 @@ export function useHomeFeed(nowMs: number | null) {
       now,
       trades,
       items,
-      tabs: { foryou: forYou(items), following: fromFollowed(items), new: launchesOnly(items) } satisfies Record<string, FeedItem[]>,
+      tabs: { foryou: forYou(items), following: fromFollowed(items) } satisfies Record<string, FeedItem[]>,
       quiet: isQuiet(
         items.filter((i) => knownTime(i.time)),
         now,
       ),
       digest: digest(trades, now),
-      /** The day's busiest wallets, by ETH traded. */
-      busiest: topTraders(trades, now - DAY),
       suggestions: suggestTraders(points?.season ?? [], trades, [me, ...following]),
     };
   }, [live, byPool, record.trades, byToken, times, comments, me, following, followers, ethUsd, stats, points, nowMs]);
@@ -252,6 +248,8 @@ export function useHomeFeed(nowMs: number | null) {
   return {
     ...feed,
     live,
+    /** When each coin launched, by lowercase token (unix seconds). Absent until read, and for coins too old to read. */
+    launched: times,
     byToken,
     byPool,
     stats,

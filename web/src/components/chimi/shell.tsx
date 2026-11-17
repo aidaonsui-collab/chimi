@@ -35,7 +35,7 @@ type NavItem = {
   on: (path: string) => boolean;
 };
 
-const FEED: NavItem = { to: "/", label: "Feed", icon: IconFeed, on: (p) => p === "/" };
+const FEED: NavItem = { to: "/", label: "Home", icon: IconFeed, on: (p) => p === "/" };
 const BOARD: NavItem = { to: "/board", label: "Board", icon: IconBoard, on: (p) => p === "/board" || p.startsWith("/coin/") };
 const TRADERS: NavItem = { to: "/traders", label: "Traders", icon: IconTraders, on: (p) => p === "/traders" || p.startsWith("/u/") };
 
@@ -327,7 +327,7 @@ function Footer() {
         <div className="grid content-start gap-2.5 text-sm">
           <p className="th uppercase">Trade</p>
           <Link to="/" className={link}>
-            Feed
+            Home
           </Link>
           <Link to="/board" className={link}>
             Board

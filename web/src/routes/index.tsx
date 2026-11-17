@@ -3,8 +3,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { compactUsd, ethText } from "@/lib/chimi/format";
 import { useHomeFeed, type HomeFeed } from "@/lib/chimi/feed";
 import { freshnessKey, type FeedItem, type Suggestion } from "@/lib/chimi/feed-rules";
-import { followerCounts } from "@/lib/chimi/follow-rules";
-import { useFollows } from "@/lib/chimi/follows";
 import { heldKey, useHeldShares } from "@/lib/chimi/holdings";
 import { usePoolEth } from "@/lib/chimi/live";
 import { short } from "@/lib/chimi/market";
@@ -12,41 +10,48 @@ import { DAILY_POOL, dayEndMs, today, type Profile } from "@/lib/chimi/points-ru
 import { fmtPoints, useProfiles } from "@/lib/chimi/rewards";
 import { useTokenImages } from "@/lib/chimi/token-image";
 import { CreatorFeesMini } from "@/components/chimi/creator-fees";
-import { FeedRow, QuickAmount, QuickBuy, RowSkeleton, Ticker, holdersIn, walletsIn, type RowContext } from "@/components/chimi/feed-rows";
+import { FeedRow, QuickAmount, RowSkeleton, Ticker, holdersIn, walletsIn, type RowContext } from "@/components/chimi/feed-rows";
 import { HomeTop, type HeroStat } from "@/components/chimi/feed-hero";
 import { FollowButton } from "@/components/chimi/follow";
-import { IconArrowUp, IconChevronRight, IconPlus, IconPoints } from "@/components/chimi/icons";
+import { HomeBoard } from "@/components/chimi/home-board";
+import { Leaders } from "@/components/chimi/home-leaders";
+import { IconArrowUp, IconChevronDown, IconChevronRight, IconPlus, IconPoints } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
 import { DojangMark, duration, useNow } from "@/components/chimi/rewards-bits";
 import { toast } from "@/components/chimi/toast";
-import { TokenLogo } from "@/components/chimi/token-logo";
-import { Blockie, Change, Empty, Seg, TraderLink } from "@/components/chimi/ui";
+import { Empty, Seg, TraderLink } from "@/components/chimi/ui";
 
 /**
- * The home page is the feed: who is buying, selling, launching and saying what, newest first, with the coins that
- * are moving and the traders worth following beside it. The board of every coin lives at /board.
+ * The home page is the feed and the board together. The feed leads: who is buying, selling, launching and saying
+ * what, newest first, with the traders and houses worth following beside it. Right under it is the board: every
+ * trading pair, ranked, next to the pairs that have just launched. Nothing here needs another page to be read; the
+ * full tables are at /board and /traders.
  */
 export const Route = createFileRoute("/")({ component: Home });
 
-type Tab = "foryou" | "following" | "new" | "top";
+type Tab = "foryou" | "following";
 
 const TAB_KEY = "chimi.feed.tab";
-/** Rows are small, so a page of the feed is a few screens of them. */
+/** Rows are small, so a page of the opened feed is a few screens of them. */
 const PAGE = 30;
+/** Rows drawn while the feed is folded to its panel: more than the tallest panel holds. */
+const FOLDED = 14;
 
 function Home() {
-  const { account, connect, deployment, preview, note, refresh, loading } = useChimi();
+  const { account, connect, coins, deployment, preview, note, refresh, loading } = useChimi();
   const nowMs = useNow(30_000);
   const feed = useHomeFeed(nowMs);
-  const images = useTokenImages(useMemo(() => feed.live.map((coin) => coin.token), [feed.live]));
+  const listed = preview ? coins : feed.live;
+  const images = useTokenImages(useMemo(() => listed.map((coin) => coin.token), [listed]));
   const reserves = usePoolEth(feed.live, deployment?.weth);
   const [tab, setTab] = useState<Tab>("foryou");
   const [shown, setShown] = useState(PAGE);
+  // Folded, the feed is a panel beside the leaders with the board under it. Opened, it runs as long as it likes.
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(TAB_KEY);
-      if (saved === "following" || saved === "new" || saved === "top") setTab(saved);
+      if (localStorage.getItem(TAB_KEY) === "following") setTab("following");
     } catch {
       /* private mode */
     }
@@ -61,10 +66,10 @@ function Home() {
     }
   };
 
-  const list: FeedItem[] = tab === "top" ? [] : feed.tabs[tab];
-  const page = list.slice(0, shown);
+  const list: FeedItem[] = feed.tabs[tab];
+  const page = list.slice(0, open ? shown : FOLDED);
 
-  // Cards that arrive while the page is open rise into place; the ones it opened with stay still. If the reader
+  // Rows that arrive while the page is open rise into place; the ones it opened with stay still. If the reader
   // has scrolled down, a pill says how many came in above.
   const seen = useRef<{ tab: Tab; keys: Set<string> } | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(() => new Set());
@@ -96,21 +101,38 @@ function Home() {
     return () => window.removeEventListener("scroll", onScroll);
   }, [unseen]);
 
-  // The tabs stick under the top bar once the heading has scrolled away, and take a backing when they do.
-  const mark = useRef<HTMLDivElement>(null);
-  const [stuck, setStuck] = useState(false);
+  // Folded, the panel cuts the list where its height ends. Whether anything is cut decides if "Show more" is there.
+  const body = useRef<HTMLDivElement>(null);
+  const inner = useRef<HTMLDivElement>(null);
+  const [cut, setCut] = useState(false);
   useEffect(() => {
-    const el = mark.current;
-    if (!el || typeof IntersectionObserver === "undefined") return;
-    const watch = new IntersectionObserver(([entry]) => setStuck(!!entry && !entry.isIntersecting && entry.boundingClientRect.top < 80), { rootMargin: "-65px 0px 0px 0px" });
+    const el = body.current;
+    if (!el || open || typeof ResizeObserver === "undefined") {
+      setCut(false);
+      return;
+    }
+    const measure = () => setCut(el.scrollHeight - el.clientHeight > 12);
+    measure();
+    const watch = new ResizeObserver(measure);
     watch.observe(el);
+    if (inner.current) watch.observe(inner.current);
     return () => watch.disconnect();
-  }, []);
+  }, [open]);
+  const more = !open && (cut || list.length > page.length);
+  const fold = () => {
+    setOpen(false);
+    setShown(PAGE);
+  };
+  // Folding from far down the opened feed would leave the reader in the middle of the board, so once the panel has
+  // shrunk the page goes back to its top.
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (wasOpen.current && !open) document.getElementById("feed")?.scrollIntoView({ block: "start" });
+    wasOpen.current = open;
+  }, [open]);
+
   const profiles = useProfiles(
-    useMemo(
-      () => [...new Set([...walletsIn(feed.items.slice(0, 60)), ...walletsIn(page), ...feed.suggestions.map((s) => s.wallet), ...feed.busiest.map((t) => t.wallet)])],
-      [feed.items, page, feed.suggestions, feed.busiest],
-    ),
+    useMemo(() => [...new Set([...walletsIn(feed.items.slice(0, 60)), ...walletsIn(page), ...feed.suggestions.map((s) => s.wallet)])], [feed.items, page, feed.suggestions]),
     feed.points?.file.profiles,
   );
   // The proof beside a name: what the wallet holds of the coin right now, and its place in the season.
@@ -120,8 +142,6 @@ function Home() {
   );
   const bought = useMemo(() => new Set(feed.trades.filter((t) => t.buy).map((t) => heldKey(t.token, t.wallet))), [feed.trades]);
   const ranks = useMemo(() => new Map((feed.points?.season ?? []).filter((s) => s.rank <= 10 && s.points > 0).map((s) => [s.wallet.toLowerCase(), s.rank])), [feed.points]);
-  const { data: follows } = useFollows();
-  const followers = useMemo(() => followerCounts(follows?.state), [follows]);
   const ctx: RowContext = { byToken: feed.byToken, images, stats: feed.stats, profiles, ethUsd: feed.ethUsd, now: feed.now, me: feed.me, held, bought, ranks };
 
   const usd = (eth: number | undefined) => (eth === undefined ? "—" : feed.ethUsd ? compactUsd(eth * feed.ethUsd) : `${ethText(eth)} ETH`);
@@ -135,16 +155,12 @@ function Home() {
     };
   }, [feed.stats, feed.live, reserves]);
   const heroStats: HeroStat[] = [
-    ["Coins", loading ? null : feed.live.length.toLocaleString("en-US")],
+    ["Pairs", loading ? null : feed.live.length.toLocaleString("en-US")],
     ["24h volume", loading ? null : usd(totals.volEth)],
     ["Market cap", loading ? null : usd(feed.hasCoins ? totals.capEth : undefined)],
     ["Liquidity", loading ? null : usd(totals.liqEth)],
   ];
 
-  const byVolume = useMemo(
-    () => [...feed.live].sort((a, b) => (feed.stats[b.token.toLowerCase()]?.volEth ?? 0) - (feed.stats[a.token.toLowerCase()]?.volEth ?? 0) || (feed.stats[b.token.toLowerCase()]?.capEth ?? 0) - (feed.stats[a.token.toLowerCase()]?.capEth ?? 0)),
-    [feed.live, feed.stats],
-  );
   const failed = !loading && !feed.hasCoins && !preview && !!note;
   const joinIn = () =>
     void connect().catch((err: unknown) => {
@@ -162,45 +178,6 @@ function Home() {
 
       <HomeTop stats={heroStats} live={!preview} />
 
-      {/* On a phone the heading and the quick-buy amount share one slim line; wider screens carry both in the bar below. */}
-      <div className="page flex items-center justify-between gap-3 pt-4 sm:hidden">
-        <h2 className="text-[20px] font-semibold tracking-[-0.02em]">{account ? "Your feed" : "The feed"}</h2>
-        <QuickAmount />
-      </div>
-
-      <div ref={mark} aria-hidden className="h-2 sm:h-5" />
-      <div className="feed-bar sticky top-16 z-20" data-stuck={stuck ? "" : undefined}>
-        <div className="page flex items-center gap-3 py-2">
-          <h2 className="mr-1 hidden text-[20px] font-semibold tracking-[-0.02em] whitespace-nowrap sm:block">{account ? "Your feed" : "The feed"}</h2>
-          <div className="no-scrollbar -mx-1 min-w-0 overflow-x-auto px-1">
-            <Seg
-              label="Which feed"
-              value={tab}
-              onChange={pick}
-              options={[
-                ["foryou", "For you"],
-                ["following", `Following${feed.me && feed.following.length ? ` · ${feed.following.length}` : ""}`],
-                ["new", "New"],
-                ["top", "Top"],
-              ]}
-            />
-          </div>
-          <span className="ml-auto hidden shrink-0 items-center gap-2 text-[12.5px] text-muted sm:flex" role="status">
-            {feed.waiting || feed.refreshing ? (
-              <>
-                <span className="spinner" aria-hidden />
-                Updating
-              </>
-            ) : (
-              <>
-                <span className="live-dot text-ok" />
-                Live
-              </>
-            )}
-          </span>
-          <QuickAmount className="hidden sm:inline-flex" />
-        </div>
-      </div>
       {unseen > 0 ? (
         <button
           type="button"
@@ -215,13 +192,46 @@ function Home() {
         </button>
       ) : null}
 
-      <section className="page pt-2">
-        <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="grid min-w-0 grid-cols-1 gap-3">
-            {feed.waiting ? (
-              <FeedSkeleton />
-            ) : failed ? (
-              <div className="card">
+      <div className="page home-grid">
+        <section id="feed" className="card home-feed scroll-mt-20" data-folded={open ? undefined : ""} aria-labelledby="feed-title">
+          <div className="flex items-center gap-2.5 px-3 pt-3 pb-2.5 sm:gap-3 sm:px-4">
+            <h2 id="feed-title" className="sr-only text-[17px] font-semibold tracking-[-0.02em] whitespace-nowrap sm:not-sr-only">
+              {account ? "Your feed" : "The feed"}
+            </h2>
+            <Seg
+              label="Which feed"
+              value={tab}
+              onChange={pick}
+              options={[
+                ["foryou", "For you"],
+                ["following", `Following${feed.me && feed.following.length ? ` · ${feed.following.length}` : ""}`],
+              ]}
+            />
+            <span className="ml-auto hidden shrink-0 items-center gap-2 text-[12.5px] text-muted sm:flex" role="status">
+              {feed.waiting || feed.refreshing ? (
+                <>
+                  <span className="spinner" aria-hidden />
+                  Updating
+                </>
+              ) : (
+                <>
+                  <span className="live-dot text-ok" />
+                  Live
+                </>
+              )}
+            </span>
+            <QuickAmount className="ml-auto sm:ml-0" />
+          </div>
+
+          <div ref={body} className="home-feed-body border-t border-line/70">
+            <div ref={inner}>
+              {feed.waiting ? (
+                <ul aria-hidden>
+                  {Array.from({ length: 8 }, (_, i) => (
+                    <RowSkeleton key={i} />
+                  ))}
+                </ul>
+              ) : failed ? (
                 <Empty
                   mark="끊김"
                   title="Couldn’t reach GIWA"
@@ -233,9 +243,7 @@ function Home() {
                 >
                   The feed reads straight from the chain and the node didn’t answer. {note}
                 </Empty>
-              </div>
-            ) : !feed.hasCoins ? (
-              <div className="card">
+              ) : !feed.hasCoins ? (
                 <Empty
                   mark="첫 코인"
                   title="Nothing has launched yet"
@@ -248,11 +256,7 @@ function Home() {
                 >
                   The feed fills with buys, launches and comments as soon as there is a coin to trade.
                 </Empty>
-              </div>
-            ) : tab === "top" ? (
-              <TopCoins coins={byVolume} ctx={ctx} usd={usd} />
-            ) : tab === "following" && !feed.me ? (
-              <div className="card">
+              ) : tab === "following" && !feed.me ? (
                 <Empty
                   mark="팔로우"
                   title="See what the traders you follow are doing"
@@ -264,114 +268,75 @@ function Home() {
                 >
                   Follow a wallet and every buy, sale, launch and comment it makes on Chimi shows up here.
                 </Empty>
-              </div>
-            ) : tab === "following" && feed.following.length === 0 ? (
-              <div className="card p-5">
-                <p className="text-[15px] font-semibold">You aren’t following anyone yet</p>
-                <p className="mt-1 text-sm text-muted">Start with a few of the busiest traders. Following is a signature, not a transaction, and needs a Dojang.</p>
-                <Suggestions items={feed.suggestions} profiles={profiles} usd={usd} />
-              </div>
-            ) : (
-              <>
-                {!feed.tradesReady ? <TradesOnTheWay /> : tab === "foryou" && feed.quiet ? <QuietLead feed={feed} usd={usd} /> : null}
-                {page.length === 0 ? (
-                  <div className="card">
+              ) : tab === "following" && feed.following.length === 0 ? (
+                <div className="p-4 sm:p-5">
+                  <p className="text-[15px] font-semibold">You aren’t following anyone yet</p>
+                  <p className="mt-1 text-sm text-muted">Start with a few of the busiest traders. Following is a signature, not a transaction, and needs a Dojang.</p>
+                  <Suggestions items={feed.suggestions} profiles={profiles} usd={usd} />
+                </div>
+              ) : (
+                <>
+                  {!feed.tradesReady ? <TradesOnTheWay /> : tab === "foryou" && feed.quiet ? <QuietLead feed={feed} usd={usd} /> : null}
+                  {page.length === 0 ? (
                     <Empty mark="조용함" title={tab === "following" ? "Nothing from the wallets you follow yet" : "Nothing here yet"}>
                       {tab === "following" ? `When any of the ${feed.following.length} you follow buys, sells, launches or comments, it shows up here.` : "When someone trades, launches or comments, it shows up here within a minute."}
                     </Empty>
-                  </div>
-                ) : (
-                  <div className="card feed-list overflow-hidden">
+                  ) : (
                     <ul>
                       {page.map((item) => (
                         <FeedRow key={item.key} item={item} ctx={ctx} fresh={fresh.has(freshnessKey(item))} />
                       ))}
                     </ul>
-                    {list.length > shown ? (
-                      <button type="button" onClick={() => setShown((n) => n + PAGE)} className="w-full border-t border-line py-2.5 text-[13px] font-medium text-muted hover:bg-raise hover:text-fg">
-                        Show more ({list.length - shown} left)
-                      </button>
-                    ) : null}
-                  </div>
-                )}
-                {tab === "following" && feed.following.length > 0 && feed.following.length < 3 && feed.suggestions.length > 0 ? (
-                  <div className="card p-5">
-                    <p className="th uppercase">More to follow</p>
-                    <Suggestions items={feed.suggestions.slice(0, 3)} profiles={profiles} usd={usd} />
-                  </div>
-                ) : null}
-              </>
-            )}
+                  )}
+                  {open && tab === "following" && feed.following.length > 0 && feed.following.length < 3 && feed.suggestions.length > 0 ? (
+                    <div className="border-t border-line/70 p-4 sm:p-5">
+                      <p className="th uppercase">More to follow</p>
+                      <Suggestions items={feed.suggestions.slice(0, 3)} profiles={profiles} usd={usd} />
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
           </div>
 
-          <aside className="feed-rail grid min-w-0 grid-cols-1 gap-3">
-            {feed.hasCoins ? (
-              <section className="card overflow-hidden">
-                <RailHead title="Hot coins" note="24h volume" to="/board" link="Board" />
-                <ol>
-                  {byVolume.slice(0, 5).map((coin, i) => {
-                    const stats = feed.stats[coin.token.toLowerCase()];
-                    return (
-                      <li key={coin.token}>
-                        <Link to="/coin/$address" params={{ address: coin.token }} className="rail-row">
-                          <span className="num w-4 shrink-0 text-center text-[12px] text-faint">{i + 1}</span>
-                          <TokenLogo symbol={coin.symbol} image={images[coin.token.toLowerCase()]} size={24} />
-                          <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold">{coin.symbol}</span>
-                          <span className="num shrink-0 text-[12.5px] text-muted">{usd(stats?.volEth)}</span>
-                          <Change value={stats?.change} className="w-[4.1rem] shrink-0 justify-end text-[12.5px]" />
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ol>
-              </section>
-            ) : null}
+          {more ? (
+            <div className="home-feed-more">
+              <button type="button" onClick={() => setOpen(true)} className="btn btn-sm btn-secondary">
+                Show more
+                <IconChevronDown size={14} />
+              </button>
+            </div>
+          ) : null}
+          {open ? (
+            <div className="flex items-center justify-between gap-3 border-t border-line/70 px-3 py-2 sm:px-4">
+              {list.length > shown ? (
+                <button type="button" onClick={() => setShown((n) => n + PAGE)} className="text-[13px] font-medium text-muted hover:text-fg">
+                  Show more ({list.length - shown} left)
+                </button>
+              ) : (
+                <span className="text-[12.5px] text-faint">That’s everything so far</span>
+              )}
+              <button type="button" onClick={fold} className="btn btn-sm btn-secondary">
+                Fold the feed
+                <IconChevronDown size={14} className="rotate-180" />
+              </button>
+            </div>
+          ) : null}
+        </section>
 
-            {feed.busiest.length > 0 ? (
-              <section className="card overflow-hidden">
-                <RailHead title="Top traders" note="traded today" to="/traders" link="All" />
-                <ol>
-                  {feed.busiest.map((t, i) => (
-                    <li key={t.wallet}>
-                      <Link to="/u/$address" params={{ address: t.wallet }} title={t.wallet} className="rail-row">
-                        <span className="num w-4 shrink-0 text-center text-[12px] text-faint">{i + 1}</span>
-                        <Blockie address={t.wallet} size={24} />
-                        <span className="flex min-w-0 flex-1 items-center gap-1">
-                          <span className="num truncate text-[13.5px] font-semibold">{t.wallet === feed.me ? "You" : (profiles[t.wallet]?.name?.replace(/\.up\.id$/, "") ?? `${t.wallet.slice(0, 6)}…${t.wallet.slice(-4)}`)}</span>
-                          <DojangMark verified={profiles[t.wallet]?.verified} />
-                        </span>
-                        {followers.get(t.wallet) ? (
-                          <span className="num hidden shrink-0 text-[12px] text-faint xl:inline" title="Followers">
-                            {followers.get(t.wallet)} {followers.get(t.wallet) === 1 ? "follower" : "followers"}
-                          </span>
-                        ) : null}
-                        <span className="num shrink-0 text-[12.5px] text-muted">
-                          {t.trades} · <span className="text-fg">{usd(t.eth)}</span>
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ol>
-              </section>
-            ) : null}
-
-            {feed.suggestions.length > 0 ? (
-              <section className="card p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-[14px] font-semibold">Who to follow</h3>
-                  <Link to="/traders" className="text-[12.5px] font-semibold text-gold hover:underline">
-                    All traders
-                  </Link>
-                </div>
-                <Suggestions items={feed.suggestions.slice(0, 3)} profiles={profiles} usd={usd} />
-              </section>
-            ) : null}
-
-            <CreatorFeesMini coins={feed.live} />
-            <PointsCard />
-          </aside>
+        <div className="home-leaders">
+          <Leaders points={feed.points} trades={feed.trades} now={feed.now} me={feed.me} ethUsd={feed.ethUsd} waiting={feed.waiting || !feed.tradesReady} />
         </div>
-      </section>
+
+        <div className="home-board">
+          <HomeBoard coins={listed} stats={feed.stats} images={images} ethUsd={feed.ethUsd} launched={feed.launched} known={feed.points?.file.profiles} now={feed.now} waiting={feed.waiting} tradesReady={feed.tradesReady} />
+        </div>
+
+        <div className="home-foot">
+          <PointsBand />
+          <CreatorFeesMini coins={feed.live} />
+        </div>
+      </div>
     </main>
   );
 }
@@ -396,139 +361,69 @@ function Suggestions({ items, profiles, usd }: { items: Suggestion[]; profiles: 
   );
 }
 
-/** What leads the feed when nobody has traded for an hour: the last day in numbers, and a way to start something. */
+/** What leads the feed when nobody has traded for an hour: the last day in a line, and a way to start something. */
 function QuietLead({ feed, usd }: { feed: HomeFeed; usd: (eth: number | undefined) => string }) {
   const { trades, eth, wallets } = feed.digest;
   return (
-    <section className="card p-5">
-      <h3 className="text-[19px] font-semibold tracking-[-0.01em]">Quiet on GIWA right now</h3>
-      <p className="mt-1 text-sm text-muted">{trades === 0 ? "No trades in the last day. Buy a coin or launch one and the feed starts here." : "No trades in the last hour. Here is the last day."}</p>
-      <dl className="mt-4 grid grid-cols-3 gap-2.5">
-        {(
-          [
-            ["Trades", trades.toLocaleString("en-US")],
-            ["Volume", usd(eth)],
-            ["Wallets trading", wallets.toLocaleString("en-US")],
-          ] as const
-        ).map(([label, value]) => (
-          <div key={label} className="rounded-xl bg-raise px-3.5 py-3">
-            <dt className="text-xs text-muted">{label}</dt>
-            <dd className="num mt-0.5 truncate text-[19px] font-semibold tracking-[-0.02em]">{value}</dd>
-          </div>
-        ))}
-      </dl>
-      <div className="mt-4 flex flex-wrap gap-2.5">
-        <Link to="/launch" className="btn btn-primary">
-          <IconPlus size={17} />
-          Launch a coin
-        </Link>
-        <Link to="/board" className="btn btn-secondary">
-          Open the board
-        </Link>
-      </div>
-    </section>
-  );
-}
-
-/** The Top tab: the coins by what traded today, each one press from a buy. */
-function TopCoins({ coins, ctx, usd }: { coins: HomeFeed["live"]; ctx: RowContext; usd: (eth: number | undefined) => string }) {
-  return (
-    <section className="card overflow-hidden">
-      <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3.5 sm:px-5">
-        <h3 className="text-[15px] font-semibold">Most traded today</h3>
-        <Link to="/board" className="text-[13px] font-semibold text-gold hover:underline">
-          Open the board
-        </Link>
-      </div>
-      <ul>
-        {coins.slice(0, 20).map((coin, i) => {
-          const stats = ctx.stats[coin.token.toLowerCase()];
-          return (
-            <li key={coin.token} className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line/70 px-4 py-3 last:border-0 sm:px-5">
-              <span className="num w-5 text-sm text-faint">{i + 1}</span>
-              <Link to="/coin/$address" params={{ address: coin.token }} className="flex min-w-0 flex-1 items-center gap-3">
-                <TokenLogo symbol={coin.symbol} image={ctx.images[coin.token.toLowerCase()]} size={38} />
-                <span className="min-w-0">
-                  <span className="block truncate text-[15px] font-semibold hover:text-gold">{coin.name}</span>
-                  <span className="num block truncate text-[13px] text-muted">
-                    {usd(stats?.capEth)} cap · {usd(stats?.volEth)} today
-                  </span>
-                </span>
-              </Link>
-              <Change value={stats?.change} className="shrink-0 text-sm" />
-              <QuickBuy coin={coin} />
-            </li>
-          );
-        })}
-      </ul>
-    </section>
+    <div className="feed-note" role="status">
+      <span className="grid size-7 shrink-0 place-items-center rounded-full bg-raise font-serif text-[13px] text-gold" aria-hidden>
+        靜
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[14px] font-medium text-fg">Quiet on GIWA right now</span>
+        <span className="num block text-[12.5px] text-muted">
+          {trades === 0
+            ? "No trades in the last day. Buy from the board below, or launch a coin, and the feed starts here."
+            : `No trades in the last hour. The last day: ${trades.toLocaleString("en-US")} ${trades === 1 ? "trade" : "trades"} · ${usd(eth)} · ${wallets.toLocaleString("en-US")} ${wallets === 1 ? "wallet" : "wallets"}.`}
+        </span>
+      </span>
+      <Link to="/launch" className="btn btn-sm btn-primary hidden shrink-0 sm:inline-flex">
+        <IconPlus size={15} />
+        Launch
+      </Link>
+    </div>
   );
 }
 
 /** Shown above the feed while the pools' trades are still being read, so launches and comments don't wait on them. */
 function TradesOnTheWay() {
   return (
-    <div className="card flex items-center gap-3 p-4 text-sm text-muted sm:px-5" role="status">
-      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-raise">
+    <div className="feed-note" role="status">
+      <span className="grid size-7 shrink-0 place-items-center rounded-full bg-raise">
         <span className="spinner" aria-hidden />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block font-medium text-fg">Reading the latest trades from GIWA…</span>
-        <span className="block">Launches and comments are below. Trades join them as soon as the chain answers.</span>
+        <span className="block text-[14px] font-medium text-fg">Reading the latest trades from GIWA…</span>
+        <span className="block text-[12.5px] text-muted">Launches and comments are below. Trades join them as soon as the chain answers.</span>
       </span>
     </div>
   );
 }
 
-function FeedSkeleton() {
-  return (
-    <div className="card feed-list overflow-hidden">
-      <ul>
-        {Array.from({ length: 10 }, (_, i) => (
-          <RowSkeleton key={i} />
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-/** The top of a list in the rail: what it ranks, by what, and where the whole list is. */
-function RailHead({ title, note, to, link }: { title: string; note: string; to: "/board" | "/traders"; link: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 px-4 pt-3.5 pb-2">
-      <h3 className="text-[14px] font-semibold">
-        {title} <span className="ml-1 text-[12px] font-normal text-faint">{note}</span>
-      </h3>
-      <Link to={to} className="text-[12.5px] font-semibold text-gold hover:underline">
-        {link}
-      </Link>
-    </div>
-  );
-}
-
-function PointsCard() {
+/** The season in one band under the board: what is shared out each day, and how long until today's pool closes. */
+function PointsBand() {
   const now = useNow();
   const left = now === null ? null : dayEndMs(today(now)) - now;
   return (
-    <Link to="/points" className="card card-lift group relative overflow-hidden p-5">
-      <div className="pointer-events-none absolute -top-24 -right-16 size-64 rounded-full bg-[radial-gradient(closest-side,rgba(212,67,43,.22),transparent)]" />
-      <div className="relative">
+    <Link to="/points" className="card card-lift group relative flex min-w-0 flex-1 flex-wrap items-center gap-x-8 gap-y-3 overflow-hidden p-4 sm:p-5">
+      <div className="pointer-events-none absolute -top-28 -left-16 size-64 rounded-full bg-[radial-gradient(closest-side,rgba(212,67,43,.2),transparent)]" />
+      <div className="relative min-w-0 flex-1 basis-[18rem]">
         <p className="eyebrow flex items-center gap-2">
           <IconPoints size={14} />
           Season 1
         </p>
-        <p className="mt-3 text-[22px] leading-[1.15] font-semibold tracking-[-0.03em]">{fmtPoints(DAILY_POOL)} points, every day</p>
-        <p className="mt-2 text-sm text-muted">Shared by everyone with a Dojang who trades Chimi coins. Leading a buy and launching a coin earn too.</p>
-        <div className="mt-4 flex items-end justify-between gap-3 border-t border-line pt-4">
-          <div>
-            <p className="text-xs text-faint">Today’s pool is shared out in</p>
-            <p className="num mt-0.5 text-lg font-semibold tracking-[-0.02em]">{left === null ? "—" : left > 0 ? duration(left) : "now…"}</p>
-          </div>
-          <span className="flex items-center gap-1 text-sm font-medium text-fg">
-            Points
-            <IconChevronRight size={15} className="transition-transform group-hover:translate-x-0.5" />
-          </span>
+        <p className="mt-2 text-[19px] leading-[1.15] font-semibold tracking-[-0.02em]">{fmtPoints(DAILY_POOL)} points, every day</p>
+        <p className="mt-1 text-sm text-muted">Shared by everyone with a Dojang who trades Chimi coins. Leading a buy and launching a coin earn too.</p>
+      </div>
+      <div className="relative flex items-end gap-6">
+        <div>
+          <p className="text-xs text-faint">Today’s pool is shared out in</p>
+          <p className="num mt-0.5 text-lg font-semibold tracking-[-0.02em]">{left === null ? "—" : left > 0 ? duration(left) : "now…"}</p>
         </div>
+        <span className="flex items-center gap-1 pb-0.5 text-sm font-medium text-fg">
+          Points
+          <IconChevronRight size={15} className="transition-transform group-hover:translate-x-0.5" />
+        </span>
       </div>
     </Link>
   );

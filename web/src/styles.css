@@ -898,30 +898,348 @@ html:not([data-home="plain"]) .home-roof {
  * The home feed (routes/index.tsx, feed-rows.tsx).
  */
 
-/* The tabs: clear over the art at the top of the page, backed once they have stuck under the top bar. */
-.feed-bar {
-  border-bottom: 1px solid transparent;
-  transition:
-    background-color 0.2s ease,
-    border-color 0.2s ease;
+/*
+ * The page is one grid. On a phone it is a column: the feed, the board, then who to follow. From a laptop up the
+ * feed and the leaders sit side by side at one height and the board runs under both.
+ */
+.home-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "feed"
+    "board"
+    "leaders"
+    "foot";
+  gap: 1rem;
+  padding-top: 0.875rem;
+  /* How tall the folded feed is: about six rows on a phone. */
+  --social-h: 27rem;
 }
-.feed-bar[data-stuck] {
-  border-bottom-color: var(--color-line);
-  background: color-mix(in srgb, var(--color-bg) 88%, transparent);
-  -webkit-backdrop-filter: blur(18px);
-  backdrop-filter: blur(18px);
+.home-feed {
+  grid-area: feed;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+.home-leaders {
+  grid-area: leaders;
+  min-width: 0;
+}
+.home-board {
+  grid-area: board;
+  min-width: 0;
+  margin-top: 0.5rem;
+}
+.home-foot {
+  grid-area: foot;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 1rem;
+  min-width: 0;
+  margin-top: 0.25rem;
+}
+.home-foot > section {
+  flex: 1 1 18rem;
+}
+@media (min-width: 1024px) {
+  .home-grid {
+    grid-template-columns: minmax(0, 1fr) 22.5rem;
+    grid-template-areas:
+      "feed leaders"
+      "board board"
+      "foot foot";
+    gap: 1.25rem;
+    padding-top: 1rem;
+    /* Tall enough to lead the page, short enough that the board's first rows are on the same screen. */
+    --social-h: clamp(20rem, calc(100dvh - 30rem), 38rem);
+  }
+  /* A first visit has the hero above, so the pair gives some of its height back. */
+  html:not([data-home="plain"]) .home-grid {
+    --social-h: clamp(20rem, calc(100dvh - 35rem), 36rem);
+  }
+  /*
+   * The leaders are as tall as the feed beside them, never the other way round: on a quiet day the pair is short
+   * and the board moves up. So their box is laid over its cell and adds no height of its own.
+   */
+  .home-leaders {
+    position: relative;
+    min-height: 16rem;
+  }
+  .home-leaders > .leaders {
+    position: absolute;
+    inset: 0;
+    height: auto;
+  }
+  /* With the feed opened, the leaders keep their place and their size beside it as it scrolls. */
+  .home-feed:not([data-folded]) + .home-leaders {
+    position: sticky;
+    top: 5rem;
+    align-self: start;
+    height: var(--social-h);
+  }
+  .home-foot > section {
+    flex: 0 1 22.5rem;
+  }
+}
+/* Folded, the feed stops at a set height; what doesn't fit fades out above "Show more". Nothing scrolls inside it. */
+.home-feed[data-folded] {
+  max-height: var(--social-h);
+}
+@media (min-width: 1024px) {
+  .home-feed[data-folded] {
+    min-height: 16rem;
+  }
+}
+.home-feed-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.home-feed[data-folded] .home-feed-body {
+  overflow: hidden;
+}
+.home-feed-more {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  justify-content: center;
+  padding: 2.75rem 0 0.625rem;
+  background: linear-gradient(to bottom, transparent, var(--color-chip) 62%);
+  pointer-events: none;
+}
+.home-feed-more > button {
+  pointer-events: auto;
+  box-shadow: var(--shadow-pop);
+}
+/* A line at the top of the feed that isn't an item: it is quiet, or the trades are still on their way. */
+.feed-note {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.625rem 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-line) 75%, transparent);
+  background: color-mix(in srgb, var(--color-raise) 45%, transparent);
+}
+@media (min-width: 640px) {
+  .feed-note {
+    gap: 0.75rem;
+    padding-inline: 1rem;
+  }
 }
 
-/* The rail beside the feed stays in view while the feed scrolls. On a short screen it scrolls on its own. */
+/*
+ * Who to follow, beside the feed (home-leaders.tsx). It is as tall as the folded feed; a list longer than that fades
+ * out above the way to the whole list.
+ */
+.leaders {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+.leaders-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
 @media (min-width: 1024px) {
-  .feed-rail {
-    position: sticky;
-    top: 122px;
-    max-height: calc(100dvh - 170px);
-    overflow-y: auto;
-    scrollbar-width: none;
+  .leaders-body {
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5rem), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5rem), transparent);
   }
-  .feed-rail::-webkit-scrollbar {
+}
+/* A phone shows the first five; the rest are a press away on their own page. */
+@media (max-width: 1023px) {
+  .leaders-body li:nth-child(n + 6) {
+    display: none;
+  }
+}
+.lead-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 3rem;
+  padding: 0.375rem 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-line) 75%, transparent);
+  transition: background-color 0.15s ease;
+}
+@media (min-width: 640px) {
+  .lead-row {
+    padding-inline: 1rem;
+  }
+}
+li:last-child > .lead-row,
+li.lead-row:last-child {
+  border-bottom: 0;
+}
+@media (hover: hover) {
+  .lead-row:hover {
+    background: color-mix(in srgb, var(--color-raise) 55%, transparent);
+  }
+}
+.lead-who {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: 0.625rem;
+  min-width: 0;
+}
+.lead-who:hover .truncate:first-child {
+  color: var(--color-gold);
+}
+.lead-row .lead-follow {
+  height: 1.75rem;
+  padding-inline: 0.5rem;
+  font-size: 12.5px;
+}
+
+/*
+ * The board on the home page (home-board.tsx): two boxes of pairs, side by side from a tablet up. A row is a grid,
+ * and which columns it has depends on how wide its box is, so it shows what fits on a laptop, a tablet or a phone.
+ */
+.pairs {
+  container-type: inline-size;
+  min-width: 0;
+}
+.pair-item {
+  border-bottom: 1px solid color-mix(in srgb, var(--color-line) 75%, transparent);
+  transition: background-color 0.15s ease;
+}
+.pair-item:last-child {
+  border-bottom: 0;
+}
+@media (hover: hover) {
+  .pair-item:hover {
+    background: color-mix(in srgb, var(--color-raise) 55%, transparent);
+  }
+}
+.pair-row,
+.pair-head {
+  display: grid;
+  grid-template-columns: var(--pair-cols);
+  align-items: center;
+  column-gap: 0.625rem;
+  padding-inline: 0.75rem;
+}
+.pair-row {
+  position: relative;
+  min-height: 3.25rem;
+  padding-block: 0.375rem;
+}
+.pair-name {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-width: 0;
+}
+/* The whole row opens the coin; the buy button sits above that. */
+.pair-name::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.pair-row .buy-pill {
+  position: relative;
+  z-index: 1;
+  justify-self: end;
+}
+.pair-chg,
+.pair-vol,
+.pair-age {
+  display: none;
+}
+.pair-cap-chg {
+  display: block;
+  line-height: 1.2;
+}
+/*
+ * Which columns a row has. A container query can't restyle the container itself, so the columns are set on the rows
+ * and the line of column names inside it. Narrow: the pair, its market cap with the day's move under it, and Buy.
+ */
+.pairs-top :is(.pair-row, .pair-head) {
+  --pair-cols: 1.125rem minmax(0, 1fr) 4.75rem 4.25rem;
+}
+.pairs-new :is(.pair-row, .pair-head) {
+  --pair-cols: minmax(0, 1fr) 4.75rem 4.25rem;
+}
+@container (min-width: 30rem) {
+  .pair-row,
+  .pair-head {
+    column-gap: 0.75rem;
+    padding-inline: 1rem;
+  }
+  .pair-chg {
+    display: block;
+  }
+  .pair-cap-chg {
+    display: none;
+  }
+  .pairs-top :is(.pair-row, .pair-head) {
+    --pair-cols: 1.25rem minmax(0, 1fr) 4.25rem 5rem 4.75rem;
+  }
+  .pairs-new :is(.pair-row, .pair-head) {
+    --pair-cols: minmax(0, 1fr) 2.75rem 4.25rem 5rem 4.75rem;
+  }
+  .pairs-new .pair-age {
+    display: block;
+  }
+  .pairs-new .pair-age-inline {
+    display: none;
+  }
+}
+@container (min-width: 36rem) {
+  .pairs-top :is(.pair-row, .pair-head) {
+    --pair-cols: 1.25rem minmax(0, 1fr) 4.25rem 5rem 5.25rem 4.75rem;
+  }
+  .pairs-top .pair-vol {
+    display: block;
+  }
+}
+/* A list with more than one page keeps a full page's height on its last one, so nothing below it jumps. */
+@media (min-width: 640px) {
+  .pair-rows-paged {
+    min-height: calc(10 * (3.25rem + 1px) - 1px);
+  }
+}
+/* The end of a short list: where the next pair goes. */
+.pair-invite {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 3.25rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 12.5px;
+  color: var(--color-muted);
+}
+@container (min-width: 30rem) {
+  .pair-invite {
+    padding-inline: 1rem;
+  }
+}
+/* A phone shows five rows of a list until asked for the rest of the page. */
+.pair-more {
+  display: none;
+  width: 100%;
+  padding: 0.625rem;
+  border-top: 1px solid color-mix(in srgb, var(--color-line) 75%, transparent);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-muted);
+}
+@media (max-width: 639px) {
+  .pairs[data-short] ul > .pair-item:nth-child(n + 6) {
+    display: none;
+  }
+  .pairs[data-short] .pair-more {
+    display: block;
+  }
+  /* The way to the next ten waits until these ten are all showing. */
+  .pairs[data-short]:has(.pair-more) .pair-pager {
     display: none;
   }
 }
@@ -1248,22 +1566,6 @@ html:not([data-home="plain"]) .home-roof {
   from {
     background: color-mix(in srgb, var(--color-gold) 14%, transparent);
   }
-}
-
-/* A line of a ranked list beside the feed. */
-.rail-row {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  min-height: 2.5rem;
-  padding: 0.375rem 1rem;
-  transition: background-color 0.15s ease;
-}
-.rail-row:hover {
-  background: color-mix(in srgb, var(--color-raise) 70%, transparent);
-}
-ol:has(> li > .rail-row) {
-  padding-bottom: 0.375rem;
 }
 
 /* The buy button's finished state, held for a moment. */
