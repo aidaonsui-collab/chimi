@@ -1,10 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { followerCounts, followingOf } from "@/lib/chimi/follow-rules";
+import { followingOf } from "@/lib/chimi/follow-rules";
 import { useFollows } from "@/lib/chimi/follows";
 import { compactUsd, ethText } from "@/lib/chimi/format";
 import { useEthUsd, useSwaps } from "@/lib/chimi/live";
 import { fmtPoints, usePoints, useProfiles } from "@/lib/chimi/rewards";
+import { defaultTraderSort, orderTraders, traderRows, type TraderSort } from "@/lib/chimi/trader-rules";
 import { FollowButton } from "@/components/chimi/follow";
 import { useChimi } from "@/components/chimi/provider";
 import { DojangMark } from "@/components/chimi/rewards-bits";
@@ -15,9 +16,6 @@ import { Blockie, Empty, PageHead, Seg } from "@/components/chimi/ui";
  * they traded today. It is put together in the browser from the points book, the follow list and the day's trades.
  */
 export const Route = createFileRoute("/traders")({ component: Traders });
-
-type Sort = "points" | "followers" | "today";
-type Row = { wallet: string; points: number; rank?: number; followers: number; led: number; ledEth: number; todayEth: number; trades: number };
 
 const DAY = 24 * 60 * 60;
 const PAGE = 25;
@@ -32,7 +30,7 @@ function Traders() {
   const { data: points, loading: pointsLoading } = usePoints();
   const { data: follows } = useFollows();
   const ethUsd = useEthUsd();
-  const [sort, setSort] = useState<Sort>("points");
+  const [sort, setSort] = useState<TraderSort>("points");
   const [picked, setPicked] = useState(false);
   const [shown, setShown] = useState(PAGE);
   const me = account?.toLowerCase();
@@ -46,55 +44,13 @@ function Traders() {
   }, []);
 
   const rows = useMemo(() => {
-    const out = new Map<string, Row>();
-    const row = (wallet: string) => {
-      const key = wallet.toLowerCase();
-      let found = out.get(key);
-      if (!found) {
-        found = { wallet: key, points: 0, followers: 0, led: 0, ledEth: 0, todayEth: 0, trades: 0 };
-        out.set(key, found);
-      }
-      return found;
-    };
-    for (const s of points?.season ?? []) {
-      const r = row(s.wallet);
-      r.points = s.points;
-      r.rank = s.rank;
-    }
-    // Everyone the points book has seen trade belongs here, with or without a Dojang: a wallet without one earns
-    // no points, but it still traded.
-    const file = points?.file;
-    for (const wallet of Object.keys(file?.profiles ?? {})) row(wallet);
-    for (const day of file?.days ?? []) {
-      for (const wallet of Object.keys(day.points)) row(wallet);
-      for (const wallet of day.unverified) row(wallet);
-    }
-    for (const day of file?.open ?? []) for (const wallet of Object.keys(day.weights)) row(wallet);
-    for (const [wallet, n] of followerCounts(follows?.state)) row(wallet).followers = n;
-    for (const [wallet, led] of Object.entries(points?.file.led ?? {})) {
-      const r = row(wallet);
-      r.led = led.n;
-      r.ledEth = led.eth;
-    }
     const since = Math.floor(Date.now() / 1000) - DAY;
-    for (const coin of live) {
-      for (const swap of byPool[coin.pool.toLowerCase()] ?? []) {
-        if (swap.time < since) continue;
-        const r = row(swap.recipient);
-        r.todayEth += Number(swap.ethAmount) / 1e18;
-        r.trades += 1;
-      }
-    }
-    return [...out.values()];
+    const trades = live.flatMap((coin) => (byPool[coin.pool.toLowerCase()] ?? []).map((swap) => ({ wallet: swap.recipient, eth: Number(swap.ethAmount) / 1e18, time: swap.time })));
+    return traderRows(points, follows?.state, trades, since);
   }, [points, follows, live, byPool]);
 
-  // Before a season has any points, the day's trades are the list worth opening on.
-  const hasPoints = rows.some((r) => r.points > 0);
-  const order: Sort = picked || hasPoints ? sort : "today";
-  const sorted = useMemo(() => {
-    const by: Record<Sort, (r: Row) => number> = { points: (r) => r.points, followers: (r) => r.followers, today: (r) => r.todayEth };
-    return [...rows].sort((a, b) => by[order](b) - by[order](a) || b.points - a.points || b.todayEth - a.todayEth || (a.wallet < b.wallet ? -1 : 1));
-  }, [rows, order]);
+  const order: TraderSort = picked ? sort : defaultTraderSort(rows);
+  const sorted = useMemo(() => orderTraders(rows, order), [rows, order]);
   const page = sorted.slice(0, shown);
   const profiles = useProfiles(
     useMemo(() => page.map((r) => r.wallet), [page]),
