@@ -51,7 +51,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       onClose();
       fn();
     };
-    const matched = coins.filter((c) => !q || c.name.toLowerCase().includes(q) || c.symbol.toLowerCase().includes(q) || c.token.toLowerCase() === q || c.pool.toLowerCase() === q);
+    const matched = coins.filter((c) => !q || c.name.toLowerCase().includes(q) || c.symbol.toLowerCase().includes(q) || c.token.toLowerCase() === q || c.pool.toLowerCase() === q || c.poolId?.toLowerCase() === q);
     for (const c of matched.slice(0, 8)) {
       const cap = (Number(wethPerToken(c.sqrtPriceX96, c.tokenIs0)) / 1e18) * SUPPLY;
       out.push({

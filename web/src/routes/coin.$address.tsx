@@ -9,7 +9,7 @@ import { useFollows } from "@/lib/chimi/follows";
 import { ago, amountText, compactCount, compactUsd, ethText, money, tokenUsd } from "@/lib/chimi/format";
 import { useSwapHistory } from "@/lib/chimi/history";
 import { SUPPLY, capBefore, coinStats, fetchSwaps, useEthUsd } from "@/lib/chimi/live";
-import { estimatedOut, feeLabel, loadCoin, loadHolders, short, shortAddr, wethPerToken, type Coin, type Holder, type PoolSwap } from "@/lib/chimi/market";
+import { estimatedOut, loadCoin, loadHolders, poolLabel, readReserves, short, shortAddr, wethPerToken, type Coin, type Holder, type PoolSwap } from "@/lib/chimi/market";
 import { saveTokenMeta, shrinkImage } from "@/lib/chimi/meta";
 import { quoteTrade, useQuote } from "@/lib/chimi/quote";
 import { impactLevel, impactText, minimumOut, priceImpact } from "@/lib/chimi/quote-rules";
@@ -195,10 +195,9 @@ function CoinPage() {
       return;
     }
     let cancel = false;
-    void publicClient
-      .readContract({ address: deployment.weth, abi: erc20Abi, functionName: "balanceOf", args: [coin.pool] })
-      .then((wei) => {
-        if (!cancel) setPoolEth(wei);
+    void readReserves(deployment, coin)
+      .then(({ eth }) => {
+        if (!cancel) setPoolEth(eth);
       })
       .catch(() => undefined);
     void fetchSwaps(coin, reload > 0)
@@ -282,12 +281,13 @@ function CoinPage() {
   }
   // What the pool would really pay: the swap run as a call that changes nothing. Until that answer comes (or if the
   // node can't give one) the panel shows the price on the screen less the fee, which ignores the trade's own weight.
-  const estimate = coin && !badAmount ? estimatedOut(parsed, price, side === "buy") : 0n;
+  const feePpm = coin ? (side === "buy" ? (coin.fee ?? POOL_FEE) : (coin.sellFee ?? coin.fee ?? POOL_FEE)) : POOL_FEE;
+  const estimate = coin && !badAmount ? estimatedOut(parsed, price, side === "buy", feePpm) : 0n;
   const live = useQuote(deployment, coin, side, badAmount ? 0n : parsed, reload);
   const exact = live.out !== undefined;
   const quote = live.out ?? estimate;
   const minOut = minimumOut(quote, slippageBps);
-  const impact = exact && coin ? priceImpact(parsed, quote, price, side === "buy", coin.fee ?? POOL_FEE) : undefined;
+  const impact = exact && coin ? priceImpact(parsed, quote, price, side === "buy", feePpm) : undefined;
   const impactIs = impact === undefined ? "fine" : impactLevel(impact);
   const short_ = account && payBal !== undefined && parsed > payBal;
 
@@ -670,7 +670,7 @@ function CoinPage() {
                 }
               />
               <Line label={exact || quote === 0n ? "Minimum received" : "Minimum received, about"} value={quote === 0n ? "—" : `${amountText(minOut, 6)} ${recvSymbol}`} />
-              <Line label="Pool fee" value={feeLabel(coin.fee ?? POOL_FEE)} />
+              <Line label="Pool fee" value={poolLabel(coin)} />
             </dl>
             {impact !== undefined && impactIs === "warning" ? (
               <p role="status" className="mt-2.5 rounded-xl border border-down/30 bg-down/10 px-3.5 py-2.5 text-[13px] leading-relaxed text-fg/90">
@@ -711,7 +711,7 @@ function CoinPage() {
             {meta?.description ? null : <p className="mt-2 text-sm leading-relaxed text-muted">The full supply sits in a locked pool. There is no bonding curve.</p>}
             <dl className="mt-3 space-y-2.5 text-sm">
               <Line label="Supply" value="1,000,000,000" />
-              <Line label="Pool" value={`${coin.symbol}/ETH · v3 · ${feeLabel(coin.fee ?? POOL_FEE)}`} />
+              <Line label="Pool" value={`${coin.symbol}/ETH · ${poolLabel(coin)}`} />
               <Line label="Launch liquidity" value="Locked 100 years" />
               <Line label="All-time high" value={history ? cash(chart.athEth) : "—"} />
               <Line

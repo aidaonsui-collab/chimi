@@ -18,7 +18,7 @@ import {
 import { followersOf, followingOf } from "@/lib/chimi/follow-rules";
 import { useFeed as useFollowedRecord, useFollows } from "@/lib/chimi/follows";
 import { SUPPLY, capAfter, capBefore, coinStats, useEthUsd, useSwaps, type CoinStats } from "@/lib/chimi/live";
-import { loadLaunchWindow, type Coin, type PoolSwap } from "@/lib/chimi/market";
+import { loadLaunchWindow, poolKey, type Coin, type PoolSwap } from "@/lib/chimi/market";
 import { usePoints } from "@/lib/chimi/rewards";
 import { useChimi } from "@/components/chimi/provider";
 
@@ -128,7 +128,7 @@ function writeSnapshot(factory: string, coins: Coin[], byPool: Record<string, Po
     factory: factory.toLowerCase(),
     at: Date.now(),
     coins: kept,
-    byPool: Object.fromEntries(kept.map((c) => [c.pool.toLowerCase(), (byPool[c.pool.toLowerCase()] ?? []).slice(-SNAPSHOT_SWAPS)])),
+    byPool: Object.fromEntries(kept.map((c) => [poolKey(c), (byPool[poolKey(c)] ?? []).slice(-SNAPSHOT_SWAPS)])),
   };
   try {
     localStorage.setItem(SNAPSHOT_KEY, packBig(snapshot));
@@ -164,7 +164,7 @@ export function useHomeFeed(nowMs: number | null) {
     // A pool keeps its remembered trades until its own read lands, so the feed never empties on the way.
     const merged: Record<string, PoolSwap[]> = {};
     for (const coin of live) {
-      const pool = coin.pool.toLowerCase();
+      const pool = poolKey(coin);
       const swaps = read[pool] ?? remembered.byPool[pool];
       if (swaps) merged[pool] = swaps;
     }
@@ -192,7 +192,7 @@ export function useHomeFeed(nowMs: number | null) {
 
   const stats = useMemo(() => {
     const out: Record<string, CoinStats> = {};
-    for (const coin of live) out[coin.token.toLowerCase()] = coinStats(coin, byPool[coin.pool.toLowerCase()]);
+    for (const coin of live) out[coin.token.toLowerCase()] = coinStats(coin, byPool[poolKey(coin)]);
     return out;
   }, [live, byPool]);
 
@@ -203,7 +203,7 @@ export function useHomeFeed(nowMs: number | null) {
     const caps: Record<string, { points: CapPoint[]; now: number }> = {};
     for (const coin of live) {
       const token = coin.token.toLowerCase();
-      const swaps = byPool[coin.pool.toLowerCase()] ?? [];
+      const swaps = byPool[poolKey(coin)] ?? [];
       const points: CapPoint[] = [];
       for (const swap of swaps) {
         const key = `${swap.tx}:${swap.index ?? 0}`;
@@ -227,7 +227,7 @@ export function useHomeFeed(nowMs: number | null) {
     const launches: FeedLaunch[] = live.map((coin, i) => ({
       token: coin.token.toLowerCase(),
       creator: coin.creator.toLowerCase(),
-      time: times?.get(coin.token.toLowerCase()) ?? live.length - i,
+      time: times?.get(coin.token.toLowerCase()) ?? coin.launchedAt ?? live.length - i,
     }));
 
     const items = buildFeed({ trades, launches, comments, caps, me, following, followers, now });
@@ -263,7 +263,7 @@ export function useHomeFeed(nowMs: number | null) {
      * False while the pools' trades are still being read (or the node refused the read and it is being tried
      * again). The feed shows what it has meanwhile, and says the trades are on their way.
      */
-    tradesReady: ready || feed.trades.length > 0 || live.length === 0 || live.every((c) => byPool[c.pool.toLowerCase()] !== undefined),
+    tradesReady: ready || feed.trades.length > 0 || live.length === 0 || live.every((c) => byPool[poolKey(c)] !== undefined),
     /** True while what is showing is remembered, or still being brought up to date. */
     refreshing: fromMemory || (live.length > 0 && !ready),
     hasCoins: live.length > 0,

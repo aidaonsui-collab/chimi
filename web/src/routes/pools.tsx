@@ -1,9 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createWalletClient, custom, encodeFunctionData, type Address, type EIP1193Provider } from "viem";
-import { erc20Abi, giwaSepolia, positionManagerAbi } from "@/lib/chimi/chain";
+import { giwaSepolia, positionManagerAbi } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
-import { feeLabel, loadSwapWindow, wethPerToken, type Coin } from "@/lib/chimi/market";
+import { loadSwapWindow, poolLabel, readReserves, refOf, wethPerToken, type Coin } from "@/lib/chimi/market";
 import { compactUsd, pct } from "@/lib/chimi/format";
 import { useEthUsd } from "@/lib/chimi/live";
 import { useTokenImages } from "@/lib/chimi/token-image";
@@ -91,11 +91,12 @@ function PoolsPage() {
     setLoadingRows(true);
     void Promise.all(
       listed.map(async (coin): Promise<Row> => {
-        const [weth, token, history] = await Promise.all([
-          publicClient.readContract({ address: deployment.weth, abi: erc20Abi, functionName: "balanceOf", args: [coin.pool] }),
-          publicClient.readContract({ address: coin.token, abi: erc20Abi, functionName: "balanceOf", args: [coin.pool] }),
-          loadSwapWindow(coin.pool, coin.tokenIs0, 30 * DAY, coin.token),
+        const [reserves, history] = await Promise.all([
+          readReserves(deployment, coin),
+          loadSwapWindow(refOf(coin), 30 * DAY),
         ]);
+        const weth = reserves.eth;
+        const token = reserves.token;
         const now = Math.floor(Date.now() / 1000);
         const price = Number(wethPerToken(coin.sqrtPriceX96, coin.tokenIs0)) / 1e18;
         const ethIn = (since: number) =>
@@ -324,7 +325,7 @@ function PoolsPage() {
                 <div className="min-w-0 flex-[1_1_180px]">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-[17px] font-semibold">{coin.symbol} / ETH</span>
-                    <span className="chip h-6">v3 · {feeLabel(coin.fee)}</span>
+                    <span className="chip h-6">{poolLabel(coin)}</span>
                     <span className={`chip h-6 ${inside ? "border-ok/25 bg-ok/10 text-ok" : ""}`}>
                       <span className={`size-1.5 rounded-full ${inside ? "bg-ok" : "bg-muted"}`} />
                       {inside ? "In range" : "Out of range"}
@@ -403,7 +404,7 @@ function PoolsPage() {
                   <PairMark symbol={row.coin.symbol} image={images[row.coin.token.toLowerCase()]} size={32} />
                   <span className="min-w-0">
                     <span className="block truncate font-semibold">{row.coin.symbol}/ETH</span>
-                    <span className="block truncate text-[13px] text-muted">v3 · {feeLabel(row.coin.fee)}</span>
+                    <span className="block truncate text-[13px] text-muted">{poolLabel(row.coin)}</span>
                   </span>
                 </span>
                 <Cell value={compactUsd(row.tvlUsd)} strong />

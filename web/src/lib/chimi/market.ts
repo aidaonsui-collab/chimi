@@ -1,7 +1,9 @@
-import { decodeEventLog, formatEther, pad, parseAbiItem, toEventSelector, zeroAddress, type Address } from "viem";
-import { POOL_FEE, erc20Abi, factoryAbi, giwaSepolia, isDeployed, poolAbi, type Deployment } from "@/lib/chimi/chain";
+import { decodeEventLog, formatEther, pad, parseAbiItem, toEventSelector, zeroAddress, type Address, type Hex } from "viem";
+import { POOL_FEE, erc20Abi, factoryAbi, giwaSepolia, isDeployed, isV4Live, poolAbi, v4HookAbi, v4LauncherAbi, type Deployment } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { blocksOf, nameSellers, routerKept, sellersFromRawTransfers, sellersFromTransfers, type Unnamed as UnnamedSale } from "@/lib/chimi/sale-rules";
+import { loadV4Swaps, v4SwapsFromExplorer, V4_SWAP_TOPIC, type ExplorerLog as V4ExplorerLog } from "@/lib/chimi/v4-swaps";
+import { poolKey as poolKeyOf, taxToFeeTier } from "@/lib/chimi/v4-rules";
 
 export type Coin = {
   token: Address;
@@ -14,10 +16,72 @@ export type Coin = {
   sqrtPriceX96: bigint;
   tokenIs0: boolean;
   liquidity: bigint;
-  /** Pool fee tier in hundredths of a bip (10000 = 1%). Read from the pool. */
+  /** Pool fee tier in hundredths of a bip (10000 = 1%). Read from the pool. For a v4 coin this is the buy tax in those units. */
   fee?: number;
+  /** Sell tax in the same units, when it differs from `fee`. v3 leaves this unset. */
+  sellFee?: number;
+  /** Set for a taxed v4 launch. Trades and reserves are keyed by this, because every v4 pool shares one PoolManager. */
+  poolId?: Hex;
+  /** The v4 hook. Buybacks it runs are not shown as trades. */
+  hook?: Address;
+  /** When the launcher recorded the launch, in unix seconds. */
+  launchedAt?: number;
   preview?: boolean;
 };
+
+/** The key trades and reserves are stored under. A v4 pool's id, or the v3 pool's address. */
+export function poolKey(coin: { pool: string; poolId?: string }): string {
+  return poolKeyOf(coin);
+}
+
+export type PoolRef = {
+  pool: Address;
+  tokenIs0: boolean;
+  token?: Address;
+  poolId?: Hex;
+  /** PoolManager, for a v4 ref. `pool` is the same address. */
+  manager?: Address;
+  hook?: Address;
+};
+
+export function refOf(coin: Pick<Coin, "pool" | "tokenIs0" | "token"> & Partial<Pick<Coin, "poolId" | "hook">>): PoolRef {
+  return {
+    pool: coin.pool,
+    tokenIs0: coin.tokenIs0,
+    token: coin.token,
+    poolId: coin.poolId,
+    manager: coin.poolId ? coin.pool : undefined,
+    hook: coin.hook,
+  };
+}
+
+/** "v4 · 1% tax" or "v3 · 1%". */
+export function poolLabel(coin: Pick<Coin, "poolId" | "fee" | "sellFee">): string {
+  if (coin.poolId) {
+    const buy = feeLabel(coin.fee);
+    const sell = feeLabel(coin.sellFee ?? coin.fee);
+    return buy === sell ? `v4 · ${buy} tax` : `v4 · ${buy} buy / ${sell} sell`;
+  }
+  return `v3 · ${feeLabel(coin.fee)}`;
+}
+
+/** ETH and tokens sitting in the pool. v4 reads the launch position; v3 reads the pool contract's balances. */
+export async function readReserves(dep: Deployment, coin: Pick<Coin, "pool" | "token" | "poolId">): Promise<{ eth: bigint; token: bigint }> {
+  if (coin.poolId && isV4Live(dep)) {
+    const [eth, token] = await publicClient.readContract({
+      address: dep.v4.launcher,
+      abi: v4LauncherAbi,
+      functionName: "reserves",
+      args: [coin.token],
+    });
+    return { eth, token };
+  }
+  const [eth, token] = await Promise.all([
+    publicClient.readContract({ address: dep.weth, abi: erc20Abi, functionName: "balanceOf", args: [coin.pool] }),
+    publicClient.readContract({ address: coin.token, abi: erc20Abi, functionName: "balanceOf", args: [coin.pool] }),
+  ]);
+  return { eth, token };
+}
 
 /** "1%", "0.3%", "0.05%" from a v3 fee tier. */
 export function feeLabel(fee: number = POOL_FEE) {
@@ -53,15 +117,23 @@ export function shortAddr(addr: string) {
 }
 
 /** Spot estimate after the 1% pool fee. Buying a token spends ETH. */
-export function estimatedOut(amountIn: bigint, priceWethPerToken: bigint, buyingToken: boolean): bigint {
+export function estimatedOut(amountIn: bigint, priceWethPerToken: bigint, buyingToken: boolean, feePpm = 10_000): bigint {
   if (amountIn <= 0n || priceWethPerToken <= 0n) return 0n;
-  const afterFee = (amountIn * 99n) / 100n;
+  const afterFee = (amountIn * (1_000_000n - BigInt(feePpm))) / 1_000_000n;
   if (buyingToken) return (afterFee * 10n ** 18n) / priceWethPerToken;
   return (afterFee * priceWethPerToken) / 10n ** 18n;
 }
 
 export async function loadCoins(dep: Deployment): Promise<Coin[]> {
   if (!isDeployed(dep)) return [];
+  const [v3, v4] = await Promise.all([loadV3Coins(dep), loadV4Coins(dep)]);
+  // Each list is newest-first. Taxed coins carry a launch time; v3 coins keep the factory's order.
+  // A new taxed coin is listed ahead of the v3 coins so it is visible the moment it exists. The home
+  // feed orders launches by their real timestamps.
+  return [...v4, ...v3];
+}
+
+async function loadV3Coins(dep: Deployment): Promise<Coin[]> {
   const length = Number(
     await publicClient.readContract({ address: dep.factory, abi: factoryAbi, functionName: "allTokensLength" }),
   );
@@ -105,6 +177,54 @@ export async function loadCoins(dep: Deployment): Promise<Coin[]> {
   return found.filter((coin): coin is Coin => coin !== null).reverse();
 }
 
+async function loadV4Coins(dep: Deployment): Promise<Coin[]> {
+  if (!isV4Live(dep)) return [];
+  const v4 = dep.v4;
+  let length = 0;
+  try {
+    length = Number(await publicClient.readContract({ address: v4.launcher, abi: v4LauncherAbi, functionName: "allTokensLength" }));
+  } catch {
+    return [];
+  }
+  const tokens = await Promise.all(
+    Array.from({ length }, (_, i) =>
+      publicClient.readContract({ address: v4.launcher, abi: v4LauncherAbi, functionName: "allTokens", args: [BigInt(i)] }),
+    ),
+  );
+  const found = await Promise.all(
+    tokens.map(async (token): Promise<Coin | null> => {
+      try {
+        const [name, symbol, launch, reserves, tax] = await Promise.all([
+          publicClient.readContract({ address: token, abi: erc20Abi, functionName: "name" }),
+          publicClient.readContract({ address: token, abi: erc20Abi, functionName: "symbol" }),
+          publicClient.readContract({ address: v4.launcher, abi: v4LauncherAbi, functionName: "getLaunch", args: [token] }),
+          publicClient.readContract({ address: v4.launcher, abi: v4LauncherAbi, functionName: "reserves", args: [token] }),
+          publicClient.readContract({ address: v4.hook, abi: v4HookAbi, functionName: "taxOf", args: [token] }),
+        ]);
+        if (launch.poolId === "0x0000000000000000000000000000000000000000000000000000000000000000") return null;
+        return {
+          token,
+          name,
+          symbol,
+          pool: v4.poolManager,
+          creator: launch.creator,
+          sqrtPriceX96: reserves[2],
+          tokenIs0: false,
+          liquidity: launch.liquidity,
+          fee: taxToFeeTier(tax.buyBps),
+          sellFee: taxToFeeTier(tax.sellBps),
+          poolId: launch.poolId,
+          hook: v4.hook,
+          launchedAt: Number(launch.createdAt),
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return found.filter((coin): coin is Coin => coin !== null).reverse();
+}
+
 export async function loadCoin(dep: Deployment, token: Address): Promise<Coin | null> {
   if (!isDeployed(dep)) return null;
   const pool = await publicClient.readContract({
@@ -113,7 +233,7 @@ export async function loadCoin(dep: Deployment, token: Address): Promise<Coin | 
     functionName: "getPool",
     args: [token],
   });
-  if (pool.uniPool === zeroAddress) return null;
+  if (pool.uniPool === zeroAddress) return loadOneV4(dep, token);
   const [name, symbol, token0, slot0, fee] = await Promise.all([
     publicClient.readContract({ address: token, abi: erc20Abi, functionName: "name" }),
     publicClient.readContract({ address: token, abi: erc20Abi, functionName: "symbol" }),
@@ -133,6 +253,37 @@ export async function loadCoin(dep: Deployment, token: Address): Promise<Coin | 
     liquidity: pool.liquidity,
     fee: Number(fee),
   };
+}
+
+async function loadOneV4(dep: Deployment, token: Address): Promise<Coin | null> {
+  if (!isV4Live(dep)) return null;
+  try {
+    const launch = await publicClient.readContract({ address: dep.v4.launcher, abi: v4LauncherAbi, functionName: "getLaunch", args: [token] });
+    if (launch.poolId === "0x0000000000000000000000000000000000000000000000000000000000000000") return null;
+    const [name, symbol, reserves, tax] = await Promise.all([
+      publicClient.readContract({ address: token, abi: erc20Abi, functionName: "name" }),
+      publicClient.readContract({ address: token, abi: erc20Abi, functionName: "symbol" }),
+      publicClient.readContract({ address: dep.v4.launcher, abi: v4LauncherAbi, functionName: "reserves", args: [token] }),
+      publicClient.readContract({ address: dep.v4.hook, abi: v4HookAbi, functionName: "taxOf", args: [token] }),
+    ]);
+    return {
+      token,
+      name,
+      symbol,
+      pool: dep.v4.poolManager,
+      creator: launch.creator,
+      sqrtPriceX96: reserves[2],
+      tokenIs0: false,
+      liquidity: launch.liquidity,
+      fee: taxToFeeTier(tax.buyBps),
+      sellFee: taxToFeeTier(tax.sellBps),
+      poolId: launch.poolId,
+      hook: dep.v4.hook,
+      launchedAt: Number(launch.createdAt),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export type PoolSwap = {
@@ -296,22 +447,38 @@ export async function loadSwaps(pool: Address, tokenIs0: boolean, token?: Addres
  * About a day of swaps for many pools at once. Each window of blocks is one request covering every pool,
  * so a board of a hundred coins costs the same ten requests as a single coin.
  */
-export async function loadSwapsFor(pools: { pool: Address; tokenIs0: boolean; token?: Address }[]): Promise<Map<string, PoolSwap[]>> {
+export async function loadSwapsFor(pools: PoolRef[]): Promise<Map<string, PoolSwap[]>> {
   return (await loadSwapsThrough(pools)).byPool;
 }
 
-type PoolRef = { pool: Address; tokenIs0: boolean; token?: Address };
-
 /** `loadSwapsFor`, and the block it read up to, so a later read can pick up from there (`loadSwapsSince`). */
 export async function loadSwapsThrough(pools: PoolRef[]): Promise<{ byPool: Map<string, PoolSwap[]>; through: bigint }> {
-  const out = new Map<string, PoolSwap[]>(pools.map((p) => [p.pool.toLowerCase(), []]));
+  const out = new Map<string, PoolSwap[]>(pools.map((p) => [poolKey(p), []]));
   const latest = await publicClient.getBlock();
   if (pools.length === 0) return { byPool: out, through: latest.number };
-  const side = new Map(pools.map((p) => [p.pool.toLowerCase(), p.tokenIs0]));
-  const tokens = new Map(pools.map((p) => [p.pool.toLowerCase(), p.token]));
+  const v3 = pools.filter((p) => !p.poolId);
+  const v4 = pools.filter((p) => p.poolId);
   const head = { number: latest.number, time: Number(latest.timestamp) };
   const spans = logSpans(latest.number, 10);
-  const addresses = [...out.keys()] as Address[];
+  const [, v4rows] = await Promise.all([
+    fillV3Swaps(out, v3, head, spans),
+    v4.length ? loadV4Swaps(v4, head, spans) : Promise.resolve(new Map<string, PoolSwap[]>()),
+  ]);
+  for (const [id, rows] of v4rows) out.set(id, rows);
+  for (const rows of out.values()) rows.sort(bySwapOrder);
+  return { byPool: out, through: latest.number };
+}
+
+async function fillV3Swaps(
+  out: Map<string, PoolSwap[]>,
+  pools: PoolRef[],
+  head: { number: bigint; time: number },
+  spans: { from: bigint; to: bigint }[],
+) {
+  if (pools.length === 0 || spans.length === 0) return;
+  const side = new Map(pools.map((p) => [p.pool.toLowerCase(), p.tokenIs0]));
+  const tokens = new Map(pools.map((p) => [p.pool.toLowerCase(), p.token]));
+  const addresses = pools.map((p) => p.pool);
   const groups = Array.from({ length: Math.ceil(addresses.length / 300) }, (_, i) => addresses.slice(i * 300, (i + 1) * 300));
   const pages = await Promise.all(
     spans.flatMap((span) =>
@@ -335,8 +502,6 @@ export async function loadSwapsThrough(pools: PoolRef[]): Promise<{ byPool: Map<
     }
   }
   await sellersFromNode([...unnamed.values()].map((list) => ({ unnamed: list, tokens })));
-  for (const rows of out.values()) rows.sort(bySwapOrder);
-  return { byPool: out, through: latest.number };
 }
 
 /** The most blocks one tail read may cover. A tab that slept longer than this takes a full read instead. */
@@ -348,14 +513,16 @@ export const TAIL_REACH = 5_000n;
  * back for one request to cover.
  */
 export async function loadSwapsSince(pools: PoolRef[], since: bigint): Promise<{ byPool: Map<string, PoolSwap[]>; through: bigint }> {
-  const out = new Map<string, PoolSwap[]>(pools.map((p) => [p.pool.toLowerCase(), []]));
+  const out = new Map<string, PoolSwap[]>(pools.map((p) => [poolKey(p), []]));
   const latest = await publicClient.getBlock();
   if (pools.length === 0 || latest.number <= since) return { byPool: out, through: latest.number > since ? latest.number : since };
   if (latest.number - since > TAIL_REACH) throw new Error("too far behind for a tail read");
-  const side = new Map(pools.map((p) => [p.pool.toLowerCase(), p.tokenIs0]));
-  const tokens = new Map(pools.map((p) => [p.pool.toLowerCase(), p.token]));
+  const v3 = pools.filter((p) => !p.poolId);
+  const v4 = pools.filter((p) => p.poolId);
   const head = { number: latest.number, time: Number(latest.timestamp) };
-  const addresses = [...out.keys()] as Address[];
+  const side = new Map(v3.map((p) => [p.pool.toLowerCase(), p.tokenIs0]));
+  const tokens = new Map(v3.map((p) => [p.pool.toLowerCase(), p.token]));
+  const addresses = v3.map((p) => p.pool);
   const groups = Array.from({ length: Math.ceil(addresses.length / 300) }, (_, i) => addresses.slice(i * 300, (i + 1) * 300));
   const pages = await Promise.all(groups.map((address) => logLane(() => publicClient.getLogs({ address, event: swapEvent, fromBlock: since + 1n, toBlock: latest.number }))));
   const unnamed: Unnamed[] = [];
@@ -367,7 +534,11 @@ export async function loadSwapsSince(pools: PoolRef[], since: bigint): Promise<{
     rows.push(swap);
     if (routerKept(swap, log.args.sender)) unnamed.push({ swap, pool });
   }
-  await sellersFromNode([{ unnamed, tokens }]);
+  if (v3.length) await sellersFromNode([{ unnamed, tokens }]);
+  if (v4.length) {
+    const v4rows = await loadV4Swaps(v4, head, [{ from: since + 1n, to: latest.number }]);
+    for (const [id, rows] of v4rows) out.set(id, rows);
+  }
   for (const rows of out.values()) rows.sort(bySwapOrder);
   return { byPool: out, through: latest.number };
 }
@@ -408,11 +579,18 @@ type ExplorerLog = {
 const EXPLORER_KNOWS_CHAIN = !import.meta.env.VITE_GIWA_RPC;
 
 /** Every log for one event on one address between two blocks, from the chain's Blockscout indexer. */
-async function explorerLogs(address: Address, topic0: `0x${string}`, fromBlock: bigint, toBlock: bigint, topic2?: `0x${string}`): Promise<ExplorerLog[]> {
+async function explorerLogs(
+  address: Address,
+  topic0: `0x${string}`,
+  fromBlock: bigint,
+  toBlock: bigint,
+  topic2?: `0x${string}`,
+  topic1?: `0x${string}`,
+): Promise<ExplorerLog[]> {
   if (!EXPLORER_KNOWS_CHAIN) throw new Error("explorer unavailable on a custom RPC");
   const rows: ExplorerLog[] = [];
   const pageSize = 1000;
-  const narrowed = topic2 ? `&topic2=${topic2}&topic0_2_opr=and` : "";
+  const narrowed = `${topic1 ? `&topic1=${topic1}&topic0_1_opr=and` : ""}${topic2 ? `&topic2=${topic2}&topic0_2_opr=and` : ""}`;
   for (let page = 1; page <= 30; page++) {
     const url = `${giwaSepolia.blockExplorers.default.url}/api?module=logs&action=getLogs&address=${address}&topic0=${topic0}${narrowed}&fromBlock=${fromBlock}&toBlock=${toBlock}&page=${page}&offset=${pageSize}`;
     const res = await fetch(url);
@@ -454,7 +632,11 @@ const hexNumber = (hex: string | undefined) => (hex && hex !== "0x" ? Number(Big
  * so long windows read from the chain's Blockscout indexer. If the indexer is down, falls back
  * to the RPC scan (about a day) and reports the shorter coverage so callers can show a dash.
  */
-export async function loadSwapWindow(pool: Address, tokenIs0: boolean, seconds: number, token?: Address): Promise<SwapWindow> {
+export async function loadSwapWindow(ref: PoolRef, seconds: number): Promise<SwapWindow> {
+  if (ref.poolId && ref.manager) return loadV4Window(ref, seconds);
+  const pool = ref.pool;
+  const tokenIs0 = ref.tokenIs0;
+  const token = ref.token;
   const latest = await publicClient.getBlock();
   const now = Number(latest.timestamp);
   try {
@@ -489,8 +671,25 @@ export async function loadSwapWindow(pool: Address, tokenIs0: boolean, seconds: 
     rows.sort(bySwapOrder);
     return { swaps: rows, coveredFrom: now - seconds, source: "explorer" };
   } catch {
-    const swaps = await loadSwaps(pool, tokenIs0, token);
+    const swaps = (await loadSwapsThrough([ref])).byPool.get(poolKey(ref)) ?? [];
     // loadSwaps reads 10 windows of 9,000 blocks.
+    const back = await publicClient.getBlock({ blockNumber: latest.number > 90_000n ? latest.number - 90_000n : 0n });
+    return { swaps, coveredFrom: back.number === 0n ? 0 : Number(back.timestamp), source: "rpc" };
+  }
+}
+
+async function loadV4Window(ref: PoolRef, seconds: number): Promise<SwapWindow> {
+  const latest = await publicClient.getBlock();
+  const now = Number(latest.timestamp);
+  const manager = ref.manager ?? ref.pool;
+  try {
+    const fromBlock = await blockSecondsAgo(latest, seconds);
+    const logs = await explorerLogs(manager, V4_SWAP_TOPIC, fromBlock, latest.number, undefined, ref.poolId);
+    const swaps = v4SwapsFromExplorer(logs as V4ExplorerLog[], ref, ref.hook);
+    swaps.sort(bySwapOrder);
+    return { swaps, coveredFrom: now - seconds, source: "explorer" };
+  } catch {
+    const swaps = (await loadSwapsThrough([ref])).byPool.get(poolKey(ref)) ?? [];
     const back = await publicClient.getBlock({ blockNumber: latest.number > 90_000n ? latest.number - 90_000n : 0n });
     return { swaps, coveredFrom: back.number === 0n ? 0 : Number(back.timestamp), source: "rpc" };
   }

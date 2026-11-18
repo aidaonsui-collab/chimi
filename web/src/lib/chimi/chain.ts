@@ -1,4 +1,4 @@
-import { defineChain, parseAbi, zeroAddress, type Address } from "viem";
+import { defineChain, parseAbi, parseAbiItem, zeroAddress, type Address } from "viem";
 
 export const giwaSepolia = defineChain({
   id: 91342,
@@ -88,8 +88,73 @@ export type Deployment = {
   bpsSource: Address;
   locker: Address;
   factory: Address;
+  /** Taxed Uniswap v4 launches. Absent, or with zero addresses, until those contracts are deployed. */
+  v4?: V4Deployment;
+};
+
+/** Addresses for the taxed v4 launch path. Position manager, StateView, quoter and the Universal Router
+ *  are recorded for the runbook; trading does not use them. */
+export type V4Deployment = {
+  poolManager: Address;
+  permit2: Address;
+  positionManager: Address;
+  stateView: Address;
+  quoter: Address;
+  universalRouter: Address;
+  launcher: Address;
+  tokenFactory: Address;
+  locker: Address;
+  hook: Address;
+  router: Address;
+  treasury: Address;
 };
 
 export function isDeployed(d: Deployment): boolean {
   return d.factory !== zeroAddress && d.swapRouter !== zeroAddress;
 }
+
+/** True only when the taxed-launch contracts have addresses. The v4 UI stays hidden until then. */
+export function isV4Live(d: Deployment | null | undefined): d is Deployment & { v4: V4Deployment } {
+  const v = d?.v4;
+  if (!v) return false;
+  return [v.poolManager, v.launcher, v.hook, v.router, v.locker].every((a) => !!a && a !== zeroAddress);
+}
+
+export const bpsAbi = parseAbi([
+  "function lpMemeCreatorBps() view returns (uint16)",
+  "function lpMemeStakerBps() view returns (uint16)",
+]);
+
+export const v4LauncherAbi = parseAbi([
+  "function launch((string name, string symbol, uint256 minTokensOut, uint16 buyTaxBps, uint16 sellTaxBps, uint16 creatorBps, uint16 holdersBps, uint16 buybackBps, bool antiSnipe) p) payable returns (address token, uint256 tokensOut)",
+  "function creationFeeDue(address) view returns (uint256)",
+  "function allTokensLength() view returns (uint256)",
+  "function allTokens(uint256) view returns (address)",
+  "function getLaunch(address token) view returns ((address creator, uint64 createdAt, uint64 createdBlock, uint64 windowEndsAt, uint64 unlocksAt, int24 tickLower, int24 tickUpper, uint128 liquidity, bytes32 poolId, uint256 startMarketCap))",
+  "function reserves(address token) view returns (uint256 ethAmount, uint256 tokenAmount, uint160 sqrtPriceX96)",
+  "function quoteLaunch(uint256 ethIn, uint16 buyTaxBps) view returns (uint256)",
+  "function startMarketCap() view returns (uint256)",
+  "function platformBps() view returns (uint16)",
+  "function bpsSource() view returns (address)",
+  "function maxFirstBuyBps() view returns (uint16)",
+  "event TokenLaunched(address indexed token, address indexed creator, string name, string symbol, bytes32 poolId, uint256 startMarketCap, uint16 buyTaxBps, uint16 sellTaxBps, uint16 platformBps, uint16 stakerBps, uint16 creatorBps, uint16 holdersBps, uint16 buybackBps, uint64 unlocksAt, bool antiSnipe)",
+]);
+
+export const v4HookAbi = parseAbi([
+  "function taxOf(address token) view returns ((address token, address creator, uint16 buyBps, uint16 sellBps, uint16 platformBps, uint16 stakerBps, uint16 creatorBps, uint16 holdersBps, uint16 buybackBps))",
+  "function creatorFees(address creator) view returns (uint256)",
+  "function creatorFeesOf(address token, address creator) view returns (uint256)",
+  "function claimCreatorFees() returns (uint256)",
+]);
+
+export const v4RouterAbi = parseAbi([
+  "function buy(address token, uint256 minOut, address recipient, uint256 deadline) payable returns (uint256)",
+  "function sell(address token, uint256 amountIn, uint256 minOut, address recipient, uint256 deadline) returns (uint256)",
+  "function quoteBuy(address token, uint256 ethIn) returns (uint256)",
+  "function quoteSell(address token, uint256 amountIn) returns (uint256)",
+]);
+
+/** PoolManager Swap. `amount0` and `amount1` are what the trader is owed (the opposite sign from a v3 Swap). */
+export const v4SwapEvent = parseAbiItem(
+  "event Swap(bytes32 indexed id, address indexed sender, int128 amount0, int128 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick, uint24 fee)",
+);

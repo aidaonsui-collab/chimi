@@ -1,6 +1,6 @@
 # Chimi
 
-Instant DEX launchpad for GIWA. A create transaction mints 1 billion tokens into a locked Uniswap v3 pool quoted in wrapped ETH. There is no bonding curve.
+Instant DEX launchpad for GIWA. A create transaction mints 1 billion tokens into a locked Uniswap v3 pool quoted in wrapped ETH. There is no bonding curve. A second launch type, taxed Uniswap v4, is in the contracts and behind the site's config until its addresses are set. v3 launches are unchanged. See `contracts/V4_RUNBOOK.md`.
 
 The factory is the Arc Instant factory (`InstantErc20QuoteFactory`) with the quote set to WETH. Chimi deploys its own v3 factory, position manager, and router from Uniswap's published bytecode. The v3 factory owner is renounced on deploy so the protocol fee stays off.
 

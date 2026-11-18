@@ -2,7 +2,8 @@ import { useEffect, useMemo, useSyncExternalStore } from "react";
 import type { Address } from "viem";
 import { erc20Abi } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
-import { loadSwaps, loadSwapsSince, loadSwapsThrough, wethPerToken, type Coin, type PoolSwap } from "@/lib/chimi/market";
+import { loadSwapsSince, loadSwapsThrough, poolKey, readReserves, refOf, wethPerToken, type Coin, type PoolRef, type PoolSwap } from "@/lib/chimi/market";
+import { isV4Live, type Deployment } from "@/lib/chimi/chain";
 
 /*
  * Live numbers every page shares: the ETH price, each pool's recent trades and its ETH reserve.
@@ -81,13 +82,13 @@ const swapStore: Store<number> & { byPool: Map<string, SwapEntry> } = { value: 0
 const SWAP_TTL_MS = 45_000;
 
 /** A pool's trades from about the last day. Answers from memory when they were read moments ago. */
-export function fetchSwaps(coin: Pick<Coin, "pool" | "tokenIs0" | "token">, force = false): Promise<PoolSwap[]> {
-  const key = coin.pool.toLowerCase();
+export function fetchSwaps(coin: Parameters<typeof refOf>[0], force = false): Promise<PoolSwap[]> {
+  const key = poolKey(coin);
   const entry = swapStore.byPool.get(key) ?? { at: 0 };
   swapStore.byPool.set(key, entry);
   if (entry.job) return entry.job;
   if (!force && entry.swaps && Date.now() - entry.at < SWAP_TTL_MS) return Promise.resolve(entry.swaps);
-  entry.job = loadSwaps(coin.pool, coin.tokenIs0, coin.token)
+  entry.job = loadSwapsThrough([refOf(coin)]).then(({ byPool }) => byPool.get(key) ?? [])
     .then((swaps) => {
       entry.swaps = swaps;
       entry.at = Date.now();
@@ -102,15 +103,15 @@ export function fetchSwaps(coin: Pick<Coin, "pool" | "tokenIs0" | "token">, forc
 }
 
 /** Reads every pool here whose trades are missing or stale, all in one pass over the chain. */
-function fetchSwapsMany(pools: { pool: Address; tokenIs0: boolean; token?: Address }[]) {
+function fetchSwapsMany(pools: PoolRef[]) {
   const stale = pools.filter((p) => {
-    const entry = swapStore.byPool.get(p.pool.toLowerCase());
+    const entry = swapStore.byPool.get(poolKey(p));
     return !entry?.job && !(entry?.swaps && Date.now() - entry.at < SWAP_TTL_MS);
   });
   if (stale.length === 0) return;
   const all = loadSwapsThrough(stale);
   for (const p of stale) {
-    const key = p.pool.toLowerCase();
+    const key = poolKey(p);
     const entry = swapStore.byPool.get(key) ?? { at: 0 };
     swapStore.byPool.set(key, entry);
     entry.job = all
@@ -144,20 +145,20 @@ let tailing = false;
  * however many pools. New trades are added to what is held and everyone listening is told. A pool that hasn't had
  * its full read yet, or is having one now, is left to that.
  */
-async function tailSwaps(pools: { pool: Address; tokenIs0: boolean; token?: Address }[]) {
+async function tailSwaps(pools: PoolRef[]) {
   if (tailing) return;
   const known = pools.filter((p) => {
-    const entry = swapStore.byPool.get(p.pool.toLowerCase());
+    const entry = swapStore.byPool.get(poolKey(p));
     return entry?.swaps && entry.through !== undefined && !entry.job;
   });
   if (known.length === 0) return;
-  const since = known.map((p) => swapStore.byPool.get(p.pool.toLowerCase())!.through!).reduce((a, b) => (a < b ? a : b));
+  const since = known.map((p) => swapStore.byPool.get(poolKey(p))!.through!).reduce((a, b) => (a < b ? a : b));
   tailing = true;
   try {
     const { byPool, through } = await loadSwapsSince(known, since);
     let added = false;
     for (const p of known) {
-      const key = p.pool.toLowerCase();
+      const key = poolKey(p);
       const entry = swapStore.byPool.get(key);
       // A full read may have started, or landed, while this one was on its way; it knows more.
       if (!entry?.swaps || entry.job || entry.through === undefined || entry.through > through) continue;
@@ -196,13 +197,20 @@ export function useSwaps(coins: Coin[], { live = false }: { live?: boolean } = {
   );
   const key = coins
     .filter((c) => !c.preview)
-    .map((c) => `${c.pool.toLowerCase()}:${c.tokenIs0 ? 1 : 0}:${c.token.toLowerCase()}`)
+    .map((c) => [poolKey(c), c.tokenIs0 ? "1" : "0", c.token.toLowerCase(), c.pool.toLowerCase(), (c.poolId ?? "").toLowerCase(), (c.hook ?? "").toLowerCase()].join("|"))
     .join(",");
   useEffect(() => {
     if (!key) return;
-    const pools = key.split(",").map((item) => {
-      const [pool, is0, token] = item.split(":");
-      return { pool: pool as Address, tokenIs0: is0 === "1", token: token as Address };
+    const pools = key.split(",").map((item): PoolRef => {
+      const [, is0, token, pool, poolId, hook] = item.split("|");
+      return {
+        pool: pool as Address,
+        tokenIs0: is0 === "1",
+        token: token as Address,
+        poolId: poolId ? (poolId as PoolRef["poolId"]) : undefined,
+        manager: poolId ? (pool as Address) : undefined,
+        hook: hook ? (hook as Address) : undefined,
+      };
     });
     const read = () => {
       if (visible()) fetchSwapsMany(pools);
@@ -224,7 +232,7 @@ export function useSwaps(coins: Coin[], { live = false }: { live?: boolean } = {
     const byPool: Record<string, PoolSwap[]> = {};
     let ready = true;
     for (const item of key ? key.split(",") : []) {
-      const pool = item.split(":")[0]!;
+      const pool = item.split("|")[0]!;
       const swaps = swapStore.byPool.get(pool)?.swaps;
       if (swaps) byPool[pool] = swaps;
       else ready = false;
@@ -244,39 +252,43 @@ const reserveStore: Store<number> & { byPool: Map<string, bigint>; at: Map<strin
 };
 const subscribeReserves = subscribeTo(reserveStore);
 
-/** Wrapped ETH sitting in each coin's pool (its quote-side liquidity), keyed by lowercase pool address. */
-export function usePoolEth(coins: Coin[], weth: Address | undefined) {
+/** ETH sitting in each coin's pool (its quote-side liquidity), keyed by `poolKey`. */
+export function usePoolEth(coins: Coin[], deployment: Deployment | null | undefined) {
   const version = useSyncExternalStore(
     subscribeReserves,
     () => reserveStore.value,
     () => 0,
   );
+  const weth = deployment?.weth;
   const key = coins
     .filter((c) => !c.preview)
-    .map((c) => c.pool.toLowerCase())
+    .map((c) => [poolKey(c), c.poolId ? "4" : "3", c.token.toLowerCase(), c.pool.toLowerCase()].join("|"))
     .join(",");
   useEffect(() => {
-    if (!key || !weth) return;
-    const stale = key.split(",").filter((pool) => Date.now() - (reserveStore.at.get(pool) ?? 0) > 60_000);
+    if (!key || !weth || !deployment) return;
+    const stale = key.split(",").filter((row) => Date.now() - (reserveStore.at.get(row.split("|")[0]!) ?? 0) > 60_000);
     if (stale.length === 0) return;
-    for (const pool of stale) reserveStore.at.set(pool, Date.now());
+    for (const row of stale) reserveStore.at.set(row.split("|")[0]!, Date.now());
     void Promise.all(
-      stale.map((pool) =>
-        publicClient
-          .readContract({ address: weth, abi: erc20Abi, functionName: "balanceOf", args: [pool as Address] })
-          .then((wei) => reserveStore.byPool.set(pool, wei))
-          .catch(() => reserveStore.at.delete(pool)),
-      ),
+      stale.map((row) => {
+        const [id, kind, token, pool] = row.split("|");
+        const read =
+          kind === "4" && isV4Live(deployment)
+            ? readReserves(deployment, { pool: pool as Address, token: token as Address, poolId: id as Coin["poolId"] }).then((r) => r.eth)
+            : publicClient.readContract({ address: weth, abi: erc20Abi, functionName: "balanceOf", args: [pool as Address] });
+        return read.then((wei) => reserveStore.byPool.set(id!, wei)).catch(() => reserveStore.at.delete(id!));
+      }),
     ).then(() => {
       reserveStore.value++;
       emit(reserveStore);
     });
-  }, [key, weth]);
+  }, [key, weth, deployment]);
   return useMemo(() => {
     const out: Record<string, bigint> = {};
-    for (const pool of key ? key.split(",") : []) {
-      const wei = reserveStore.byPool.get(pool);
-      if (wei !== undefined) out[pool] = wei;
+    for (const row of key ? key.split(",") : []) {
+      const id = row.split("|")[0]!;
+      const wei = reserveStore.byPool.get(id);
+      if (wei !== undefined) out[id] = wei;
     }
     return out;
   }, [key, version]);
@@ -334,13 +346,14 @@ export type CoinStats = {
  * average price paid is the geometric mean of the prices before and after, so before = average² ÷ after.
  * This is what lets a coin's very first trade show as a move instead of a flat line.
  */
-export function capBefore(swap: PoolSwap, coin: Pick<Coin, "tokenIs0" | "fee">): number | undefined {
+export function capBefore(swap: PoolSwap, coin: Pick<Coin, "tokenIs0" | "fee" | "sellFee">): number | undefined {
   const after = Number(wethPerToken(swap.sqrtPriceX96, coin.tokenIs0)) / 1e18;
   const eth = Number(swap.ethAmount) / 1e18;
   const tokens = Number(swap.tokenAmount) / 1e18;
   if (!(after > 0) || !(eth > 0) || !(tokens > 0)) return undefined;
-  // The pool keeps its fee out of whatever was paid in.
-  const kept = 1 - (coin.fee ?? 10_000) / 1_000_000;
+  // The pool keeps its fee out of whatever was paid in. A v4 sell uses the sell tax.
+  const fee = swap.buy ? coin.fee : (coin.sellFee ?? coin.fee);
+  const kept = 1 - (fee ?? 10_000) / 1_000_000;
   const average = swap.buy ? (eth * kept) / tokens : eth / (tokens * kept);
   const before = (average * average) / after;
   return Number.isFinite(before) && before > 0 ? before * SUPPLY : undefined;

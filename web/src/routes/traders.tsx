@@ -4,6 +4,7 @@ import { followingOf } from "@/lib/chimi/follow-rules";
 import { useFollows } from "@/lib/chimi/follows";
 import { compactUsd, ethText } from "@/lib/chimi/format";
 import { useEthUsd, useSwaps } from "@/lib/chimi/live";
+import { poolKey } from "@/lib/chimi/market";
 import { fmtPoints, usePoints, useProfiles } from "@/lib/chimi/rewards";
 import { defaultTraderSort, orderTraders, traderRows, type TraderSort } from "@/lib/chimi/trader-rules";
 import { FollowButton } from "@/components/chimi/follow";
@@ -45,7 +46,7 @@ function Traders() {
 
   const rows = useMemo(() => {
     const since = Math.floor(Date.now() / 1000) - DAY;
-    const trades = live.flatMap((coin) => (byPool[coin.pool.toLowerCase()] ?? []).map((swap) => ({ wallet: swap.recipient, eth: Number(swap.ethAmount) / 1e18, time: swap.time })));
+    const trades = live.flatMap((coin) => (byPool[poolKey(coin)] ?? []).map((swap) => ({ wallet: swap.recipient, eth: Number(swap.ethAmount) / 1e18, time: swap.time })));
     return traderRows(points, follows?.state, trades, since);
   }, [points, follows, live, byPool]);
 

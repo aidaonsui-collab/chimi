@@ -5,7 +5,7 @@ import { useHomeFeed, type HomeFeed } from "@/lib/chimi/feed";
 import { freshnessKey, type FeedItem, type Suggestion } from "@/lib/chimi/feed-rules";
 import { heldKey, useHeldShares } from "@/lib/chimi/holdings";
 import { usePoolEth } from "@/lib/chimi/live";
-import { short } from "@/lib/chimi/market";
+import { poolKey, short } from "@/lib/chimi/market";
 import { DAILY_POOL, dayEndMs, today, type Profile } from "@/lib/chimi/points-rules";
 import { fmtPoints, useProfiles } from "@/lib/chimi/rewards";
 import { useTokenImages } from "@/lib/chimi/token-image";
@@ -43,7 +43,7 @@ function Home() {
   const feed = useHomeFeed(nowMs);
   const listed = preview ? coins : feed.live;
   const images = useTokenImages(useMemo(() => listed.map((coin) => coin.token), [listed]));
-  const reserves = usePoolEth(feed.live, deployment?.weth);
+  const reserves = usePoolEth(feed.live, deployment);
   const [tab, setTab] = useState<Tab>("foryou");
   const [shown, setShown] = useState(PAGE);
   // Folded, the feed is a panel beside the leaders with the board under it. Opened, it runs as long as it likes.
@@ -147,7 +147,7 @@ function Home() {
   const usd = (eth: number | undefined) => (eth === undefined ? "—" : feed.ethUsd ? compactUsd(eth * feed.ethUsd) : `${ethText(eth)} ETH`);
   const totals = useMemo(() => {
     const all = Object.values(feed.stats);
-    const pools = feed.live.map((c) => reserves[c.pool.toLowerCase()]);
+    const pools = feed.live.map((c) => reserves[poolKey(c)]);
     return {
       capEth: all.reduce((sum, s) => sum + s.capEth, 0),
       volEth: all.every((s) => s.volEth !== undefined) ? all.reduce((sum, s) => sum + (s.volEth ?? 0), 0) : undefined,

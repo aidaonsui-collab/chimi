@@ -19,6 +19,7 @@ remappings = [
     "forge-std/=node_modules/forge-std/src/",
     "@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/",
     "v4-core/=node_modules/@uniswap/v4-core/",
+    "@uniswap/v4-core/=node_modules/@uniswap/v4-core/",
 ]
 
 [profile.deploy]

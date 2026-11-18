@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { encodeAbiParameters, keccak256, numberToHex, type Address, type Hex } from "viem";
-import { POOL_FEE, routerAbi, type Deployment } from "@/lib/chimi/chain";
+import { POOL_FEE, isV4Live, routerAbi, v4RouterAbi, type Deployment } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import type { Coin } from "@/lib/chimi/market";
 
@@ -20,6 +20,15 @@ const allowanceSlot = (owner: Address, spender: Address): Hex =>
 
 /** What the pool would pay out right now for `amountIn`: coins for ETH when buying, ETH for coins when selling. */
 export async function quoteTrade(deployment: Deployment, coin: Coin, side: "buy" | "sell", amountIn: bigint): Promise<bigint> {
+  if (coin.poolId && isV4Live(deployment)) {
+    const { result } = await publicClient.simulateContract({
+      address: deployment.v4.router,
+      abi: v4RouterAbi,
+      functionName: side === "buy" ? "quoteBuy" : "quoteSell",
+      args: [coin.token, amountIn],
+    });
+    return result;
+  }
   const buying = side === "buy";
   const word = numberToHex(amountIn, { size: 32 });
   const { result } = await publicClient.simulateContract({

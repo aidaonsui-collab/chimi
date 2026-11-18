@@ -17,8 +17,12 @@ import {
   factoryAbi,
   giwaSepolia,
   isDeployed,
+  isV4Live,
   lockerAbi,
   routerAbi,
+  v4HookAbi,
+  v4LauncherAbi,
+  v4RouterAbi,
   wethAbi,
   type Deployment,
 } from "@/lib/chimi/chain";
@@ -41,7 +45,7 @@ type ChimiContext = {
   /** Asks the wallet to move to GIWA Sepolia if it is on another network. */
   ensureChain: () => Promise<void>;
   refresh: () => Promise<void>;
-  createCoin: (name: string, symbol: string, firstBuy: string) => Promise<Address>;
+  createCoin: (name: string, symbol: string, firstBuy: string, v4?: { buyBps: number; sellBps: number }) => Promise<Address>;
   /** A sale pays out in ETH: the swap and the unwrap are one transaction, after an approval. */
   trade: (coin: Coin, side: "buy" | "sell", amount: string, minOut?: bigint) => Promise<string>;
   /**
@@ -55,7 +59,7 @@ type ChimiContext = {
    * Sweeps the pool fees of these launch positions. Anyone can send it; each creator's share goes to
    * the wallet stamped on the lock, as wrapped ETH. Answers with what this wallet received.
    */
-  claimFees: (positionIds: bigint[]) => Promise<{ hash: string; received: bigint }>;
+  claimFees: (positionIds: bigint[], opts?: { v4?: boolean }) => Promise<{ hash: string; received: bigint }>;
   /** Personal-sign with the connected wallet (used to publish token pictures). */
   signMessage: (message: string) => Promise<`0x${string}`>;
 };
@@ -257,9 +261,46 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
   }
 
   const createCoin = useCallback(
-    async (name: string, symbol: string, firstBuy: string) => {
+    async (name: string, symbol: string, firstBuy: string, v4?: { buyBps: number; sellBps: number }) => {
       if (!deployment || !isDeployed(deployment)) throw new Error("Deploy the factory before launching a coin.");
       const { who, client } = await ready();
+      if (v4) {
+        if (!isV4Live(deployment)) throw new Error("Taxed launches aren’t switched on yet.");
+        const fee = await publicClient.readContract({
+          address: deployment.v4.launcher,
+          abi: v4LauncherAbi,
+          functionName: "creationFeeDue",
+          args: [who],
+        });
+        const value = fee + parseEther(firstBuy.trim() || "0");
+        const hash = await client.writeContract({
+          account: who,
+          chain: giwaSepolia,
+          address: deployment.v4.launcher,
+          abi: v4LauncherAbi,
+          functionName: "launch",
+          args: [
+            {
+              name: name.trim(),
+              symbol: symbol.trim(),
+              minTokensOut: 0n,
+              buyTaxBps: v4.buyBps,
+              sellTaxBps: v4.sellBps,
+              creatorBps: 10_000,
+              holdersBps: 0,
+              buybackBps: 0,
+              antiSnipe: false,
+            },
+          ],
+          value,
+        });
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        const created = parseEventLogs({ abi: v4LauncherAbi, logs: receipt.logs, eventName: "TokenLaunched" });
+        const token = created[0]?.args.token;
+        if (!token) throw new Error("The launch confirmed, but the new token was not in the receipt.");
+        await refresh();
+        return token;
+      }
       const fee = await publicClient.readContract({
         address: deployment.factory,
         abi: factoryAbi,
@@ -298,7 +339,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       }
       return token;
     },
-    [deployment],
+    [deployment, refresh],
   );
 
   const trade = useCallback(
@@ -307,6 +348,54 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       if (!deployment) throw new Error("Factory not loaded.");
       const { who, client } = await ready();
       const qty = parseEther(amount.trim());
+      if (coin.poolId) {
+        if (!isV4Live(deployment)) throw new Error("Taxed trading isn’t switched on yet.");
+        const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200);
+        if (side === "buy") {
+          const hash = await client.writeContract({
+            account: who,
+            chain: giwaSepolia,
+            address: deployment.v4.router,
+            abi: v4RouterAbi,
+            functionName: "buy",
+            args: [coin.token, minOut, who, deadline],
+            value: qty,
+          });
+          const bought = await publicClient.waitForTransactionReceipt({ hash });
+          if (bought.status !== "success") throw new Error("The buy failed on-chain, so nothing was bought. If the price moved past your minimum, try a smaller amount or more slippage.");
+          await refresh();
+          return hash;
+        }
+        const allowed = await publicClient.readContract({
+          address: coin.token,
+          abi: erc20Abi,
+          functionName: "allowance",
+          args: [who, deployment.v4.router],
+        });
+        if (allowed < qty) {
+          const approve = await client.writeContract({
+            account: who,
+            chain: giwaSepolia,
+            address: coin.token,
+            abi: erc20Abi,
+            functionName: "approve",
+            args: [deployment.v4.router, qty],
+          });
+          await publicClient.waitForTransactionReceipt({ hash: approve });
+        }
+        const hash = await client.writeContract({
+          account: who,
+          chain: giwaSepolia,
+          address: deployment.v4.router,
+          abi: v4RouterAbi,
+          functionName: "sell",
+          args: [coin.token, qty, minOut, who, deadline],
+        });
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        if (receipt.status !== "success") throw new Error("The sale failed on-chain, so nothing was sold. If the price moved past your minimum, try a smaller amount or more slippage.");
+        await refresh();
+        return hash;
+      }
       if (side === "buy") {
         const hash = await client.writeContract({
           account: who,
@@ -396,6 +485,22 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       if (!deployment) throw new Error("Factory not loaded.");
       const { who } = await ready();
       const qty = parseEther(eth);
+      if (coin.poolId) {
+        if (!isV4Live(deployment)) throw new Error("Taxed trading isn’t switched on yet.");
+        let expected: bigint;
+        try {
+          const run = await publicClient.simulateContract({
+            address: deployment.v4.router,
+            abi: v4RouterAbi,
+            functionName: "quoteBuy",
+            args: [coin.token, qty],
+          });
+          expected = run.result;
+        } catch (err) {
+          throw new Error(/insufficient|exceeds|balance|funds/i.test(short(err)) ? `Not enough ETH for a ${eth} ETH buy.` : "Couldn’t price that buy. Try again in a moment.");
+        }
+        return trade(coin, "buy", eth, (expected * BigInt(10_000 - slippageBps)) / 10_000n);
+      }
       let expected: bigint;
       try {
         const run = await publicClient.simulateContract({
@@ -442,10 +547,27 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
   );
 
   const claimFees = useCallback(
-    async (positionIds: bigint[]) => {
+    async (positionIds: bigint[], opts?: { v4?: boolean }) => {
       if (!deployment) throw new Error("Factory not loaded.");
-      if (positionIds.length === 0) throw new Error("Nothing to claim.");
       const { who, client } = await ready();
+      if (opts?.v4) {
+        if (!isV4Live(deployment)) throw new Error("Taxed launches aren’t switched on yet.");
+        const before = await publicClient.getBalance({ address: who });
+        const hash = await client.writeContract({
+          account: who,
+          chain: giwaSepolia,
+          address: deployment.v4.hook,
+          abi: v4HookAbi,
+          functionName: "claimCreatorFees",
+        });
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        if (receipt.status !== "success") throw new Error("The claim didn’t go through.");
+        const after = await publicClient.getBalance({ address: who });
+        const gas = receipt.gasUsed * receipt.effectiveGasPrice;
+        const received = after + gas > before ? after + gas - before : 0n;
+        return { hash, received };
+      }
+      if (positionIds.length === 0) throw new Error("Nothing to claim.");
       const wrapped = () => publicClient.readContract({ address: deployment.weth, abi: wethAbi, functionName: "balanceOf", args: [who] });
       const before = await wrapped();
       const hash =
