@@ -294,12 +294,17 @@ export const IconTelegram = ({ size = 20, ...rest }: IconProps) => (
   </svg>
 );
 
-/** Chimi's mark: the vermilion ornament pressed on a paper tile, the same as the site icon. */
+/** Chimi's seal: the official vermilion stamp, cropped tight for the nav, footer, and other small placements. */
 export function ChimiMark({ size = 32, className = "" }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" className={`shrink-0 ${className}`} aria-hidden>
-      <rect width="32" height="32" rx="8" fill="#f4efe4" />
-      <path d={CHIMI_PATH} fill="#c8402b" />
-    </svg>
+    <img
+      src="/brand/mark.jpg"
+      alt=""
+      width={size}
+      height={size}
+      draggable={false}
+      className={`shrink-0 rounded-full object-cover ${className}`}
+      style={{ width: size, height: size }}
+    />
   );
 }
