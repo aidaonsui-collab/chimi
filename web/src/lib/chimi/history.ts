@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { loadSwapWindow, type Coin, type PoolSwap } from "@/lib/chimi/market";
+import { loadSwapWindow, poolKey, refOf, type Coin, type PoolSwap } from "@/lib/chimi/market";
 
 /*
  * A coin's trades as far back as they can be read. The page already follows about a day of them from the node;
@@ -14,11 +14,11 @@ const KEEP_MS = 5 * 60_000;
 type Old = { swaps: PoolSwap[]; coveredFrom: number };
 const cache = new Map<string, { at: number; job: Promise<Old> }>();
 
-function loadHistory(coin: Pick<Coin, "pool" | "tokenIs0"> & Partial<Pick<Coin, "token">>): Promise<Old> {
-  const key = coin.pool.toLowerCase();
+function loadHistory(coin: Parameters<typeof refOf>[0]): Promise<Old> {
+  const key = poolKey(coin);
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < KEEP_MS) return hit.job;
-  const job = loadSwapWindow(coin.pool, coin.tokenIs0, REACH_S, coin.token).then(({ swaps, coveredFrom }) => ({ swaps, coveredFrom }));
+  const job = loadSwapWindow(refOf(coin), REACH_S).then(({ swaps, coveredFrom }) => ({ swaps, coveredFrom }));
   cache.set(key, { at: Date.now(), job });
   job.catch(() => cache.delete(key));
   return job;
@@ -30,22 +30,27 @@ const inOrder = (a: PoolSwap, b: PoolSwap) => (a.block === b.block ? (a.index ??
  * Every trade of this coin that can be read, oldest first: the long history joined with `recent`, the day of
  * trades the page keeps fresh. Undefined until the first of the two has arrived.
  */
-export function useSwapHistory(coin: (Pick<Coin, "pool" | "tokenIs0" | "preview"> & Partial<Pick<Coin, "token">>) | undefined, recent: PoolSwap[] | undefined): PoolSwap[] | undefined {
-  const pool = coin && !coin.preview ? coin.pool.toLowerCase() : undefined;
+export function useSwapHistory(
+  coin: (Pick<Coin, "pool" | "tokenIs0" | "preview" | "token"> & Partial<Pick<Coin, "poolId" | "hook">>) | undefined,
+  recent: PoolSwap[] | undefined,
+): PoolSwap[] | undefined {
+  const pool = coin && !coin.preview ? poolKey(coin) : undefined;
   const tokenIs0 = coin?.tokenIs0;
   const token = coin?.token;
+  const poolId = coin?.poolId;
+  const hook = coin?.hook;
   const [old, setOld] = useState<{ pool: string; swaps: PoolSwap[] }>();
 
   useEffect(() => {
-    if (!pool || tokenIs0 === undefined) return;
+    if (!pool || !coin || tokenIs0 === undefined) return;
     let off = false;
-    loadHistory({ pool: pool as Coin["pool"], tokenIs0, token })
+    loadHistory(coin)
       .then((found) => !off && setOld({ pool, swaps: found.swaps }))
       .catch(() => undefined);
     return () => {
       off = true;
     };
-  }, [pool, tokenIs0, token]);
+  }, [pool, tokenIs0, token, poolId, hook, coin]);
 
   return useMemo(() => {
     const older = old && old.pool === pool ? old.swaps : undefined;

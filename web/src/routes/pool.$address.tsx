@@ -5,7 +5,7 @@ import { erc20Abi, giwaSepolia } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { ago, compactCount, ethText } from "@/lib/chimi/format";
 import { fetchSwaps, useEthUsd } from "@/lib/chimi/live";
-import { feeLabel, fmt, loadCoin, shortAddr, wethPerToken, type Coin, type PoolSwap } from "@/lib/chimi/market";
+import { fmt, loadCoin, poolLabel, readReserves, shortAddr, wethPerToken, type Coin, type PoolSwap } from "@/lib/chimi/market";
 import { useTokenProfile } from "@/lib/chimi/token-image";
 import { tickFromSqrtPriceX96, tokensPerEthFromTick } from "@/lib/chimi/range";
 import { AreaChart, BarChart, type ChartPoint } from "@/components/chimi/charts";
@@ -68,14 +68,13 @@ function PoolPage() {
     if (!coin || !deployment) return;
     let cancel = false;
     void Promise.all([
-      publicClient.readContract({ address: deployment.weth, abi: erc20Abi, functionName: "balanceOf", args: [coin.pool] }),
-      publicClient.readContract({ address: coin.token, abi: erc20Abi, functionName: "balanceOf", args: [coin.pool] }),
+      readReserves(deployment, coin),
       fetchSwaps(coin, reload > 0),
     ])
-      .then(([weth, token, rows]) => {
+      .then(([reserves, rows]) => {
         if (cancel) return;
-        setWethBal(weth);
-        setTokenBal(token);
+        setWethBal(reserves.eth);
+        setTokenBal(reserves.token);
         setSwaps(rows);
       })
       .catch(() => {
@@ -89,7 +88,7 @@ function PoolPage() {
   // "#new" opens the position screen, whether the page loads with it or a link adds it later.
   useEffect(() => {
     const check = () => {
-      if (window.location.hash === "#new") setCreating(true);
+      if (window.location.hash === "#new" && !coin?.poolId) setCreating(true);
     };
     check();
     window.addEventListener("hashchange", check);
@@ -165,7 +164,7 @@ function PoolPage() {
   };
   const explorer = giwaSepolia.blockExplorers.default.url;
 
-  if (creating) {
+  if (creating && !coin.poolId) {
     return (
       <PositionDesk
         coin={coin}
@@ -204,7 +203,7 @@ function PoolPage() {
                 <span className="size-1.5 rounded-full bg-ok" />
                 GIWA Sepolia
               </span>
-              <span className="chip">v3 · {feeLabel(coin.fee)}</span>
+              <span className="chip">{poolLabel(coin)}</span>
               <span className="chip gap-1 pr-0.5">
                 <span className="num">{shortAddr(coin.pool)}</span>
                 <CopyButton text={coin.pool} label="Copy pool address" className="btn btn-icon btn-ghost size-6 rounded-md" size={12} />
@@ -220,10 +219,14 @@ function PoolPage() {
             <IconSwap size={17} />
             Trade
           </Link>
-          <button type="button" onClick={() => setCreating(true)} className="btn btn-lg btn-primary">
-            <IconPlus size={18} />
-            New position
-          </button>
+          {coin.poolId ? (
+            <span className="btn btn-lg btn-secondary pointer-events-none">Liquidity locked</span>
+          ) : (
+            <button type="button" onClick={() => setCreating(true)} className="btn btn-lg btn-primary">
+              <IconPlus size={18} />
+              New position
+            </button>
+          )}
         </div>
       </div>
 

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 import { formatEther, parseEther } from "viem";
-import { factoryAbi, giwaSepolia } from "@/lib/chimi/chain";
+import { bpsAbi, factoryAbi, giwaSepolia, isV4Live, v4LauncherAbi } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { ethText, money } from "@/lib/chimi/format";
 import { useEthUsd } from "@/lib/chimi/live";
@@ -12,7 +12,7 @@ import { IconCheck, IconClose, IconImage, IconLock, IconPlus, IconTelegram, Icon
 import { useChimi } from "@/components/chimi/provider";
 import { toast } from "@/components/chimi/toast";
 import { TokenArt } from "@/components/chimi/token-logo";
-import { Note, PageHead } from "@/components/chimi/ui";
+import { Note, PageHead, Seg } from "@/components/chimi/ui";
 
 export const Route = createFileRoute("/launch")({
   head: () => ({ meta: [{ title: "Launch a coin · Chimi" }] }),
@@ -54,6 +54,13 @@ function LaunchPage() {
   const [note, setNote] = useState("");
   const [kind, setKind] = useState<"" | "bad" | "good">("");
   const [busy, setBusy] = useState(false);
+  const [amm, setAmm] = useState<"v3" | "v4">("v3");
+  const [buyTax, setBuyTax] = useState("1");
+  const [sellTax, setSellTax] = useState("1");
+  const [v4Cap, setV4Cap] = useState<bigint>();
+  const [v4Quote, setV4Quote] = useState<bigint>();
+  const [split, setSplit] = useState("Creator 70% · platform 30%");
+  const v4On = isV4Live(deployment);
 
   useEffect(() => {
     if (!account) {
@@ -78,8 +85,11 @@ function LaunchPage() {
       return;
     }
     let cancel = false;
-    void publicClient
-      .readContract({ address: deployment.factory, abi: factoryAbi, functionName: "creationFeeDue", args: [account] })
+    const taxed = v4On && amm === "v4";
+    const read = taxed
+      ? publicClient.readContract({ address: deployment.v4.launcher, abi: v4LauncherAbi, functionName: "creationFeeDue", args: [account] })
+      : publicClient.readContract({ address: deployment.factory, abi: factoryAbi, functionName: "creationFeeDue", args: [account] });
+    void read
       .then((due) => {
         if (!cancel) setFee(due);
       })
@@ -87,7 +97,7 @@ function LaunchPage() {
     return () => {
       cancel = true;
     };
-  }, [account, deployment, live]);
+  }, [account, deployment, live, amm, v4On]);
 
   useEffect(() => {
     if (!deployment || !live) return;
@@ -102,6 +112,34 @@ function LaunchPage() {
       cancel = true;
     };
   }, [deployment, live]);
+
+  useEffect(() => {
+    if (!v4On || !deployment) return;
+    let cancel = false;
+    void publicClient
+      .readContract({ address: deployment.v4.launcher, abi: v4LauncherAbi, functionName: "startMarketCap" })
+      .then((cap) => {
+        if (!cancel) setV4Cap(cap);
+      })
+      .catch(() => undefined);
+    void (async () => {
+      try {
+        const source = await publicClient.readContract({ address: deployment.v4.launcher, abi: v4LauncherAbi, functionName: "bpsSource" });
+        if (source === "0x0000000000000000000000000000000000000000") return;
+        const [creatorBps, stakerBps] = await Promise.all([
+          publicClient.readContract({ address: source, abi: bpsAbi, functionName: "lpMemeCreatorBps" }),
+          publicClient.readContract({ address: source, abi: bpsAbi, functionName: "lpMemeStakerBps" }),
+        ]);
+        const platform = 10000 - creatorBps - stakerBps;
+        if (!cancel) setSplit(`Creator ${creatorBps / 100}% · platform ${platform / 100}%${stakerBps ? ` · stakers ${stakerBps / 100}%` : ""}`);
+      } catch {
+        /* the default line stays */
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [deployment, v4On]);
 
   async function onImage(file: File | undefined) {
     if (!file) return;
@@ -139,7 +177,16 @@ function LaunchPage() {
       setBusy(true);
       setKind("");
       setNote("Confirm the launch in your wallet.");
-      const token = await createCoin(name.trim(), symbol.trim(), devBuy.trim() || "0");
+      const taxed = v4On && amm === "v4";
+      const buyBps = Math.round(Number(buyTax) * 100);
+      const sellBps = Math.round(Number(sellTax) * 100);
+      if (taxed && (!Number.isInteger(buyBps) || buyBps < 100 || buyBps > 1000 || !Number.isInteger(sellBps) || sellBps < 100 || sellBps > 1000)) {
+        setKind("bad");
+        setNote("The tax is between 1% and 10%.");
+        setBusy(false);
+        return;
+      }
+      const token = await createCoin(name.trim(), symbol.trim(), devBuy.trim() || "0", taxed ? { buyBps, sellBps } : undefined);
       const profile = {
         description: description.trim(),
         image,
@@ -182,11 +229,33 @@ function LaunchPage() {
     buyOk = devBuy.trim() === "";
   }
   const total = due + buy;
+  useEffect(() => {
+    if (!v4On || amm !== "v4" || !deployment || !buyOk || buy === 0n) {
+      setV4Quote(undefined);
+      return;
+    }
+    let cancel = false;
+    const bps = Math.round(Number(buyTax) * 100);
+    if (!Number.isInteger(bps) || bps < 100 || bps > 1000) return;
+    const timer = setTimeout(() => {
+      void publicClient
+        .readContract({ address: deployment.v4.launcher, abi: v4LauncherAbi, functionName: "quoteLaunch", args: [buy, bps] })
+        .then((out) => {
+          if (!cancel) setV4Quote(out);
+        })
+        .catch(() => undefined);
+    }, 200);
+    return () => {
+      cancel = true;
+      clearTimeout(timer);
+    };
+  }, [v4On, amm, deployment, buy, buyOk, buyTax]);
   const mark = symbol.trim() || "TICKER";
   const quote = virtualQuote ?? 0n;
-  const received = buyOk ? tokensOut(buy, quote) : 0n;
+  const taxed = v4On && amm === "v4";
+  const received = buyOk ? (taxed ? (v4Quote ?? 0n) : tokensOut(buy, quote)) : 0n;
   const share = received === 0n ? 0 : Number((received * 10_000n) / SUPPLY) / 100;
-  const fdvEth = quote === 0n ? 0 : Number((quote * SUPPLY) / VIRTUAL_TOKEN) / 1e18;
+  const fdvEth = taxed ? (v4Cap === undefined ? 0 : Number(v4Cap) / 1e18) : quote === 0n ? 0 : Number((quote * SUPPLY) / VIRTUAL_TOKEN) / 1e18;
   const opensAt = fdvEth ? (ethUsd ? money(fdvEth * ethUsd) : `${ethText(fdvEth)} ETH`) : undefined;
   const broke = !!account && balance !== undefined && total > balance;
   const missing = tried && (!name.trim() || !symbol.trim());
@@ -197,6 +266,25 @@ function LaunchPage() {
       <PageHead eyebrow="GIWA Sepolia" title="Launch a coin">
         One transaction mints a billion tokens straight into a locked pool against ETH. No bonding curve, nothing to graduate, tradable from the first block.
       </PageHead>
+
+      {v4On ? (
+        <div className="mt-6">
+          <Seg
+            label="Launch type"
+            value={amm}
+            onChange={setAmm}
+            options={[
+              ["v3", "Standard (v3)"],
+              ["v4", "Taxed (v4)"],
+            ]}
+          />
+          <p className="mt-2 text-sm text-muted">
+            {taxed
+              ? `Taxed launches open a Uniswap v4 pool. Trades pay the tax below in ETH, split ${split.toLowerCase()}. The liquidity locks for 100 years.`
+              : "Standard launches are unchanged: a 1% Uniswap v3 pool, with creator fees on the locked liquidity."}
+          </p>
+        </div>
+      ) : null}
 
       {!loading && !live ? (
         <p className="mt-6 rounded-xl border border-gold/25 bg-gold/8 px-4 py-3 text-sm">The factory isn’t on this chain yet, so launching is switched off. You can still fill the form to see how it looks.</p>
@@ -300,7 +388,23 @@ function LaunchPage() {
             </div>
           </Panel>
 
-          <Panel step="3" title="First buy" sub="Optional. Buy some of your own coin in the same transaction, before anyone else can.">
+          {taxed ? (
+            <Panel step="3" title="Tax" sub="Taken in ETH on every trade. 1% is what a standard pool charges. You can lower it later, never raise it.">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label>
+                  <span className="label">Buy tax, %</span>
+                  <input value={buyTax} inputMode="decimal" onChange={(e) => setBuyTax(e.target.value.replace(",", "."))} className="field num" />
+                </label>
+                <label>
+                  <span className="label">Sell tax, %</span>
+                  <input value={sellTax} inputMode="decimal" onChange={(e) => setSellTax(e.target.value.replace(",", "."))} className="field num" />
+                </label>
+              </div>
+              <p className="mt-3 text-sm text-muted">{split} of the tax. The pool itself charges no extra fee.</p>
+            </Panel>
+          ) : null}
+
+          <Panel step={taxed ? "4" : "3"} title="First buy" sub="Optional. Buy some of your own coin in the same transaction, before anyone else can.">
             <div className="flex items-center justify-between">
               <span className="label mb-0">Amount</span>
               {balance !== undefined ? (
@@ -339,7 +443,7 @@ function LaunchPage() {
                 <span className="text-muted">Leave it empty to launch without buying.</span>
               )}
             </p>
-            {buy > 0n && quote > 0n ? <p className="mt-1 text-xs text-faint">An estimate at the opening price, after the 1% pool fee.</p> : null}
+            {buy > 0n && received > 0n ? <p className="mt-1 text-xs text-faint">{taxed ? "From the launcher’s quote, after the buy tax." : "An estimate at the opening price, after the 1% pool fee."}</p> : null}
           </Panel>
 
           <details className="card group px-5 py-4 sm:px-6">
@@ -350,12 +454,12 @@ function LaunchPage() {
             <dl className="mt-4 grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
               {[
                 ["Supply", "1,000,000,000"],
-                ["Quote", "Wrapped ETH"],
-                ["Pool fee", "1%"],
+                ["Quote", taxed ? "ETH" : "Wrapped ETH"],
+                ["Pool fee", taxed ? `${buyTax || "—"}% buy · ${sellTax || "—"}% sell` : "1%"],
                 ["Lock", "100 years, then the beneficiary"],
-                ["Creator share", "70% of the wrapped-ETH trading fees"],
-                ["Token-side fees", "Burned"],
-                ["Buy tax", "None"],
+                ["Creator share", taxed ? split : "70% of the wrapped-ETH trading fees"],
+                ["Token-side fees", taxed ? "None — the tax is in ETH" : "Burned"],
+                ["Buy tax", taxed ? `${buyTax || "—"}%` : "None"],
                 ["Opens at", opensAt ? `About ${opensAt} market cap` : "—"],
               ].map(([label, value]) => (
                 <div key={label} className="flex items-baseline justify-between gap-4 border-b border-line/70 pb-3">

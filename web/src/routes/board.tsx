@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { compactUsd, ethText, tokenUsd } from "@/lib/chimi/format";
 import { coinStats, useEthUsd, usePoolEth, useSwaps, type CoinStats } from "@/lib/chimi/live";
-import type { Coin } from "@/lib/chimi/market";
+import { poolKey, type Coin } from "@/lib/chimi/market";
 import { useTokenImages } from "@/lib/chimi/token-image";
 import { IconClock, IconFlame, IconGrid, IconList, IconPlus, IconSearch, IconTrophy } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
@@ -22,7 +22,7 @@ function Board() {
   const { coins, preview, loading, deployment, note, refresh } = useChimi();
   const ethUsd = useEthUsd();
   const { byPool, ready } = useSwaps(coins);
-  const reserves = usePoolEth(coins, deployment?.weth);
+  const reserves = usePoolEth(coins, deployment);
   const images = useTokenImages(useMemo(() => coins.map((coin) => coin.token), [coins]));
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("trending");
@@ -55,7 +55,7 @@ function Board() {
   const rows = useMemo<Row[]>(
     () =>
       coins.map((coin, order) => {
-        const pool = coin.pool.toLowerCase();
+        const pool = poolKey(coin);
         const wei = reserves[pool];
         return {
           coin,

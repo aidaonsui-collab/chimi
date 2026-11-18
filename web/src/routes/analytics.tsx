@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { compactUsd, ethText } from "@/lib/chimi/format";
 import { useEthUsd } from "@/lib/chimi/live";
-import { loadLaunchWindow, loadSwapWindow, type Coin, type Launch, type PoolSwap } from "@/lib/chimi/market";
+import { loadLaunchWindow, loadSwapWindow, refOf, type Coin, type Launch, type PoolSwap } from "@/lib/chimi/market";
 import { useTokenImages } from "@/lib/chimi/token-image";
 import { BarChart } from "@/components/chimi/charts";
 import { useChimi } from "@/components/chimi/provider";
@@ -59,7 +59,7 @@ function AnalyticsPage() {
     void (async () => {
       const [created, rows] = await Promise.all([
         loadLaunchWindow(deployment.factory, DAYS * DAY),
-        Promise.all(live.map(async (coin) => ({ coin, window: await loadSwapWindow(coin.pool, coin.tokenIs0, DAYS * DAY, coin.token) }))),
+        Promise.all(live.map(async (coin) => ({ coin, window: await loadSwapWindow(refOf(coin), DAYS * DAY) }))),
       ]);
       if (cancel) return;
       setLaunches(created.launches);

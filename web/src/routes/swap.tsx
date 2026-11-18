@@ -5,7 +5,8 @@ import { POOL_FEE, erc20Abi, giwaSepolia } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { amountText, compactUsd, ethText } from "@/lib/chimi/format";
 import { SUPPLY, useEthUsd } from "@/lib/chimi/live";
-import { estimatedOut, feeLabel, short, wethPerToken, type Coin } from "@/lib/chimi/market";
+import { estimatedOut, poolLabel, short, wethPerToken, type Coin } from "@/lib/chimi/market";
+import { useQuote } from "@/lib/chimi/quote";
 import { useTokenImages } from "@/lib/chimi/token-image";
 import { IconArrowDown, IconChevronDown, IconChevronRight, IconSearch, IconSliders } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
@@ -22,7 +23,7 @@ const SLIPPAGE = [100, 200, 500];
 const GAS_RESERVE = 200_000_000_000_000n;
 
 function SwapPage() {
-  const { coins, account, connect, trade, live, loading } = useChimi();
+  const { coins, account, connect, trade, live, loading, deployment } = useChimi();
   const [token, setToken] = useState("");
   const [payEth, setPayEth] = useState(true);
   const [amount, setAmount] = useState("");
@@ -62,6 +63,7 @@ function SwapPage() {
   }, [account, coin, payEth, reload]);
 
   const price = coin ? wethPerToken(coin.sqrtPriceX96, coin.tokenIs0) : 0n;
+  const taxed = Boolean(coin?.poolId);
   let parsed = 0n;
   let badAmount = false;
   try {
@@ -70,7 +72,10 @@ function SwapPage() {
     badAmount = true;
   }
   const tradable = Boolean(coin && live && !coin.preview);
-  const quote = coin && !badAmount ? estimatedOut(parsed, price, payEth) : 0n;
+  const feePpm = coin ? (payEth ? (coin.fee ?? POOL_FEE) : (coin.sellFee ?? coin.fee ?? POOL_FEE)) : POOL_FEE;
+  const spotQuote = coin && !badAmount ? estimatedOut(parsed, price, payEth, feePpm) : 0n;
+  const exact = useQuote(deployment, taxed ? (coin ?? null) : null, payEth ? "buy" : "sell", badAmount ? 0n : parsed);
+  const quote = taxed ? (exact.out ?? spotQuote) : spotQuote;
   const minOut = (quote * BigInt(10_000 - slippageBps)) / 10_000n;
   const priceEth = Number(price) / 1e18;
   const usdOf = (wei: bigint, isEth: boolean) => (ethUsd && wei > 0n ? compactUsd((Number(wei) / 1e18) * (isEth ? 1 : priceEth) * ethUsd) : undefined);
@@ -213,7 +218,7 @@ function SwapPage() {
           <dl className="mt-4 space-y-2.5 px-3 text-[13px]">
             <Row label="Rate" value={`1 ${coin.symbol} = ${priceEth > 0 ? ethText(priceEth) : "0"} ETH`} />
             <Row label="Minimum received" value={quote === 0n ? "—" : `${amountText(minOut, 6)} ${recvSymbol}`} />
-            <Row label="Route" value={`Chimi pool · ${feeLabel(coin.fee ?? POOL_FEE)} fee`} />
+            <Row label="Route" value={`Chimi pool · ${poolLabel(coin)}`} />
           </dl>
         ) : null}
 
