@@ -264,7 +264,7 @@ function PoolsPage() {
           </>
         }
       >
-        Add a position on a Chimi pool and earn a share of its swap fee (1% on older coins, 2% on new ones). The launch liquidity itself stays locked.
+        Add a position on a Chimi pool and earn a share of its swap fee. The launch liquidity itself stays locked.
       </PageHead>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-3">

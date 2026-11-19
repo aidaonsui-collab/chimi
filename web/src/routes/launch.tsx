@@ -366,7 +366,7 @@ function LaunchPage() {
                     ]
                   : []),
                 ["Token-side fees", "Burned"],
-                ["Buy tax", "None"],
+                ["Transfer tax", "None. The pool fee is the only cost of a trade"],
                 ["Opens at", opensAt ? `About ${opensAt} market cap` : "—"],
               ].map(([label, value]) => (
                 <div key={label} className="flex items-baseline justify-between gap-4 border-b border-line/70 pb-3">

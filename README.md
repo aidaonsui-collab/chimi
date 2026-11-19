@@ -58,7 +58,7 @@ The script checks that the signer owns the pad and that CHIMI is a 1% coin on th
 
 **The keeper** (`web/src/server/flywheel.ts`) runs once a day at 00:10 KST, from Vercel Cron (`vite.config.ts`) to `/api/keeper/flywheel`. Each step runs even if the one before it fails:
 
-1. It sweeps the fees of every coin on the 2% DEX, which also pays creators their 70% automatically.
+1. It sweeps the fees of every coin, on both DEXes, which pays creators their 70% automatically.
 2. It burns with the burn half, up to 0.25 ETH a day, at no less than 98% of a dry run's price.
 3. It pays the KST day that just ended. A wallet's share is its average CHIMI balance over that day, worked out from CHIMI's transfers, so buying just before the payout earns little. The rules are in `web/src/lib/chimi/flywheel-rules.ts`, with tests in `web/test/flywheel.test.ts`. Pools, contracts, the burn address and Chimi's own wallets are left out.
 
