@@ -236,7 +236,7 @@ function Docs() {
                   the top of the coin's page and the coin shows LIVE on the board.
                 </>,
                 <>The stream plays in YouTube's or SOOP's own player. Chimi doesn't record or host it.</>,
-                <>A stream marked 19+, behind a password, or closed to other sites shows a button to watch it on its own site instead.</>,
+                <>A SOOP stream marked 19+ or behind a password shows a button to watch it on SOOP instead.</>,
                 <>Chimi can take down a link that breaks the rules.</>,
               ]}
             />

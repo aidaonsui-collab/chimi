@@ -6,8 +6,8 @@
  *   transaction. Linking again replaces it; the creator can remove it the same way.
  * - Chimi doesn't carry the video. Whenever the linked channel is live, the coin's page plays it in that site's own
  *   player, and the coin shows LIVE on the board.
- * - A stream that site won't play inside another site (YouTube embedding off, SOOP 19+ or password) shows a card that
- *   opens it there instead.
+ * - A stream SOOP won't play inside another site (19+ or password) shows a card that opens it there instead. YouTube's
+ *   own player explains when a streamer turned embedding off or the stream is age-restricted.
  * - The site's operator can take a link down.
  */
 export const STREAMS_VERSION = 1;
@@ -149,11 +149,21 @@ export function watchUrl(link: StreamLink, status?: StreamStatus) {
   return link.kind === "video" ? linkUrl(link) : `https://www.youtube.com/${link.ref}/live`;
 }
 
-/** The page the server reads to see whether the channel is live. */
+/**
+ * What the server reads to see whether the channel is live: SOOP's station API, a YouTube channel's Live tab, or for a
+ * YouTube video, YouTube's oEmbed answer (which names the video's channel, whose Live tab then says).
+ */
 export function statusUrl(link: StreamLink) {
   if (link.platform === "soop") return `https://chapi.sooplive.co.kr/api/${link.ref}/station`;
-  if (link.kind === "video") return `https://www.youtube.com/watch?v=${link.ref}`;
-  return `https://www.youtube.com/${link.ref}/live`;
+  if (link.kind === "video") return `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${link.ref}`)}`;
+  return `https://www.youtube.com/${link.ref}/streams`;
+}
+
+/** The channel an oEmbed answer's `author_url` points at, or null. */
+export function channelOf(authorUrl: unknown): StreamLink | null {
+  if (typeof authorUrl !== "string") return null;
+  const link = parseStreamLink(authorUrl);
+  return "error" in link || link.platform !== "youtube" || link.kind !== "channel" ? null : link;
 }
 
 /** The player to put on the page, or null when it can't play here. Starts muted, as a page full of trades should. */
@@ -207,34 +217,53 @@ const num = (v: unknown) => {
   return Number.isFinite(n) && n >= 0 ? n : undefined;
 };
 
+/** "4.4K watching" → 4400; "1,234 watching" → 1234. */
+export function watchingCount(text: string | undefined): number | undefined {
+  const m = /([\d.,]+)\s*([KMB])?\s+watching/i.exec(text ?? "");
+  if (!m) return undefined;
+  const n = Number(m[1]!.replace(/,/g, ""));
+  const scale = m[2] ? { K: 1e3, M: 1e6, B: 1e9 }[m[2].toUpperCase() as "K" | "M" | "B"] : 1;
+  return Number.isFinite(n) ? Math.round(n * scale) : undefined;
+}
+
+type Lockup = {
+  contentId?: string;
+  metadata?: { lockupMetadataViewModel?: { title?: { content?: string } } };
+};
+
 /**
- * What a YouTube page says: a channel's /live page carries the live video's player data while it's live and none
- * when it isn't; a video's page always carries it.
+ * What a channel's Live tab (`/@handle/streams`) says: a stream that's live now carries a LIVE badge on its
+ * thumbnail, newest first. YouTube sends this page to servers as it sends it to people, unlike a video's own page,
+ * which a server in a data centre can get as a "confirm you're not a bot" page.
  */
-export function readYouTubePage(html: string, now: number): StreamStatus {
-  const player = jsonAfter(html, "ytInitialPlayerResponse = ") as
-    | {
-        videoDetails?: { videoId?: string; title?: string; author?: string; isLive?: boolean; viewCount?: string };
-        playabilityStatus?: { status?: string; playableInEmbed?: boolean };
-        microformat?: { playerMicroformatRenderer?: { liveBroadcastDetails?: { isLiveNow?: boolean }; isFamilySafe?: boolean } };
-      }
-    | undefined;
-  const details = player?.videoDetails;
-  const name = details?.author ?? /<meta property="og:title" content="([^"]*)"/.exec(html)?.[1];
-  const live = Boolean(details && (details.isLive === true || player?.microformat?.playerMicroformatRenderer?.liveBroadcastDetails?.isLiveNow === true));
-  if (!live || !details?.videoId) return { live: false, name: name ? decodeEntities(name) : undefined, embeddable: false, checkedAt: now };
-  const viewers = num(/"concurrentViewers":"(\d+)"/.exec(html)?.[1]) ?? num(/"viewCount":\{"runs":\[\{"text":"([\d,]+)"/.exec(html)?.[1]);
+export function readYouTubeLiveTab(html: string, now: number, video?: string): StreamStatus {
+  const name = /<meta property="og:title" content="([^"]*)"/.exec(html)?.[1];
+  const base = { name: name ? decodeEntities(name) : undefined, checkedAt: now };
+  const data = jsonAfter(html, "ytInitialData = ");
+  let found: { lockup: Lockup; text: string } | undefined;
+  const walk = (o: unknown): void => {
+    if (found || !o || typeof o !== "object") return;
+    if (Array.isArray(o)) return o.forEach(walk);
+    const rec = o as Record<string, unknown>;
+    if (rec.lockupViewModel && typeof rec.lockupViewModel === "object") {
+      const text = JSON.stringify(rec.lockupViewModel);
+      const lockup = rec.lockupViewModel as Lockup;
+      if (text.includes("THUMBNAIL_OVERLAY_BADGE_STYLE_LIVE") && (!video || lockup.contentId === video)) found = { lockup, text };
+      return;
+    }
+    Object.values(rec).forEach(walk);
+  };
+  walk(data);
+  const id = found?.lockup.contentId;
+  if (!found || !id || !/^[A-Za-z0-9_-]{11}$/.test(id)) return { live: false, ...base, embeddable: false };
   return {
     live: true,
-    title: details.title,
-    name: details.author,
-    viewers,
-    video: details.videoId,
-    // YouTube may ask a server to sign in (a bot check) where a viewer's browser plays fine, so only a video it says
-    // can't be embedded, or can't play at all, is kept off the page. Age-restricted ones are caught by `adult`.
-    embeddable: player?.playabilityStatus?.playableInEmbed !== false && !["ERROR", "UNPLAYABLE"].includes(player?.playabilityStatus?.status ?? ""),
-    adult: player?.microformat?.playerMicroformatRenderer?.isFamilySafe === false ? true : undefined,
-    checkedAt: now,
+    title: found.lockup.metadata?.lockupMetadataViewModel?.title?.content,
+    ...base,
+    viewers: watchingCount(/"content":"([^"]*watching[^"]*)"/.exec(found.text)?.[1]),
+    video: id,
+    // The Live tab doesn't say; YouTube's own player explains if the streamer turned embedding off.
+    embeddable: true,
   };
 }
 

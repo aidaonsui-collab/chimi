@@ -23,7 +23,8 @@ import {
   parseStreamLink,
   platformName,
   readSoopStation,
-  readYouTubePage,
+  readYouTubeLiveTab,
+  channelOf,
   statusUrl,
   streamMessage,
   type StreamAction,
@@ -48,27 +49,51 @@ const AT_ONCE = 8;
 
 const keyOf = (link: StreamLink) => `${link.platform}:${link.kind}:${link.ref}`;
 
-/** null: no such channel or video. Throws when the site couldn't be asked. */
+/** A YouTube channel's Live tab, read for the stream playing now (or for `video`, when given). null: no such channel. */
+async function youtubeLiveTab(channel: StreamLink, video?: string): Promise<StreamStatus | null> {
+  const res = await fetch(statusUrl(channel), { headers: HEADERS, signal: AbortSignal.timeout(6_000) });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`YouTube answered ${res.status}`);
+  const html = await res.text();
+  const status = readYouTubeLiveTab(html, Date.now(), video);
+  // A page without the channel's data isn't one YouTube normally sends: say what it was.
+  if (!html.includes("ytInitialData")) {
+    const title = /<title>([^<]{0,120})/.exec(html)?.[1];
+    console.warn("[streams] unreadable YouTube page", keyOf(channel), res.status, res.url, html.length, JSON.stringify(title));
+  }
+  return status;
+}
+
+/** The channel a YouTube video belongs to, from YouTube's oEmbed answer. null: no such public video. */
+async function youtubeChannelOf(video: StreamLink): Promise<{ channel: StreamLink | null; name?: string } | null> {
+  const res = await fetch(statusUrl(video), { headers: HEADERS, signal: AbortSignal.timeout(6_000) });
+  // 400/404: no such video; 401/403: private, or embedding turned off.
+  if (res.status >= 400 && res.status < 500) return null;
+  if (!res.ok) throw new Error(`YouTube oEmbed answered ${res.status}`);
+  const body = (await res.json().catch(() => null)) as { author_url?: unknown; author_name?: unknown } | null;
+  return { channel: channelOf(body?.author_url), name: typeof body?.author_name === "string" ? body.author_name : undefined };
+}
+
+/**
+ * null: no such channel or video. Throws when the site couldn't be asked.
+ *
+ * YouTube shows a server in a data centre a "confirm you're not a bot" page in place of a video's own page, so live
+ * status comes from the channel's Live tab, which it serves as usual.
+ */
 async function askSite(link: StreamLink): Promise<StreamStatus | null> {
-  const res = await fetch(statusUrl(link), { headers: HEADERS, signal: AbortSignal.timeout(6_000) });
   if (link.platform === "soop") {
+    const res = await fetch(statusUrl(link), { headers: HEADERS, signal: AbortSignal.timeout(6_000) });
     // SOOP answers an unknown streamer with an error code in the body, not a 404.
     const body = await res.json().catch(() => null);
     const status = readSoopStation(body, Date.now());
     if (status || (body && typeof body === "object" && "code" in body)) return status;
     throw new Error(`SOOP answered ${res.status}`);
   }
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`YouTube answered ${res.status}`);
-  const html = await res.text();
-  const status = readYouTubePage(html, Date.now());
-  // A page with neither a live video nor a channel name isn't one YouTube normally sends: say what it was.
-  if (!status.live && !status.name) {
-    const title = /<title>([^<]{0,120})/.exec(html)?.[1];
-    const signs = ["ytInitialPlayerResponse", "ytInitialData", "consent.youtube.com", "confirm you", "LOGIN_REQUIRED", "captcha"].filter((s) => html.includes(s));
-    console.warn("[streams] unreadable YouTube page", keyOf(link), res.status, res.url, html.length, JSON.stringify(title), signs.join(","), JSON.stringify(/"playabilityStatus":\{[^}]{0,200}/.exec(html)?.[0]));
-  }
-  return status;
+  if (link.kind === "channel") return youtubeLiveTab(link);
+  const owner = await youtubeChannelOf(link);
+  if (!owner) return null;
+  if (!owner.channel) return { live: false, name: owner.name, embeddable: false, checkedAt: Date.now() };
+  return youtubeLiveTab(owner.channel, link.ref);
 }
 
 type Seen = { status: StreamStatus | null; at: number; job?: Promise<StreamStatus | null> };
@@ -121,8 +146,14 @@ export async function getStreams(request: Request) {
   const check = url.searchParams.get("check");
   if (check !== null) {
     if (await rateLimited(request, "stream-check", 30, 60)) return json({ error: "Too many checks. Try again in a minute." }, 429, { "retry-after": "60" });
-    const link = parseStreamLink(check);
+    let link = parseStreamLink(check);
     if ("error" in link) return json({ error: link.error }, 400);
+    // A pasted video is linked as its channel, so every later stream shows too.
+    if (link.platform === "youtube" && link.kind === "video") {
+      const owner = await youtubeChannelOf(link).catch(() => undefined);
+      if (owner === null) return json({ error: "Couldn't find that video on YouTube. Paste your channel's link instead." }, 404);
+      if (owner?.channel) link = owner.channel;
+    }
     const status = await statusOf(link, true);
     if (!status) return json({ error: `Couldn't find that ${link.kind} on ${platformName(link.platform)}.` }, 404);
     return json({ link, url: linkUrl(link), status }, 200, { "cache-control": "no-store" });

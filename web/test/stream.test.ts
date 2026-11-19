@@ -9,10 +9,12 @@ import {
   jsonAfter,
   parseStreamLink,
   readSoopStation,
-  readYouTubePage,
+  readYouTubeLiveTab,
   statusUrl,
   streamMessage,
   watchUrl,
+  channelOf,
+  watchingCount,
   type StreamLink,
   type StreamStatus,
 } from "../src/lib/chimi/stream-rules.ts";
@@ -71,8 +73,8 @@ test("a stored link is only trusted when it's well formed", () => {
 });
 
 test("where the server looks and where people watch", () => {
-  assert.equal(statusUrl(yt("@LofiGirl")), "https://www.youtube.com/@LofiGirl/live");
-  assert.equal(statusUrl(yt("4t4AQ15yj1M", "video")), "https://www.youtube.com/watch?v=4t4AQ15yj1M");
+  assert.equal(statusUrl(yt("@LofiGirl")), "https://www.youtube.com/@LofiGirl/streams");
+  assert.equal(statusUrl(yt("4t4AQ15yj1M", "video")), "https://www.youtube.com/oembed?format=json&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D4t4AQ15yj1M");
   assert.equal(statusUrl(soop("muse0116")), "https://chapi.sooplive.co.kr/api/muse0116/station");
   const live: StreamStatus = { live: true, video: "4t4AQ15yj1M", embeddable: true, checkedAt: NOW };
   assert.equal(watchUrl(yt("@LofiGirl"), live), "https://www.youtube.com/watch?v=4t4AQ15yj1M");
@@ -90,59 +92,39 @@ test("the player only goes on the page when it can play there", () => {
   assert.equal(embedUrl(yt("@LofiGirl"), { ...live, live: false }), null);
 });
 
-const page = (player: unknown, extra = "") =>
-  `<html><head><meta property="og:title" content="Lofi Girl &amp; Friends"></head><body><script>var ytInitialPlayerResponse = ${JSON.stringify(player)};var meta = {"a":"}"};</script>${extra}</body></html>`;
-
-test("a live YouTube page reads as live, with its video, title and viewers", () => {
-  const html = page(
-    {
-      playabilityStatus: { status: "OK", playableInEmbed: true },
-      videoDetails: { videoId: "4t4AQ15yj1M", title: 'lofi {radio} "live"', author: "Lofi Girl", isLive: true },
-      microformat: { playerMicroformatRenderer: { liveBroadcastDetails: { isLiveNow: true }, isFamilySafe: true } },
-    },
-    '<script>{"viewCount":{"runs":[{"text":"4,944"},{"text":" watching now"}]}}</script>',
-  );
-  assert.deepEqual(readYouTubePage(html, NOW), {
-    live: true,
-    title: 'lofi {radio} "live"',
-    name: "Lofi Girl",
-    viewers: 4944,
-    video: "4t4AQ15yj1M",
-    embeddable: true,
-    adult: undefined,
-    checkedAt: NOW,
-  });
+test("an oEmbed answer's author link names the channel", () => {
+  assert.deepEqual(channelOf("https://www.youtube.com/@LofiGirl"), yt("@LofiGirl"));
+  assert.deepEqual(channelOf("https://www.youtube.com/channel/UCSJ4gkVC6NrvII8umztf0Ow"), yt("channel/UCSJ4gkVC6NrvII8umztf0Ow"));
+  assert.equal(channelOf("https://www.youtube.com/watch?v=4t4AQ15yj1M"), null);
+  assert.equal(channelOf(undefined), null);
 });
 
-test("an offline channel page and an old video read as not live", () => {
-  assert.deepEqual(readYouTubePage("<html><head><meta property=\"og:title\" content=\"Lofi Girl &amp; Friends\"></head></html>", NOW), {
-    live: false,
-    name: "Lofi Girl & Friends",
-    embeddable: false,
-    checkedAt: NOW,
-  });
-  const old = readYouTubePage(page({ playabilityStatus: { status: "OK", playableInEmbed: true }, videoDetails: { videoId: "dQw4w9WgXcQ", title: "x", author: "Rick" } }), NOW);
-  assert.equal(old.live, false);
+const liveTab = (items: unknown[]) =>
+  `<html><head><meta property="og:title" content="Lofi Girl"></head><script>var ytInitialData = ${JSON.stringify({
+    contents: { tabs: [{ content: { richGridRenderer: { contents: items.map((lockupViewModel) => ({ richItemRenderer: { content: { lockupViewModel } } })) } } }] },
+  })};</script></html>`;
+const lockup = (id: string, live: boolean, title: string, watching?: string) => ({
+  contentId: id,
+  contentImage: { thumbnailViewModel: { overlays: [{ thumbnailBottomOverlayViewModel: { badges: [{ thumbnailBadgeViewModel: { text: live ? "LIVE" : "1:02:03", badgeStyle: live ? "THUMBNAIL_OVERLAY_BADGE_STYLE_LIVE" : "THUMBNAIL_OVERLAY_BADGE_STYLE_DEFAULT" } }] } }] } },
+  metadata: { lockupMetadataViewModel: { title: { content: title }, metadata: { contentMetadataViewModel: { metadataRows: [{ metadataParts: [{ text: { content: watching ?? "3 days ago" } }] }] } } } },
 });
 
-test("a live YouTube video with embedding off can't play here", () => {
-  const html = page({ playabilityStatus: { status: "OK", playableInEmbed: false }, videoDetails: { videoId: "4t4AQ15yj1M", isLive: true } });
-  const status = readYouTubePage(html, NOW);
-  assert.equal(status.live, true);
-  assert.equal(status.embeddable, false);
+test("a channel's Live tab: the first stream with a LIVE badge is the one playing", () => {
+  const html = liveTab([lockup("aaaaaaaaaaa", false, "old stream"), lockup("4t4AQ15yj1M", true, "lofi radio", "4.4K watching"), lockup("bbbbbbbbbbb", true, "other radio")]);
+  assert.deepEqual(readYouTubeLiveTab(html, NOW), { live: true, title: "lofi radio", name: "Lofi Girl", checkedAt: NOW, viewers: 4400, video: "4t4AQ15yj1M", embeddable: true });
+  assert.deepEqual(readYouTubeLiveTab(liveTab([lockup("aaaaaaaaaaa", false, "old stream")]), NOW), { live: false, name: "Lofi Girl", checkedAt: NOW, embeddable: false });
+  assert.equal(readYouTubeLiveTab("<html></html>", NOW).live, false);
+  // Asked about one video: only that one counts.
+  assert.equal(readYouTubeLiveTab(html, NOW, "bbbbbbbbbbb").title, "other radio");
+  assert.equal(readYouTubeLiveTab(html, NOW, "aaaaaaaaaaa").live, false);
 });
 
-test("a bot check on the server's request doesn't keep a live stream off the page", () => {
-  const html = page({ playabilityStatus: { status: "LOGIN_REQUIRED", reason: "Sign in to confirm you're not a bot" }, videoDetails: { videoId: "4t4AQ15yj1M", isLive: true } });
-  assert.equal(readYouTubePage(html, NOW).embeddable, true);
-  const gone = page({ playabilityStatus: { status: "UNPLAYABLE" }, videoDetails: { videoId: "4t4AQ15yj1M", isLive: true } });
-  assert.equal(readYouTubePage(gone, NOW).embeddable, false);
-  const age = page({
-    playabilityStatus: { status: "LOGIN_REQUIRED" },
-    videoDetails: { videoId: "4t4AQ15yj1M", isLive: true },
-    microformat: { playerMicroformatRenderer: { isFamilySafe: false } },
-  });
-  assert.equal(embedUrl(yt("@x"), readYouTubePage(age, NOW)), null);
+test("viewer counts as YouTube writes them", () => {
+  assert.equal(watchingCount("4.4K watching"), 4400);
+  assert.equal(watchingCount("1,234 watching"), 1234);
+  assert.equal(watchingCount("1.2M watching"), 1_200_000);
+  assert.equal(watchingCount("12 watching now"), 12);
+  assert.equal(watchingCount("3 days ago"), undefined);
 });
 
 test("braces and quotes inside strings don't end the JSON early", () => {

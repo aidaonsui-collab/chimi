@@ -142,7 +142,6 @@ export function StreamSheet({ token, symbol, current, onClose }: { token: string
   const parsed = useMemo(() => (input.trim() ? parseStreamLink(input) : null), [input]);
   const link = parsed && !("error" in parsed) ? parsed : undefined;
   const linkKey = link ? `${link.platform}:${link.kind}:${link.ref}` : "";
-  const already = sameLink(link, current?.link ?? undefined);
 
   // Asks what the link points at once typing pauses, so the creator sees the channel before signing for it.
   useEffect(() => {
@@ -163,12 +162,14 @@ export function StreamSheet({ token, symbol, current, onClose }: { token: string
   }, [linkKey]);
 
   const found = check && check !== "checking" && check.ok ? check : undefined;
-  const canLink = !!link && !!found && !already && !busy;
+  // What gets signed is what the server found: a pasted YouTube video comes back as its channel.
+  const already = sameLink(found?.link, current?.link ?? undefined);
+  const canLink = !!found && !already && !busy;
 
   async function run(kind: "link" | "remove") {
     setBusy(kind);
     setNote({ bad: false, text: "Sign the message in your wallet. It costs no gas." });
-    const out = await send(token, kind === "link" && link ? { type: "set", link } : { type: "remove" });
+    const out = await send(token, kind === "link" && found ? { type: "set", link: found.link } : { type: "remove" });
     setBusy(null);
     if (!out.ok) {
       setNote(out.cancelled ? null : { bad: true, text: out.error });
@@ -232,7 +233,9 @@ export function StreamSheet({ token, symbol, current, onClose }: { token: string
                     : (found.status.title ?? "Live now")
                   : found.link.kind === "video"
                     ? "This video isn't live. Link your channel instead to show every stream."
-                    : "Not live right now. It shows here whenever you go live."}
+                    : link?.kind === "video"
+                      ? "That video's channel. It shows here whenever it goes live."
+                      : "Not live right now. It shows here whenever you go live."}
               </span>
             </span>
             {already ? <span className="chip shrink-0 text-[12px]">Linked</span> : null}
