@@ -117,15 +117,20 @@ function CoinPage() {
     if (!deployment || loading) return;
     let cancel = false;
     setPhase("loading");
-    void loadCoin(deployment, address as Address)
-      .then((found) => {
-        if (cancel) return;
-        setCoin(found);
-        setPhase(found ? "ready" : "missing");
-      })
-      .catch(() => {
-        if (!cancel) setPhase("missing");
-      });
+    // A coin launched a moment ago (the launch sheet comes straight here) may not be on the node this read reached yet,
+    // so an empty answer is tried again for a few seconds before the page says the coin isn't on Chimi.
+    const attempt = async (tries: number): Promise<void> => {
+      const found = await loadCoin(deployment, address as Address).catch(() => null);
+      if (cancel) return;
+      if (!found && tries > 1) {
+        await new Promise((r) => setTimeout(r, 1500));
+        if (!cancel) return attempt(tries - 1);
+        return;
+      }
+      setCoin(found);
+      setPhase(found ? "ready" : "missing");
+    };
+    void attempt(5);
     return () => {
       cancel = true;
     };

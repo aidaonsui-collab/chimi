@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 import type { Address } from "viem";
-import { dexesOf, giwaSepolia } from "@/lib/chimi/chain";
+import { giwaSepolia, launchDex } from "@/lib/chimi/chain";
 import { bpsLabel, splitFor, type FeeSplit } from "@/lib/chimi/fee-split";
 import { DOJANG_URL } from "@/lib/chimi/identity";
 import { feeLabel, shortAddr } from "@/lib/chimi/market";
@@ -41,8 +41,8 @@ function Docs() {
   const active = useActiveSection();
   const now: FeeSplit | null = deployment ? splitFor(deployment) : null;
   const flywheel = !!deployment?.flywheel;
-  const dexes = deployment ? dexesOf(deployment) : [];
-  const older = dexes.length > 1 ? dexes[0]!.fee : undefined;
+  const dex = deployment ? launchDex(deployment) : null;
+  const fee = now ? feeLabel(now.fee) : "";
 
   useEffect(() => {
     const before = document.title;
@@ -92,7 +92,8 @@ function Docs() {
                 ["Network", "GIWA Sepolia (testnet, chain 91342)"],
                 ["Quote", "Wrapped ETH"],
                 ["Supply", "1,000,000,000 per coin"],
-                ["Buy or sell tax", "None"],
+                ["Trading fee", now ? `${fee} on every buy and sell, paid to the pool` : "Paid to the pool on every trade"],
+                ["Transfer tax", "None. Sending coins between wallets is free"],
               ]}
             />
             <P>
@@ -106,7 +107,7 @@ function Docs() {
                 <>Pick a name, a ticker and a picture, and optionally a first buy that goes through in the same transaction.</>,
                 <>The coin opens at about a $2,000 market cap (it moves with the ETH price). There is no launch fee today, only gas.</>,
                 <>
-                  Its pool charges {now ? feeLabel(now.fee) : "a fee"} on every trade{flywheel && older !== undefined ? ` (coins launched before the CHIMI flywheel pay ${feeLabel(older)})` : ""}.
+                  Its pool charges {now ? fee : "a fee"} on every buy and sell. That is the whole cost of a trade: the coin itself has no tax.
                 </>,
                 <>The liquidity is locked for 100 years. Nobody can pull it during the lock; after it, the platform could reclaim it.</>,
               ]}
@@ -138,13 +139,15 @@ function Docs() {
           </Section>
 
           <Section id="fees" title="Fees">
-            <P>Every trade pays its coin's pool fee. The part paid in ETH is shared out; the part paid in the coin is burned, which takes it out of the supply.</P>
-            {deployment ? (
+            <P>
+              Every buy and sell pays the pool {now ? fee : "its fee"}. That fee is how Chimi earns, not a tax built into the coin, so sending coins between
+              wallets costs nothing. The part of the fee paid in ETH is shared out; the part paid in the coin is burned, which takes it out of the supply.
+            </P>
+            {now ? (
               <div className="overflow-x-auto">
                 <table className="docs-table">
                   <thead>
                     <tr>
-                      <th>Coins</th>
                       <th>Pool fee</th>
                       <th>Creator</th>
                       <th>Platform</th>
@@ -153,26 +156,20 @@ function Docs() {
                     </tr>
                   </thead>
                   <tbody>
-                    {dexes.map((dex, i) => {
-                      const s = splitFor(deployment, { uniFactory: dex.uniFactory, fee: dex.fee });
-                      return (
-                        <tr key={dex.uniFactory}>
-                          <td>{dexes.length === 1 ? "Every coin" : i === dexes.length - 1 ? "Launched now" : "Launched earlier"}</td>
-                          <td className="num">{feeLabel(s.fee)}</td>
-                          <td className="num">{bpsLabel(s.creatorBps)}</td>
-                          <td className="num">{bpsLabel(s.platformBps)}</td>
-                          <td className="num">{s.burnBps ? bpsLabel(s.burnBps) : "—"}</td>
-                          <td className="num">{s.holdersBps ? bpsLabel(s.holdersBps) : "—"}</td>
-                        </tr>
-                      );
-                    })}
+                    <tr>
+                      <td className="num">{fee}</td>
+                      <td className="num">{bpsLabel(now.creatorBps)}</td>
+                      <td className="num">{bpsLabel(now.platformBps)}</td>
+                      <td className="num">{now.burnBps ? bpsLabel(now.burnBps) : "—"}</td>
+                      <td className="num">{now.holdersBps ? bpsLabel(now.holdersBps) : "—"}</td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
             ) : null}
             <P>
-              Shares are of the ETH side of the fee. Each coin's split is written into its lock when it launches and can't be changed later. A coin's page shows
-              its own split under About.
+              Shares are of the ETH side of the fee. A coin's split is written into its lock when it launches and can't be changed later; its page shows it under
+              About.
             </P>
           </Section>
 
@@ -180,8 +177,8 @@ function Docs() {
             {flywheel ? (
               <>
                 <P>
-                  15% of the ETH fees on every coin launched now goes to the flywheel, a contract that splits each arrival in half. The more Chimi trades, the
-                  harder it spins.
+                  15% of the ETH fees on every {fee} pool goes to the flywheel, a contract that splits each arrival in half. The more Chimi trades, the harder
+                  it spins.
                 </P>
                 <List
                   items={[
@@ -217,7 +214,7 @@ function Docs() {
                 <>The wallet that launches a coin earns {now ? bpsLabel(now.creatorBps) : "its share"} of the ETH side of every fee its pool takes, for as long as the coin trades.</>,
                 <>
                   Fees build up in the locked position until it is swept. Anyone can sweep a coin's fees, and the money still goes to the wallets on its lock.
-                  {flywheel ? " Coins launched now are swept every day automatically." : ""}
+                  {flywheel ? " Every coin's fees are swept once a day automatically, so they arrive without anyone claiming." : ""}
                 </>,
                 <>
                   The creator sees a card on the coin's page with what is waiting and a Claim button. The fees arrive as wrapped ETH, so claiming is two
@@ -324,15 +321,15 @@ function Docs() {
             {deployment ? (
               <div className="grid gap-1.5">
                 <AddressRow label="Launch factory (the pad)" address={deployment.factory} />
-                {dexes.map((dex, i) => (
-                  <div key={dex.uniFactory} className="mt-2 grid gap-1.5">
-                    <p className="th uppercase">{dexes.length === 1 ? "DEX" : `DEX ${i + 1} · ${feeLabel(dex.fee)} pools${i === dexes.length - 1 ? " · new launches" : ""}`}</p>
+                {dex ? (
+                  <div className="mt-2 grid gap-1.5">
+                    <p className="th uppercase">DEX</p>
                     <AddressRow label="Uniswap v3 factory" address={dex.uniFactory} />
                     <AddressRow label="Position manager" address={dex.positionManager} />
                     <AddressRow label="Router" address={dex.swapRouter} />
                     <AddressRow label="Liquidity locker" address={dex.locker} />
                   </div>
-                ))}
+                ) : null}
                 {deployment.flywheel ? (
                   <div className="mt-2 grid gap-1.5">
                     <p className="th uppercase">CHIMI</p>
@@ -349,7 +346,7 @@ function Docs() {
               <P>Reading the deployment…</P>
             )}
             <P>
-              Chimi's DEXes are copies of Uniswap v3 from its published code, with their owners given up, so nobody can switch on a protocol fee.
+              Chimi's DEX is a copy of Uniswap v3 from its published code, with its owner given up, so nobody can switch on a protocol fee or change its fees.
             </P>
           </Section>
 
@@ -359,7 +356,7 @@ function Docs() {
                 <>This is a testnet. Coins, ETH and points here have no real-money value.</>,
                 <>Anyone can launch a coin, and a coin can go to zero. Trade what you can lose.</>,
                 <>
-                  The liquidity lockers are upgradeable contracts. Their admin, the platform, could replace them; the lock is only as strong as that key.
+                  The liquidity locker is an upgradeable contract. Its admin, the platform, could replace it; the lock is only as strong as that key.
                 </>,
                 <>The contracts have been reviewed and tested by the team but not audited by an outside firm.</>,
               ]}

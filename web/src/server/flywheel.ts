@@ -2,8 +2,8 @@
  * The daily keeper for the fee flywheel (contracts/src/ChimiFlywheel.sol), run by Vercel Cron at 00:10 KST through
  * /api/keeper/flywheel. In order, each step on its own so one failing doesn't stop the next:
  *
- * 1. Sweep the fees of every coin on the DEXes after the first. That pays each creator their 70% (WETH), the platform
- *    its 15%, and the flywheel its 15% (ETH).
+ * 1. Sweep the fees of every coin. On the 2% DEX that pays each creator their 70% (WETH), the platform its 15%, and
+ *    the flywheel its 15% (ETH); on the first DEX, the creator's 70% and the platform's 30%.
  * 2. Buy back and burn CHIMI with the flywheel's burn half, up to MAX_BURN a day, at no less than 98% of a dry run's
  *    price taken just before.
  * 3. Pay the KST day that just ended: the flywheel's holder half, shared by average CHIMI balance over the day among
@@ -132,8 +132,9 @@ export async function runFlywheel(opts: { dry?: boolean; nowMs?: number } = {}):
 type Send = (req: Parameters<PublicClient["simulateContract"]>[0]) => Promise<string | undefined>;
 
 async function sweep(pub: PublicClient, send: Send) {
-  const later = dexesOf(deployment).slice(1);
-  if (later.length === 0) return { positions: 0, tx: [] };
+  // Every coin on every DEX: the first DEX's coins pay only their creator and the platform, but sweeping them too means
+  // every creator's fees arrive daily without a claim.
+  const all = dexesOf(deployment);
   const count = (await pub.readContract({ address: deployment.factory, abi: factoryAbi, functionName: "allTokensLength" })) as bigint;
   const tokens = (await pub.multicall({
     allowFailure: false,
@@ -150,7 +151,7 @@ async function sweep(pub: PublicClient, send: Send) {
 
   const tx: string[] = [];
   let positions = 0;
-  for (const dex of later) {
+  for (const dex of all) {
     const ids = pools.filter((_, i) => factories[i]?.result?.toLowerCase() === dex.uniFactory.toLowerCase()).map((p) => p.positionId);
     positions += ids.length;
     for (const chunk of batches(ids, 40)) {
