@@ -6,7 +6,7 @@ import { shortAddr, wethPerToken } from "@/lib/chimi/market";
 import { useHouses } from "@/lib/chimi/rewards";
 import { useTokenImages } from "@/lib/chimi/token-image";
 import { HouseSeal } from "@/components/chimi/house-seal";
-import { IconBoard, IconChart, IconHouse, IconPlus, IconPoints, IconPools, IconSearch, IconSwap, IconTraders } from "@/components/chimi/icons";
+import { IconBoard, IconBook, IconChart, IconHouse, IconPlus, IconPoints, IconPools, IconSearch, IconSwap, IconTraders } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
 import { TokenLogo } from "@/components/chimi/token-logo";
 import { Blockie, Modal } from "@/components/chimi/ui";
@@ -30,6 +30,7 @@ const PAGES = [
   { to: "/analytics", title: "Analytics", sub: "Volume and launches", icon: IconChart },
   { to: "/points", title: "Points", sub: "The daily pool and the season board", icon: IconPoints },
   { to: "/houses", title: "Houses", sub: "Trade under one seal", icon: IconHouse },
+  { to: "/docs", title: "Docs", sub: "How Chimi works: fees, the flywheel, points", icon: IconBook },
 ] as const;
 
 /** Search everything: coins by name, ticker or address, houses by name or tag, and the pages themselves. */

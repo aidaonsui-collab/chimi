@@ -32,6 +32,7 @@ const SCENES: Record<string, Scene> = {
   "/points": scene("points", "50% 0%", "78% 0%"),
   "/houses": scene("houses", "50% 0%", "66% 0%"),
   "/launch": scene("launch", "50% 0%", "82% 0%"),
+  "/docs": ROOF_SCENE,
 };
 
 function Backdrop({ scene }: { scene: Scene }) {

@@ -2165,3 +2165,111 @@ li.trade-line:last-child {
     width: 25.5rem;
   }
 }
+
+/*
+ * The docs page (routes/docs.tsx): an index of the sections down the left on a desktop and a row of chips on a phone,
+ * then a card per section.
+ */
+.docs-chips {
+  display: flex;
+  gap: 0.4rem;
+  margin-inline: -1rem;
+  padding-inline: 1rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.docs-chips::-webkit-scrollbar {
+  display: none;
+}
+/* Custom classes beat Tailwind's hidden/lg:hidden here, so the width switch lives in the stylesheet. */
+@media (min-width: 1024px) {
+  .docs-chips {
+    display: none;
+  }
+}
+.docs-chips .chip[aria-current="true"] {
+  border-color: color-mix(in srgb, var(--color-gold) 45%, transparent);
+}
+.docs-toc {
+  position: relative;
+  display: block;
+  padding: 0.42rem 0.75rem;
+  border-radius: 0.6rem;
+  font-size: 14px;
+  color: var(--color-muted);
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+.docs-toc:hover {
+  color: var(--color-fg);
+  background: var(--color-raise);
+}
+.docs-toc[aria-current="true"] {
+  color: var(--color-fg);
+  background: var(--color-raise);
+}
+.docs-toc[aria-current="true"]::before {
+  content: "";
+  position: absolute;
+  top: 0.55rem;
+  bottom: 0.55rem;
+  left: 0;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--color-seal);
+}
+.docs-list {
+  display: grid;
+  gap: 0.55rem;
+  padding-left: 1.1rem;
+  list-style: disc;
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: var(--color-muted);
+}
+.docs-list li::marker {
+  color: var(--color-faint);
+}
+.docs-list b {
+  font-weight: 600;
+  color: var(--color-fg);
+}
+.docs-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-weight: 600;
+  color: var(--color-gold);
+}
+.docs-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.docs-table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.docs-table th {
+  padding: 0 0.75rem 0.6rem;
+  border-bottom: 1px solid var(--color-line);
+  text-align: right;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-muted);
+}
+.docs-table td {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-line) 70%, transparent);
+  text-align: right;
+}
+.docs-table th:first-child,
+.docs-table td:first-child {
+  padding-left: 0;
+  text-align: left;
+}
+.docs-table tr:last-child td {
+  border-bottom: 0;
+}

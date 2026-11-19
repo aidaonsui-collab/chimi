@@ -31,6 +31,14 @@ export const IconFeed = (p: IconProps) => (
   </Svg>
 );
 
+export const IconBook = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M5 4.5A1.5 1.5 0 016.5 3H19v15H6.5A1.5 1.5 0 005 19.5v-15z" />
+    <path d="M5 19.5A1.5 1.5 0 006.5 21H19" />
+    <path d="M9 7.5h6M9 11h4" />
+  </Svg>
+);
+
 export const IconTraders = (p: IconProps) => (
   <Svg {...p}>
     <circle cx="9" cy="8" r="3.5" />
