@@ -551,17 +551,66 @@
 }
 
 /*
- * The side rail (shell.tsx): icons only. Each page is a rounded square, filled when it is the one open, and its name
- * shows beside it while the pointer or the keyboard is on it. Launch is the round light button under the pages.
+ * The side rail (shell.tsx) is a drawer. Closed, it is 72px of icons: each page a rounded square, filled when it is
+ * the one open, and Launch the round light button under them. It opens over the page while the pointer is on it
+ * (after a beat, so passing over it on the way somewhere doesn't throw it open) or the keyboard is in it, and then
+ * Chimi comes out beside the logo and each page's name beside its icon. It shuts at once when the pointer leaves, and
+ * after a click (data-shut, until the pointer moves off it).
  */
+.rail {
+  width: 72px;
+  overflow-x: clip;
+  transition:
+    width 0.24s cubic-bezier(0.2, 0.7, 0.2, 1),
+    box-shadow 0.24s ease;
+}
+.rail:not([data-shut]):hover,
+.rail:not([data-shut]):has(:focus-visible) {
+  width: 240px;
+  box-shadow: 28px 0 70px -24px rgba(0, 0, 0, 0.85);
+}
+.rail:not([data-shut]):hover {
+  transition-delay: 0.08s;
+}
+.rail-label {
+  flex-shrink: 0;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+.rail:not([data-shut]):hover .rail-label,
+.rail:not([data-shut]):has(:focus-visible) .rail-label {
+  opacity: 1;
+  transition: opacity 0.18s ease 0.12s;
+}
+.rail-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 4rem;
+  flex-shrink: 0;
+  padding-left: 18px;
+}
+.rail-name {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.rail-nav {
+  padding-inline: 12.5px;
+}
 .rail-item,
 .rail-launch {
   position: relative;
-  display: grid;
-  place-items: center;
-  width: 46px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
   height: 46px;
+  padding-left: 12.5px;
   border-radius: 15px;
+  font-size: 14.5px;
+  font-weight: 600;
   color: var(--color-muted);
   transition:
     background-color 0.15s ease,
@@ -582,13 +631,15 @@
   position: absolute;
   top: 13px;
   bottom: 13px;
-  left: -13px;
+  left: -12.5px;
   width: 3px;
   border-radius: 0 999px 999px 0;
   background: var(--color-seal);
 }
 .rail-launch {
   margin-top: 0.75rem;
+  padding-left: 12px;
+  gap: 12px;
   border-radius: 999px;
   background: var(--color-fg);
   color: var(--color-bg);
@@ -599,37 +650,7 @@
 }
 .rail-item:active,
 .rail-launch:active {
-  transform: scale(0.96);
-}
-.rail-tip {
-  position: absolute;
-  top: 50%;
-  left: calc(100% + 12px);
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  padding: 0.4rem 0.65rem;
-  border-radius: 10px;
-  border: 1px solid var(--color-edge);
-  background: var(--color-raise2);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-fg);
-  white-space: nowrap;
-  box-shadow: var(--shadow-pop);
-  opacity: 0;
-  pointer-events: none;
-  transform: translate(-4px, -50%);
-  transition:
-    opacity 0.12s ease,
-    transform 0.12s ease;
-}
-.rail-item:hover .rail-tip,
-.rail-launch:hover .rail-tip,
-.rail-item:focus-visible .rail-tip,
-.rail-launch:focus-visible .rail-tip {
-  opacity: 1;
-  transform: translate(0, -50%);
+  transform: scale(0.97);
 }
 
 /*
