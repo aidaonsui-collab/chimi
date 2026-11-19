@@ -1,5 +1,4 @@
 import { createRootRoute, HeadContent, Link, Outlet, Scripts } from "@tanstack/react-router";
-import { HOME_MODE_SCRIPT } from "@/components/chimi/feed-hero";
 import { ChimiProvider } from "@/components/chimi/provider";
 import { Shell } from "@/components/chimi/shell";
 import { Empty } from "@/components/chimi/ui";
@@ -45,8 +44,6 @@ export const Route = createRootRoute({
       // The serif is for the Korean accents and the house seals.
       { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@900&family=Song+Myung&display=swap" },
     ],
-    // Decides before the first paint whether the home page opens on the hero or on the feed (feed-hero.tsx).
-    scripts: [{ children: HOME_MODE_SCRIPT }],
   }),
   notFoundComponent: () => (
     <main className="page pt-10 pb-16">

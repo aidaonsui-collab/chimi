@@ -46,7 +46,7 @@ function launchTimes(factory: Address): Promise<Map<string, number>> {
   return job;
 }
 
-function useLaunchTimes(factory: Address | undefined, coins: number) {
+export function useLaunchTimes(factory: Address | undefined, coins: number) {
   const [times, setTimes] = useState<Map<string, number>>();
   useEffect(() => {
     if (!factory || coins === 0) return;
@@ -142,6 +142,40 @@ const UNKNOWN_BEFORE = 1_000_000_000;
 
 /** True when a feed time is a real clock time, not a stand-in for "some time ago". */
 export const knownTime = (time: number) => time >= UNKNOWN_BEFORE;
+
+/** One thing in the strip along the top of every page: a trade or a launch. */
+export type TickItem = { key: string; kind: "trade" | "launch"; time: number; wallet: string; token: string; buy?: boolean; eth?: number };
+
+/**
+ * The strip along the top of every page: the last day's trades and launches, newest first. It reads the same pools
+ * as the feed (the reads are shared), but none of the feed's comments, follows or points, so it is cheap to keep on
+ * every page.
+ */
+export function useTicker(nowMs: number | null, max = 14) {
+  const { coins, deployment } = useChimi();
+  const live = useMemo(() => coins.filter((c) => !c.preview), [coins]);
+  const { byPool } = useSwaps(live, { live: true });
+  const times = useLaunchTimes(deployment?.factory, live.length);
+  const byToken = useMemo(() => new Map(live.map((c) => [c.token.toLowerCase(), c])), [live]);
+  const now = Math.floor((nowMs ?? Date.now()) / 1000);
+  const items = useMemo(() => {
+    const out: TickItem[] = [];
+    for (const coin of live) {
+      const token = coin.token.toLowerCase();
+      for (const s of byPool[coin.pool.toLowerCase()] ?? []) {
+        out.push({ key: `${s.tx}:${s.index ?? 0}`, kind: "trade", time: s.time, wallet: s.recipient.toLowerCase(), token, buy: s.buy, eth: Number(s.ethAmount) / 1e18 });
+      }
+      const at = times?.get(token);
+      if (at !== undefined) out.push({ key: `launch:${token}`, kind: "launch", time: at, wallet: coin.creator.toLowerCase(), token });
+    }
+    // Only the last day: a strip marked Live shouldn't lead with last week's news.
+    return out
+      .filter((i) => knownTime(i.time) && now - i.time < DAY)
+      .sort((a, b) => b.time - a.time)
+      .slice(0, max);
+  }, [live, byPool, times, now, max]);
+  return { items, byToken, now };
+}
 
 export type HomeFeed = ReturnType<typeof useHomeFeed>;
 

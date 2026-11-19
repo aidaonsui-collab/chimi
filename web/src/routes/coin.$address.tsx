@@ -367,7 +367,7 @@ function CoinPage() {
               mark="없음"
               title="This coin isn’t on Chimi’s factory"
               action={
-                <Link to="/board" className="btn btn-secondary">
+                <Link to="/" className="btn btn-secondary">
                   Back to the board
                 </Link>
               }
@@ -403,7 +403,7 @@ function CoinPage() {
   return (
     <main className="page pt-2 pb-16">
       <nav className="flex items-center gap-1.5 text-sm text-muted" aria-label="Breadcrumb">
-        <Link to="/board" className="hover:text-fg">
+        <Link to="/" className="hover:text-fg">
           Board
         </Link>
         <IconChevronRight size={13} className="text-faint" />

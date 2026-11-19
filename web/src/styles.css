@@ -174,7 +174,7 @@
 
   /* Surfaces */
   .card {
-    border-radius: 1rem;
+    border-radius: 1.25rem;
     border: 1px solid var(--color-line);
     background-color: var(--color-chip);
     background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.026), transparent 140px);
@@ -222,8 +222,8 @@
     justify-content: center;
     gap: 0.5rem;
     height: 2.5rem;
-    padding: 0 1rem;
-    border-radius: 0.75rem;
+    padding: 0 1.05rem;
+    border-radius: 999px;
     border: 1px solid transparent;
     font-size: 0.875rem;
     font-weight: 600;
@@ -246,20 +246,20 @@
   }
   .btn-sm {
     height: 2rem;
-    padding: 0 0.75rem;
-    border-radius: 0.625rem;
+    padding: 0 0.8rem;
+    border-radius: 999px;
     font-size: 0.8125rem;
   }
   .btn-lg {
     height: 3rem;
-    padding: 0 1.375rem;
-    border-radius: 0.875rem;
+    padding: 0 1.4rem;
+    border-radius: 999px;
     font-size: 0.9375rem;
   }
   .btn-xl {
     height: 3.5rem;
     padding: 0 1.5rem;
-    border-radius: 1rem;
+    border-radius: 999px;
     font-size: 1.0625rem;
   }
   .btn-primary {
@@ -360,7 +360,7 @@
     display: inline-flex;
     gap: 2px;
     padding: 3px;
-    border-radius: 0.75rem;
+    border-radius: 999px;
     border: 1px solid var(--color-line);
     background: var(--color-chip);
   }
@@ -372,11 +372,9 @@
     top: 3px;
     left: 0;
     height: 1.875rem;
-    border-radius: 0.5625rem;
-    background: var(--color-raise2);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.06),
-      0 1px 2px rgba(0, 0, 0, 0.4);
+    border-radius: 999px;
+    background: var(--color-fg);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
     pointer-events: none;
   }
   .seg-thumb[data-moving] {
@@ -390,11 +388,12 @@
   .seg[data-thumb] > button[aria-selected="true"] {
     background: transparent;
     box-shadow: none;
+    color: var(--color-bg);
   }
   .seg > button {
     height: 1.875rem;
-    padding: 0 0.75rem;
-    border-radius: 0.5625rem;
+    padding: 0 0.85rem;
+    border-radius: 999px;
     font-size: 0.8125rem;
     font-weight: 500;
     color: var(--color-muted);
@@ -409,11 +408,13 @@
   .seg > button[data-on],
   .seg > button[aria-selected="true"],
   .seg > button[aria-pressed="true"] {
-    background: var(--color-raise2);
-    color: var(--color-fg);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.05),
-      0 1px 2px rgba(0, 0, 0, 0.4);
+    background: var(--color-fg);
+    color: var(--color-bg);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  }
+  .seg > button[aria-selected="true"]:hover,
+  .seg > button[aria-pressed="true"]:hover {
+    color: var(--color-bg);
   }
 
   /* Small text styles */
@@ -439,7 +440,7 @@
     gap: 0.375rem;
     height: 1.625rem;
     padding: 0 0.625rem;
-    border-radius: 0.5rem;
+    border-radius: 999px;
     background: var(--color-raise);
     border: 1px solid var(--color-line);
     font-size: 0.75rem;
@@ -550,28 +551,140 @@
 }
 
 /*
- * The side rail (shell.tsx). It is as wide as its icons until the pointer is on it or the keyboard is in it. A link
- * that was clicked with the pointer keeps focus, so the test is :focus-visible, which only the keyboard sets;
- * otherwise the rail would stay open until something else was clicked. data-shut holds it folded after a pick.
+ * The side rail (shell.tsx): icons only. Each page is a rounded square, filled when it is the one open, and its name
+ * shows beside it while the pointer or the keyboard is on it. Launch is the round light button under the pages.
  */
-.rail {
-  width: 68px;
+.rail-item,
+.rail-launch {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 15px;
+  color: var(--color-muted);
   transition:
-    width 0.2s ease-out,
-    box-shadow 0.2s ease-out;
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.08s ease;
 }
-.rail-label {
+.rail-item:hover {
+  background: var(--color-raise);
+  color: var(--color-fg);
+}
+.rail-item[aria-current="page"] {
+  background: var(--color-raise2);
+  color: var(--color-fg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.rail-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  top: 13px;
+  bottom: 13px;
+  left: -13px;
+  width: 3px;
+  border-radius: 0 999px 999px 0;
+  background: var(--color-seal);
+}
+.rail-launch {
+  margin-top: 0.75rem;
+  border-radius: 999px;
+  background: var(--color-fg);
+  color: var(--color-bg);
+  box-shadow: 0 10px 26px -10px rgba(244, 242, 236, 0.5);
+}
+.rail-launch:hover {
+  background: #fff;
+}
+.rail-item:active,
+.rail-launch:active {
+  transform: scale(0.96);
+}
+.rail-tip {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 12px);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  padding: 0.4rem 0.65rem;
+  border-radius: 10px;
+  border: 1px solid var(--color-edge);
+  background: var(--color-raise2);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-fg);
+  white-space: nowrap;
+  box-shadow: var(--shadow-pop);
   opacity: 0;
-  transition: opacity 0.15s ease;
+  pointer-events: none;
+  transform: translate(-4px, -50%);
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
 }
-.rail:not([data-shut]):hover,
-.rail:has(:focus-visible) {
-  width: 224px;
-  box-shadow: 24px 0 60px -20px rgba(0, 0, 0, 0.8);
-}
-.rail:not([data-shut]):hover .rail-label,
-.rail:has(:focus-visible) .rail-label {
+.rail-item:hover .rail-tip,
+.rail-launch:hover .rail-tip,
+.rail-item:focus-visible .rail-tip,
+.rail-launch:focus-visible .rail-tip {
   opacity: 1;
+  transform: translate(0, -50%);
+}
+
+/*
+ * Phone: the bar along the bottom floats over the page as one pill, with Launch as the light round button in the
+ * middle (shell.tsx).
+ */
+.dock {
+  position: fixed;
+  right: 0;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  left: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(calc(100% - 28px), 400px);
+  height: 60px;
+  margin-inline: auto;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid var(--color-edge);
+  background: color-mix(in srgb, var(--color-chip) 82%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  backdrop-filter: blur(20px) saturate(1.4);
+  box-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.9);
+}
+.dock-item {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 46px;
+  border-radius: 999px;
+  color: var(--color-faint);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+.dock-item[aria-current="page"] {
+  background: var(--color-raise2);
+  color: var(--color-fg);
+}
+@media (min-width: 1024px) {
+  .dock {
+    display: none;
+  }
+}
+.dock-launch {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  background: var(--color-fg);
+  color: var(--color-bg);
+  box-shadow: 0 8px 20px -8px rgba(244, 242, 236, 0.45);
 }
 
 /*
@@ -835,14 +948,55 @@
 }
 
 /*
- * The home page's top (feed-hero.tsx). A first visit shows the hero; after that the roof sits behind the heading.
- * A script in <head> marks <html> before the first paint, so the one that isn't wanted never shows.
+ * The banner at the top of the home page (home-hero.tsx): the roof stays, the messages on it take turns. The one
+ * showing fades in and its words rise a little; the bars at its foot say which it is and pick one.
  */
-html[data-home="plain"] .home-hero {
-  display: none;
+/* The message leaving fades out quickly and the next waits for it, so the two never sit on top of each other. */
+.home-slide {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.22s ease,
+    visibility 0s linear 0.22s;
 }
-html:not([data-home="plain"]) .home-roof {
-  display: none;
+.home-slide > * {
+  transform: translateY(8px);
+  transition: transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.home-slide-on {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 0.45s ease 0.22s,
+    visibility 0s linear 0.22s;
+}
+.home-slide-on > * {
+  transform: none;
+}
+.home-dot {
+  width: 16px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.3);
+  transition:
+    width 0.25s ease,
+    background-color 0.25s ease;
+}
+.home-dot:hover {
+  background: rgba(255, 255, 255, 0.55);
+}
+.home-dot[aria-current="true"] {
+  width: 30px;
+  background: var(--color-fg);
+}
+/* A dot is small to see but not to press: the pressable box is taller than the bar. */
+.home-dot {
+  position: relative;
+}
+.home-dot::after {
+  content: "";
+  position: absolute;
+  inset: -10px -2px;
 }
 
 /*
@@ -852,10 +1006,43 @@ html:not([data-home="plain"]) .home-roof {
 .ticker {
   display: flex;
   align-items: center;
+  gap: 0.75rem;
   height: 40px;
+  min-width: 0;
   font-size: 13px;
   color: var(--color-muted);
   white-space: nowrap;
+}
+.ticker-live {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  color: var(--color-ok);
+  text-transform: uppercase;
+}
+/* On a phone the strip is a thin line of its own above the bar's logo and buttons; wider, it fills the bar. */
+.ticker-phone {
+  height: 32px;
+  padding-inline: 1rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-line) 70%, transparent);
+  font-size: 12px;
+}
+.ticker-wide {
+  flex: 1 1 0;
+}
+@media (min-width: 768px) {
+  .ticker-phone {
+    display: none;
+  }
+}
+@media (max-width: 767px) {
+  .ticker-wide {
+    display: none;
+  }
 }
 .ticker-window {
   min-width: 0;
@@ -895,126 +1082,257 @@ html:not([data-home="plain"]) .home-roof {
 }
 
 /*
- * The home feed (routes/index.tsx, feed-rows.tsx).
+ * The Traders page (routes/traders.tsx, social.tsx). Three tiles on what the last day was about, then the feed and
+ * the top traders side by side from a laptop up. A phone shows the feed alone; the leaderboard is its own view.
  */
-
-/*
- * The page is one grid. On a phone it is a column: the feed, the board, then who to follow. From a laptop up the
- * feed and the leaders sit side by side at one height and the board runs under both.
- */
-.home-grid {
+.tiles {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas:
-    "feed"
-    "board"
-    "leaders"
-    "foot";
-  gap: 1rem;
-  padding-top: 0.875rem;
-  /* How tall the folded feed is: about six rows on a phone. */
-  --social-h: 27rem;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(16rem, 82%);
+  gap: 0.75rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  margin-inline: -1rem;
+  padding-inline: 1rem;
 }
-.home-feed {
-  grid-area: feed;
-  position: relative;
+.tiles::-webkit-scrollbar {
+  display: none;
+}
+@media (min-width: 768px) {
+  .tiles {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+    overflow: visible;
+    margin-inline: 0;
+    padding-inline: 0;
+  }
+}
+.tile {
   display: flex;
   flex-direction: column;
+  gap: 0.5rem;
   min-width: 0;
-  overflow: hidden;
+  padding: 1.1rem 1.25rem 1.15rem;
+  border-radius: 24px;
+  border: 1px solid var(--color-line);
+  background: color-mix(in srgb, var(--color-chip) 88%, transparent);
+  scroll-snap-align: start;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
 }
-.home-leaders {
-  grid-area: leaders;
-  min-width: 0;
+.tile-link:hover {
+  border-color: var(--color-edge);
+  background: var(--color-raise);
 }
-.home-board {
-  grid-area: board;
-  min-width: 0;
-  margin-top: 0.5rem;
+.tile-label {
+  font-size: 13px;
+  color: var(--color-muted);
 }
-.home-foot {
-  grid-area: foot;
+.tile-main {
   display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-  gap: 1rem;
+  align-items: center;
+  gap: 0.6rem;
   min-width: 0;
-  margin-top: 0.25rem;
+  min-height: 2.25rem;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
-.home-foot > section {
-  flex: 1 1 18rem;
+.tile-sub {
+  font-size: 13px;
+  color: var(--color-faint);
+}
+
+.social-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+.social-side {
+  display: none;
 }
 @media (min-width: 1024px) {
-  .home-grid {
-    grid-template-columns: minmax(0, 1fr) 22.5rem;
-    grid-template-areas:
-      "feed leaders"
-      "board board"
-      "foot foot";
-    gap: 1.25rem;
-    padding-top: 1rem;
-    /* Tall enough to lead the page, short enough that the board's first rows are on the same screen. */
-    --social-h: clamp(20rem, calc(100dvh - 30rem), 38rem);
+  .social-grid {
+    grid-template-columns: minmax(0, 1fr) 23rem;
   }
-  /* A first visit has the hero above, so the pair gives some of its height back. */
-  html:not([data-home="plain"]) .home-grid {
-    --social-h: clamp(20rem, calc(100dvh - 35rem), 36rem);
-  }
-  /*
-   * The leaders are as tall as the feed beside them, never the other way round: on a quiet day the pair is short
-   * and the board moves up. So their box is laid over its cell and adds no height of its own.
-   */
-  .home-leaders {
-    position: relative;
-    min-height: 16rem;
-  }
-  .home-leaders > .leaders {
-    position: absolute;
-    inset: 0;
-    height: auto;
-  }
-  /* With the feed opened, the leaders keep their place and their size beside it as it scrolls. */
-  .home-feed:not([data-folded]) + .home-leaders {
+  .social-side {
     position: sticky;
     top: 5rem;
-    align-self: start;
-    height: var(--social-h);
-  }
-  .home-foot > section {
-    flex: 0 1 22.5rem;
+    display: block;
   }
 }
-/* Folded, the feed stops at a set height; what doesn't fit fades out above "Show more". Nothing scrolls inside it. */
-.home-feed[data-folded] {
-  max-height: var(--social-h);
+.social-feed {
+  position: relative;
+  min-width: 0;
 }
-@media (min-width: 1024px) {
-  .home-feed[data-folded] {
-    min-height: 16rem;
+/* The feed or the leaderboard: on a phone the switch runs the width of the screen. */
+@media (max-width: 639px) {
+  .seg-full {
+    display: flex;
+    width: 100%;
+  }
+  .seg-full > button {
+    flex: 1 1 0;
   }
 }
-.home-feed-body {
-  flex: 1 1 auto;
-  min-height: 0;
-}
-.home-feed[data-folded] .home-feed-body {
+.top-traders {
   overflow: hidden;
 }
-.home-feed-more {
+.lead-metric {
+  flex-shrink: 0;
+  text-align: right;
+  transition: opacity 0.12s ease;
+}
+/* In the Top traders card a row is a rounded line with no rule under it; Follow takes the number's place under the pointer. */
+.top-traders .lead-row {
+  position: relative;
+  min-height: 3.6rem;
+  padding-inline: 0.65rem;
+  border-bottom: 0;
+  border-radius: 16px;
+}
+.top-traders .lead-follow {
   position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  display: flex;
-  justify-content: center;
-  padding: 2.75rem 0 0.625rem;
-  background: linear-gradient(to bottom, transparent, var(--color-chip) 62%);
+  top: 50%;
+  right: 0.65rem;
+  transform: translateY(-50%);
+  opacity: 0;
   pointer-events: none;
+  transition: opacity 0.12s ease;
 }
-.home-feed-more > button {
+.top-traders .lead-row:hover .lead-follow,
+.top-traders .lead-row:focus-within .lead-follow {
+  opacity: 1;
   pointer-events: auto;
-  box-shadow: var(--shadow-pop);
 }
+.top-traders .lead-row:hover .lead-metric,
+.top-traders .lead-row:focus-within .lead-metric {
+  opacity: 0;
+}
+@media (hover: none) {
+  .top-traders .lead-follow {
+    position: static;
+    transform: none;
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* A comment in the feed, as a post: who and what they hold, what they said, the coin as a card, likes and replies. */
+.post {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.95rem 0.875rem 0.7rem;
+}
+@media (min-width: 640px) {
+  .post {
+    gap: 0.875rem;
+    padding: 1.05rem 1.1rem 0.75rem;
+  }
+}
+.post-lead {
+  flex-shrink: 0;
+  padding-top: 0.1rem;
+}
+.post-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.4rem;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.post-text {
+  margin-top: 0.3rem;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-fg);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.post-coin {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 30rem;
+  min-height: 4.5rem;
+  margin-top: 0.7rem;
+  padding: 0 0 0 0.85rem;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid var(--color-line);
+  background: color-mix(in srgb, var(--color-bg) 55%, var(--color-chip));
+  transition: border-color 0.15s ease;
+}
+.post-coin:hover {
+  border-color: var(--color-edge);
+}
+.post-coin-line {
+  align-self: stretch;
+  flex-shrink: 0;
+  width: 34%;
+  max-width: 150px;
+  height: auto;
+}
+.post-acts {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.45rem;
+  margin-left: -0.4rem;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.post-acts .comment-act,
+.post-acts .like {
+  height: 2rem;
+  padding-inline: 0.5rem;
+  border-radius: 999px;
+}
+.post-acts .comment-act:hover,
+.post-acts .like:hover {
+  background: var(--color-raise);
+}
+
+/* The leaderboard (routes/traders.tsx): a phone keeps the rank, the trader and what the list is ordered by. */
+.lb-grid {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 1rem;
+  padding-inline: 1rem;
+}
+.lb-grid > .lb-wide {
+  display: none;
+}
+@media (min-width: 640px) {
+  .lb-grid {
+    padding-inline: 1.25rem;
+  }
+}
+@media (min-width: 900px) {
+  .lb-grid {
+    grid-template-columns: 2rem minmax(0, 1.6fr) repeat(4, minmax(0, 1fr)) 6.5rem;
+    padding-inline: 1.25rem;
+  }
+  .lb-grid > .lb-narrow {
+    display: none;
+  }
+  .lb-grid > .lb-wide {
+    display: block;
+  }
+  .lb-grid > .lb-follow {
+    display: flex;
+    justify-content: flex-end;
+  }
+}
+
 /* A line at the top of the feed that isn't an item: it is quiet, or the trades are still on their way. */
 .feed-note {
   display: flex;
@@ -1031,34 +1349,7 @@ html:not([data-home="plain"]) .home-roof {
   }
 }
 
-/*
- * Who to follow, beside the feed (home-leaders.tsx). It is as tall as the folded feed; a list longer than that fades
- * out above the way to the whole list.
- */
-.leaders {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-width: 0;
-  overflow: hidden;
-}
-.leaders-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-}
-@media (min-width: 1024px) {
-  .leaders-body {
-    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5rem), transparent);
-    mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5rem), transparent);
-  }
-}
-/* A phone shows the first five; the rest are a press away on their own page. */
-@media (max-width: 1023px) {
-  .leaders-body li:nth-child(n + 6) {
-    display: none;
-  }
-}
+/* A trader in the Top traders card (social.tsx). */
 .lead-row {
   display: flex;
   align-items: center;
@@ -1099,42 +1390,87 @@ li.lead-row:last-child {
 }
 
 /*
- * The board on the home page (home-board.tsx): two boxes of pairs, side by side from a tablet up. A row is a grid,
- * and which columns it has depends on how wide its box is, so it shows what fits on a laptop, a tablet or a phone.
+ * The pairs table on the home page (home-board.tsx). A row is a grid; a phone keeps the pair, its market cap and
+ * move, the day's line and the buy button, and the rank, move, volume, liquidity and trades come in as it widens.
  */
-.pairs {
-  container-type: inline-size;
-  min-width: 0;
+.pairs-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: 0.75rem;
+  padding-inline: 1rem;
+}
+.pairs-grid > .pg-rank,
+.pairs-grid > .pg-chg,
+.pairs-grid > .pg-vol,
+.pairs-grid > .pg-liq,
+.pairs-grid > .pg-trades,
+.pairs-grid > .pg-spark {
+  display: none;
+}
+.pg-chg-inline {
+  display: block;
+}
+@media (min-width: 360px) {
+  .pairs-grid {
+    grid-template-columns: minmax(0, 1fr) auto 52px auto;
+    column-gap: 0.625rem;
+  }
+  .pairs-grid > .pg-spark {
+    display: flex;
+  }
+}
+@media (min-width: 640px) {
+  .pairs-grid {
+    grid-template-columns: minmax(0, 1fr) 6.5rem 4.75rem 88px auto;
+    column-gap: 1rem;
+    padding-inline: 1.25rem;
+  }
+  .pairs-grid > .pg-chg {
+    display: block;
+  }
+  .pg-chg-inline {
+    display: none;
+  }
+}
+@media (min-width: 900px) {
+  .pairs-grid {
+    grid-template-columns: 1.75rem minmax(0, 1fr) 6.5rem 4.75rem 6rem 100px auto;
+  }
+  .pairs-grid > .pg-rank,
+  .pairs-grid > .pg-vol {
+    display: block;
+  }
+}
+@media (min-width: 1180px) {
+  .pairs-grid {
+    grid-template-columns: 1.75rem minmax(0, 1fr) 6.5rem 4.75rem 6rem 6rem 4.5rem 112px 5.25rem;
+  }
+  .pairs-grid > .pg-liq,
+  .pairs-grid > .pg-trades {
+    display: block;
+  }
+}
+.pg-spark svg {
+  width: 100%;
+  max-width: 112px;
+  height: 30px;
 }
 .pair-item {
-  border-bottom: 1px solid color-mix(in srgb, var(--color-line) 75%, transparent);
   transition: background-color 0.15s ease;
-}
-.pair-item:last-child {
-  border-bottom: 0;
 }
 @media (hover: hover) {
   .pair-item:hover {
     background: color-mix(in srgb, var(--color-raise) 55%, transparent);
   }
 }
-.pair-row,
-.pair-head {
-  display: grid;
-  grid-template-columns: var(--pair-cols);
-  align-items: center;
-  column-gap: 0.625rem;
-  padding-inline: 0.75rem;
-}
-.pair-row {
+.pair-item > .pairs-grid {
   position: relative;
-  min-height: 3.25rem;
-  padding-block: 0.375rem;
 }
 .pair-name {
   display: flex;
   align-items: center;
-  gap: 0.625rem;
+  gap: 0.75rem;
   min-width: 0;
 }
 /* The whole row opens the coin; the buy button sits above that. */
@@ -1143,105 +1479,27 @@ li.lead-row:last-child {
   position: absolute;
   inset: 0;
 }
-.pair-row .buy-pill {
+.pair-item .buy-pill {
   position: relative;
   z-index: 1;
-  justify-self: end;
 }
-.pair-chg,
-.pair-vol,
-.pair-age {
-  display: none;
-}
-.pair-cap-chg {
-  display: block;
-  line-height: 1.2;
-}
-/*
- * Which columns a row has. A container query can't restyle the container itself, so the columns are set on the rows
- * and the line of column names inside it. Narrow: the pair, its market cap with the day's move under it, and Buy.
- */
-.pairs-top :is(.pair-row, .pair-head) {
-  --pair-cols: 1.125rem minmax(0, 1fr) 4.75rem 4.25rem;
-}
-.pairs-new :is(.pair-row, .pair-head) {
-  --pair-cols: minmax(0, 1fr) 4.75rem 4.25rem;
-}
-@container (min-width: 30rem) {
-  .pair-row,
-  .pair-head {
-    column-gap: 0.75rem;
-    padding-inline: 1rem;
-  }
-  .pair-chg {
-    display: block;
-  }
-  .pair-cap-chg {
-    display: none;
-  }
-  .pairs-top :is(.pair-row, .pair-head) {
-    --pair-cols: 1.25rem minmax(0, 1fr) 4.25rem 5rem 4.75rem;
-  }
-  .pairs-new :is(.pair-row, .pair-head) {
-    --pair-cols: minmax(0, 1fr) 2.75rem 4.25rem 5rem 4.75rem;
-  }
-  .pairs-new .pair-age {
-    display: block;
-  }
-  .pairs-new .pair-age-inline {
-    display: none;
-  }
-}
-@container (min-width: 36rem) {
-  .pairs-top :is(.pair-row, .pair-head) {
-    --pair-cols: 1.25rem minmax(0, 1fr) 4.25rem 5rem 5.25rem 4.75rem;
-  }
-  .pairs-top .pair-vol {
-    display: block;
-  }
-}
-/* A list with more than one page keeps a full page's height on its last one, so nothing below it jumps. */
-@media (min-width: 640px) {
-  .pair-rows-paged {
-    min-height: calc(10 * (3.25rem + 1px) - 1px);
-  }
-}
-/* The end of a short list: where the next pair goes. */
+/* The end of a short list: a way to add to it. */
 .pair-invite {
   display: flex;
   align-items: center;
-  gap: 0.625rem;
-  min-height: 3.25rem;
-  padding: 0.375rem 0.75rem;
-  font-size: 12.5px;
+  gap: 0.75rem;
+  min-height: 4rem;
+  padding: 0.5rem 1rem;
   color: var(--color-muted);
+  transition: background-color 0.15s ease;
 }
-@container (min-width: 30rem) {
+@media (min-width: 640px) {
   .pair-invite {
-    padding-inline: 1rem;
+    padding-inline: 1.25rem;
   }
 }
-/* A phone shows five rows of a list until asked for the rest of the page. */
-.pair-more {
-  display: none;
-  width: 100%;
-  padding: 0.625rem;
-  border-top: 1px solid color-mix(in srgb, var(--color-line) 75%, transparent);
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--color-muted);
-}
-@media (max-width: 639px) {
-  .pairs[data-short] ul > .pair-item:nth-child(n + 6) {
-    display: none;
-  }
-  .pairs[data-short] .pair-more {
-    display: block;
-  }
-  /* The way to the next ten waits until these ten are all showing. */
-  .pairs[data-short]:has(.pair-more) .pair-pager {
-    display: none;
-  }
+.pair-invite:hover {
+  background: color-mix(in srgb, var(--color-raise) 55%, transparent);
 }
 
 /*
@@ -1371,6 +1629,8 @@ li.lead-row:last-child {
   gap: 0.5rem;
   min-width: 0;
   margin-top: 0.125rem;
+  /* Positioned so what it clips includes the screen-reader labels inside it; otherwise they stretch a phone's page. */
+  position: relative;
   overflow: hidden;
   font-size: 12px;
   line-height: 1.25rem;

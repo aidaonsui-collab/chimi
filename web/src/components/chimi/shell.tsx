@@ -1,19 +1,22 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { useEffect, useState, type ComponentType, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import { giwaSepolia } from "@/lib/chimi/chain";
+import { useTicker } from "@/lib/chimi/feed";
 import { useBlockNumber, useEthUsd } from "@/lib/chimi/live";
 import { shortAddr } from "@/lib/chimi/market";
+import { useProfiles } from "@/lib/chimi/rewards";
+import { useTokenImages } from "@/lib/chimi/token-image";
 import { PageBackdrop } from "@/components/chimi/backdrop";
 import { HowItWorks } from "@/components/chimi/how-it-works";
 import { InboxButton } from "@/components/chimi/inbox";
 import { CommandPalette } from "@/components/chimi/command";
+import { Ticker } from "@/components/chimi/feed-rows";
 import {
   ChimiMark,
   IconBoard,
   IconChart,
   IconChevronRight,
   IconExternal,
-  IconFeed,
   IconHouse,
   IconMenu,
   IconPlus,
@@ -24,129 +27,96 @@ import {
   IconTraders,
 } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
+import { useNow } from "@/components/chimi/rewards-bits";
 import { Toaster } from "@/components/chimi/toast";
 import { Modal } from "@/components/chimi/ui";
 import { WalletButton } from "@/components/chimi/wallet-menu";
 
 type NavItem = {
-  to: "/" | "/board" | "/traders" | "/swap" | "/pools" | "/analytics" | "/points" | "/houses" | "/launch";
+  to: "/" | "/traders" | "/swap" | "/pools" | "/analytics" | "/points" | "/houses" | "/launch";
   label: string;
   icon: ComponentType<{ size?: number; className?: string }>;
   on: (path: string) => boolean;
 };
 
-const FEED: NavItem = { to: "/", label: "Home", icon: IconFeed, on: (p) => p === "/" };
-const BOARD: NavItem = { to: "/board", label: "Board", icon: IconBoard, on: (p) => p === "/board" || p.startsWith("/coin/") };
+const HOME: NavItem = { to: "/", label: "Board", icon: IconBoard, on: (p) => p === "/" || p === "/board" || p.startsWith("/coin/") };
 const TRADERS: NavItem = { to: "/traders", label: "Traders", icon: IconTraders, on: (p) => p === "/traders" || p.startsWith("/u/") };
+const SWAP: NavItem = { to: "/swap", label: "Swap", icon: IconSwap, on: (p) => p === "/swap" };
 
 const NAV: NavItem[] = [
-  FEED,
-  BOARD,
+  HOME,
   TRADERS,
-  { to: "/swap", label: "Swap", icon: IconSwap, on: (p) => p === "/swap" },
+  SWAP,
   { to: "/pools", label: "Pools", icon: IconPools, on: (p) => p === "/pools" || p.startsWith("/pool/") },
-  { to: "/analytics", label: "Analytics", icon: IconChart, on: (p) => p === "/analytics" },
   { to: "/points", label: "Points", icon: IconPoints, on: (p) => p === "/points" },
   { to: "/houses", label: "Houses", icon: IconHouse, on: (p) => p.startsWith("/houses") },
+  { to: "/analytics", label: "Analytics", icon: IconChart, on: (p) => p === "/analytics" },
 ];
 
-const LAUNCH: NavItem = { to: "/launch", label: "Launch", icon: IconPlus, on: (p) => p === "/launch" };
-
 /**
- * The side rail: icons only, opening to show labels while the pointer is on it or the keyboard is in it (.rail in
- * styles.css). Picking a page with the pointer folds it away at once, and it stays folded until the pointer has
- * left, so it never sits over the page that was just opened.
+ * The side rail: icons only, each a rounded square, with its name beside it while the pointer is on it (.rail-item
+ * in styles.css). Launch is the round button under the pages. Search opens with / or Cmd/Ctrl+K.
  */
 function Rail({ path }: { path: string }) {
   const explorer = giwaSepolia.blockExplorers.default.url;
-  const label = "rail-label ml-3.5 whitespace-nowrap";
-  const [shut, setShut] = useState(false);
   return (
-    <aside
-      className="rail vt-rail fixed inset-y-0 left-0 z-40 hidden flex-col overflow-hidden border-r border-line bg-bg lg:flex"
-      data-shut={shut ? "" : undefined}
-      onPointerLeave={() => setShut(false)}
-      onClick={(e) => {
-        // A click made with the keyboard (detail 0) leaves the rail open, so the focused link stays in view.
-        if (e.detail > 0 && e.target instanceof Element && e.target.closest("a")) setShut(true);
-      }}
-    >
-      <Link to="/" className="flex h-16 shrink-0 items-center pl-[16px]" aria-label="Chimi home">
+    <aside className="vt-rail fixed inset-y-0 left-0 z-40 hidden w-[72px] flex-col items-center border-r border-line bg-bg lg:flex">
+      <Link to="/" className="grid h-16 w-full shrink-0 place-items-center" aria-label="Chimi home">
         <ChimiMark size={36} />
-        <span className={`${label} flex items-baseline gap-2`}>
-          <span className="text-[19px] font-bold tracking-[0.02em]">Chimi</span>
-          <span className="font-serif text-[15px] text-gold">치미</span>
-        </span>
       </Link>
-      <nav className="mt-2 flex flex-1 flex-col gap-1 px-3" aria-label="Main">
-        {NAV.map((item) => (
-          <RailLink key={item.to} item={item} on={item.on(path)} label={label} />
-        ))}
-        <div className="mx-1 my-2 h-px bg-line" />
-        <RailLink item={LAUNCH} on={LAUNCH.on(path)} label={label} accent />
+      <nav className="mt-1 flex flex-1 flex-col items-center gap-1.5" aria-label="Main">
+        {NAV.map((item) => {
+          const Icon = item.icon;
+          const on = item.on(path);
+          return (
+            <Link key={item.to} to={item.to} aria-current={on ? "page" : undefined} className="rail-item" aria-label={item.label}>
+              <Icon size={21} />
+              <span className="rail-tip">{item.label}</span>
+            </Link>
+          );
+        })}
+        <Link to="/launch" aria-current={path === "/launch" ? "page" : undefined} className="rail-launch" aria-label="Launch a coin">
+          <IconPlus size={22} />
+          <span className="rail-tip">Launch a coin</span>
+        </Link>
       </nav>
-      <div className="px-3 pb-12">
-        <a href={explorer} target="_blank" rel="noreferrer" className="flex h-11 items-center rounded-xl pl-[11px] text-muted hover:bg-raise hover:text-fg">
-          <IconExternal size={20} className="shrink-0" />
-          <span className={`${label} text-sm font-medium`}>GIWA explorer</span>
-        </a>
-      </div>
+      <a href={explorer} target="_blank" rel="noreferrer" className="rail-item mb-12" aria-label="GIWA explorer">
+        <IconExternal size={19} />
+        <span className="rail-tip">GIWA explorer</span>
+      </a>
     </aside>
   );
 }
 
-function RailLink({ item, on, label, accent }: { item: NavItem; on: boolean; label: string; accent?: boolean }) {
-  const Icon = item.icon;
-  return (
-    <Link
-      to={item.to}
-      aria-current={on ? "page" : undefined}
-      className={`relative flex h-11 items-center rounded-xl pl-[11px] transition-colors ${on ? "bg-raise text-fg" : "text-muted hover:bg-raise hover:text-fg"}`}
-    >
-      {accent ? (
-        <span className="grid size-[22px] shrink-0 place-items-center rounded-md bg-seal text-onseal">
-          <Icon size={15} />
-        </span>
-      ) : (
-        <Icon size={21} className={`shrink-0 ${on ? "text-fg" : ""}`} />
-      )}
-      <span className={`${label} text-[15px] font-medium ${accent ? "!ml-[13px]" : ""}`}>{item.label}</span>
-      {on ? <span className="absolute top-2.5 bottom-2.5 -left-3 w-[3px] rounded-r-full bg-seal" /> : null}
-    </Link>
-  );
-}
-
-/** Phone: a tab bar along the bottom, with Launch in the middle and the rest behind More. */
+/**
+ * Phone: one floating bar along the bottom, a pill of icons over the page with Launch as the round button in the
+ * middle. Everything that doesn't fit is behind More.
+ */
 function TabBar({ path }: { path: string }) {
   const [more, setMore] = useState(false);
   useEffect(() => setMore(false), [path]);
-  const tabs = [FEED, BOARD];
-  const after = [TRADERS];
-  const hidden = NAV.filter((item) => item !== FEED && item !== BOARD && item !== TRADERS);
+  const hidden = NAV.filter((item) => item !== HOME && item !== TRADERS && item !== SWAP);
   const moreOn = hidden.some((h) => h.on(path));
   const tab = (item: NavItem) => {
     const Icon = item.icon;
     const on = item.on(path);
     return (
-      <Link key={item.to} to={item.to} aria-current={on ? "page" : undefined} className={`flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium ${on ? "text-fg" : "text-faint"}`}>
-        <Icon size={21} />
-        {item.label}
+      <Link key={item.to} to={item.to} aria-current={on ? "page" : undefined} aria-label={item.label} className="dock-item">
+        <Icon size={22} />
       </Link>
     );
   };
   return (
     <>
-      <nav className="vt-tabs fixed inset-x-0 bottom-0 z-40 flex h-[64px] items-stretch border-t border-line bg-bg/92 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden" aria-label="Main">
-        {tabs.map(tab)}
-        <Link to="/launch" aria-label="Launch a coin" className="flex flex-1 items-center justify-center">
-          <span className="grid size-11 place-items-center rounded-2xl bg-seal text-onseal shadow-seal">
-            <IconPlus size={22} />
-          </span>
+      <nav className="dock vt-tabs lg:hidden" aria-label="Main">
+        {tab(HOME)}
+        {tab(TRADERS)}
+        <Link to="/launch" aria-label="Launch a coin" className="dock-launch">
+          <IconPlus size={24} />
         </Link>
-        {after.map(tab)}
-        <button type="button" onClick={() => setMore(true)} className={`flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium ${moreOn ? "text-fg" : "text-faint"}`}>
-          <IconMenu size={21} />
-          More
+        {tab(SWAP)}
+        <button type="button" onClick={() => setMore(true)} aria-label="More" aria-current={moreOn ? "page" : undefined} className="dock-item">
+          <IconMenu size={22} />
         </button>
       </nav>
       {more ? (
@@ -155,13 +125,13 @@ function TabBar({ path }: { path: string }) {
             {hidden.map((item) => {
               const Icon = item.icon;
               return (
-                <Link key={item.to} to={item.to} onClick={() => setMore(false)} className="flex items-center gap-3.5 rounded-xl bg-raise px-4 py-3.5 text-[15px] font-medium">
+                <Link key={item.to} to={item.to} onClick={() => setMore(false)} className="flex items-center gap-3.5 rounded-2xl bg-raise px-4 py-3.5 text-[15px] font-medium">
                   <Icon size={20} className="text-muted" />
                   {item.label}
                 </Link>
               );
             })}
-            <a href={giwaSepolia.blockExplorers.default.url} target="_blank" rel="noreferrer" className="flex items-center gap-3.5 rounded-xl bg-raise px-4 py-3.5 text-[15px] font-medium">
+            <a href={giwaSepolia.blockExplorers.default.url} target="_blank" rel="noreferrer" className="flex items-center gap-3.5 rounded-2xl bg-raise px-4 py-3.5 text-[15px] font-medium">
               <IconExternal size={20} className="text-muted" />
               GIWA explorer
             </a>
@@ -172,6 +142,15 @@ function TabBar({ path }: { path: string }) {
   );
 }
 
+/** The live strip in the top bar, on every page. */
+function TopTicker({ className = "" }: { className?: string }) {
+  const nowMs = useNow(30_000);
+  const { items, byToken, now } = useTicker(nowMs);
+  const images = useTokenImages(useMemo(() => [...new Set(items.map((i) => i.token))], [items]));
+  const profiles = useProfiles(useMemo(() => [...new Set(items.map((i) => i.wallet))], [items]));
+  return <Ticker items={items} byToken={byToken} images={images} profiles={profiles} now={now} className={className} />;
+}
+
 /** Desktop: a thin line along the bottom saying the chain is live, like a trading terminal. */
 function StatusBar() {
   const { deployment, note, loading, coins } = useChimi();
@@ -180,7 +159,7 @@ function StatusBar() {
   const explorer = giwaSepolia.blockExplorers.default.url;
   const down = !loading && !!note && coins.length === 0;
   return (
-    <div className="vt-status fixed right-0 bottom-0 left-[68px] z-30 hidden h-9 items-center justify-between gap-4 border-t border-line bg-bg/92 px-5 text-xs text-muted backdrop-blur-xl lg:flex">
+    <div className="vt-status fixed right-0 bottom-0 left-[72px] z-30 hidden h-9 items-center justify-between gap-4 border-t border-line bg-bg/92 px-5 text-xs text-muted backdrop-blur-xl lg:flex">
       <div className="flex min-w-0 items-center gap-4">
         <span className={`flex items-center gap-2 font-medium ${down ? "text-down" : "text-ok"}`}>
           <span className="live-dot" />
@@ -258,36 +237,21 @@ export function Shell({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <div className="relative isolate flex min-h-dvh flex-col lg:pl-[68px]">
+    <div className="relative isolate flex min-h-dvh flex-col lg:pl-[72px]">
       <PageBackdrop path={path} />
       <Rail path={path} />
       <header className={`vt-top sticky top-0 z-30 border-b transition-colors duration-200 ${scrolled ? "border-line bg-bg/85 backdrop-blur-xl" : "border-transparent bg-transparent"}`}>
-        <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
-          <Link to="/" className="flex items-center gap-2.5 lg:hidden" aria-label="Chimi home">
-            <ChimiMark size={34} />
-            <span className="hidden text-[18px] font-bold tracking-[0.02em] min-[400px]:inline">Chimi</span>
+        <TopTicker className="ticker-phone" />
+        <div className="flex h-14 items-center gap-3 px-4 sm:px-6 lg:h-16 lg:px-8">
+          <Link to="/" className="flex shrink-0 items-center gap-2.5 lg:hidden" aria-label="Chimi home">
+            <ChimiMark size={32} />
+            <span className="hidden text-[18px] font-bold tracking-[0.02em] min-[400px]:inline md:hidden">Chimi</span>
           </Link>
-          <button
-            type="button"
-            onClick={() => setSearch(true)}
-            className="hidden h-10 w-full max-w-[440px] items-center gap-2.5 rounded-xl border border-line bg-chip/70 px-3.5 text-left text-sm text-faint transition-colors hover:border-edge hover:text-muted md:flex"
-          >
-            <IconSearch size={17} />
-            <span className="flex-1 truncate">Search coins, houses or an address</span>
-            <span className="kbd">/</span>
-          </button>
-          <div className="ml-auto flex items-center gap-2">
-            <button type="button" onClick={() => setSearch(true)} aria-label="Search" className="btn btn-icon btn-secondary md:hidden">
+          <TopTicker className="ticker-wide" />
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <button type="button" onClick={() => setSearch(true)} aria-label="Search" className="btn btn-icon btn-secondary lg:hidden">
               <IconSearch size={18} />
             </button>
-            <span className="chip hidden h-10 rounded-xl px-3 text-[13px] xl:inline-flex">
-              <span className="live-dot text-ok" />
-              GIWA Sepolia
-            </span>
-            <Link to="/launch" className="btn btn-primary hidden sm:inline-flex">
-              <IconPlus size={17} />
-              Launch
-            </Link>
             <InboxButton />
             <WalletButton />
           </div>
@@ -310,7 +274,7 @@ function Footer() {
   const explorer = giwaSepolia.blockExplorers.default.url;
   const link = "text-muted transition-colors hover:text-fg";
   return (
-    <footer className="mt-10 border-t border-line pb-[64px] lg:pb-9">
+    <footer className="mt-10 border-t border-line pb-[96px] lg:pb-9">
       <div className="page grid gap-8 py-10 sm:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]">
         <div>
           <div className="flex items-center gap-2.5">
@@ -327,9 +291,6 @@ function Footer() {
         <div className="grid content-start gap-2.5 text-sm">
           <p className="th uppercase">Trade</p>
           <Link to="/" className={link}>
-            Home
-          </Link>
-          <Link to="/board" className={link}>
             Board
           </Link>
           <Link to="/traders" className={link}>

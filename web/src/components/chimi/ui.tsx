@@ -21,8 +21,11 @@ export function Change({ value, className = "" }: { value: number | undefined; c
   );
 }
 
-/** A small line of recent values. Green when it ends above where it began, red when below. */
-export function Sparkline({ values, width = 112, height = 36, className = "" }: { values: number[]; width?: number; height?: number; className?: string }) {
+/**
+ * A small line of recent values. Green when it ends above where it began, red when below. A `fluid` one stretches to
+ * the box CSS gives it, keeping its line the same thickness.
+ */
+export function Sparkline({ values, width = 112, height = 36, className = "", fluid = false }: { values: number[]; width?: number; height?: number; className?: string; fluid?: boolean }) {
   const id = useId().replace(/:/g, "");
   const series = values.length === 1 ? [values[0]!, values[0]!] : values;
   if (series.length === 0) return <span className={`block ${className}`} style={{ width, height }} />;
@@ -41,7 +44,7 @@ export function Sparkline({ values, width = 112, height = 36, className = "" }: 
   const last = series[series.length - 1]!;
   const color = flat || last === first ? "var(--color-faint)" : last > first ? "var(--color-ok)" : "var(--color-down)";
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className={className} aria-hidden>
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio={fluid ? "none" : undefined} className={className} aria-hidden>
       <defs>
         <linearGradient id={`sp-${id}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor={color} stopOpacity=".28" />
@@ -49,7 +52,7 @@ export function Sparkline({ values, width = 112, height = 36, className = "" }: 
         </linearGradient>
       </defs>
       {flat ? null : <path d={`${line} L${width} ${height} L0 ${height} Z`} fill={`url(#sp-${id})`} />}
-      <path d={line} fill="none" stroke={color} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
+      <path d={line} fill="none" stroke={color} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" vectorEffect={fluid ? "non-scaling-stroke" : undefined} />
     </svg>
   );
 }

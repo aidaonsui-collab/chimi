@@ -1,39 +1,38 @@
 import { Link } from "@tanstack/react-router";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { ago, compactUsd, ethText } from "@/lib/chimi/format";
 import { coinStats, type CoinStats } from "@/lib/chimi/live";
 import type { Coin } from "@/lib/chimi/market";
 import type { Profile } from "@/lib/chimi/points-rules";
 import { shortWallet, useProfiles } from "@/lib/chimi/rewards";
 import { QuickAmount, QuickBuy } from "@/components/chimi/feed-rows";
-import { IconChevronLeft, IconChevronRight, IconPlus } from "@/components/chimi/icons";
+import { IconPlus } from "@/components/chimi/icons";
 import { TokenLogo } from "@/components/chimi/token-logo";
-import { Change, Seg } from "@/components/chimi/ui";
+import { Change, Seg, Sparkline } from "@/components/chimi/ui";
 
 /*
- * The board on the home page, under the feed: two boxes side by side. One is the board itself, every pair that is
- * trading, ranked; the other is the pairs that have just launched. Each row is one press from a buy. The whole
- * table, with prices, search and the card view, is at /board.
- *
- * The columns answer to the width of the box itself (.pairs in styles.css), not the screen, so a box shows what it
- * has room for whether it is half a laptop or the whole of a phone.
+ * The home page's table: every pair on Chimi in one list, the way a trading floor shows its board. The tabs change
+ * the order (what is trading, what just launched, the biggest, the day's gainers), and each row is one press from a
+ * buy. On a phone a row keeps the pair, its market cap and move, the day's line and the buy button; the other
+ * columns come in as the screen widens (.pairs-grid in styles.css).
  */
 
-type Sort = "trending" | "top" | "gainers";
+type Sort = "trending" | "new" | "top" | "gainers";
 
-/** Rows on a page of either list. A phone shows the first five until asked for the rest. */
-const PAGE = 10;
-const SHORT = 5;
+/** Rows shown before "Show more". */
+const PAGE = 25;
 
 const EMPTY: CoinStats = { priceEth: 0, capEth: 0, spark: [] };
 
-type Row = { coin: Coin; stats: CoinStats; image?: string };
+type Row = { coin: Coin; stats: CoinStats; image?: string; liqEth?: number; order: number; born?: number };
 
-export type HomeBoardProps = {
+export type PairsBoardProps = {
   /** Newest first, the order the factory lists them in. */
   coins: Coin[];
   stats: Record<string, CoinStats>;
   images: Record<string, string | undefined>;
+  /** ETH in each pool, by lowercase pool address. */
+  reserves: Record<string, bigint | undefined>;
   ethUsd?: number;
   /** When each coin launched, by lowercase token. */
   launched?: Map<string, number>;
@@ -47,305 +46,173 @@ export type HomeBoardProps = {
   tradesReady: boolean;
 };
 
-export function HomeBoard({ coins, stats, images, ethUsd, launched, known, now, waiting, tradesReady }: HomeBoardProps) {
+export function PairsBoard({ coins, stats, images, reserves, ethUsd, launched, known, now, waiting, tradesReady }: PairsBoardProps) {
   const [sort, setSort] = useState<Sort>("trending");
+  const [shown, setShown] = useState(PAGE);
   const rows = useMemo<Row[]>(
-    () => coins.map((coin) => ({ coin, stats: stats[coin.token.toLowerCase()] ?? (coin.preview ? coinStats(coin, []) : EMPTY), image: images[coin.token.toLowerCase()] })),
-    [coins, stats, images],
+    () =>
+      coins.map((coin, order) => {
+        const wei = reserves[coin.pool.toLowerCase()];
+        return {
+          coin,
+          order,
+          stats: stats[coin.token.toLowerCase()] ?? (coin.preview ? coinStats(coin, []) : EMPTY),
+          image: images[coin.token.toLowerCase()],
+          liqEth: wei === undefined ? undefined : Number(wei) / 1e18,
+          born: launched?.get(coin.token.toLowerCase()),
+        };
+      }),
+    [coins, stats, images, reserves, launched],
   );
   const ranked = useMemo(() => {
     const list = [...rows];
-    if (sort === "top") list.sort((a, b) => b.stats.capEth - a.stats.capEth);
+    // The factory lists coins newest first, so a coin whose launch time isn't known keeps that place.
+    if (sort === "new") list.sort((a, b) => (a.born !== undefined && b.born !== undefined ? b.born - a.born : a.order - b.order));
+    else if (sort === "top") list.sort((a, b) => b.stats.capEth - a.stats.capEth);
     else if (sort === "gainers") list.sort((a, b) => (b.stats.change ?? -Infinity) - (a.stats.change ?? -Infinity) || b.stats.capEth - a.stats.capEth);
-    else list.sort((a, b) => (b.stats.volEth ?? 0) - (a.stats.volEth ?? 0) || b.stats.capEth - a.stats.capEth);
+    else list.sort((a, b) => (b.stats.volEth ?? 0) - (a.stats.volEth ?? 0) || (b.stats.trades ?? 0) - (a.stats.trades ?? 0) || b.stats.capEth - a.stats.capEth);
     return list;
   }, [rows, sort]);
+  const page = ranked.slice(0, shown);
+  const creators = useMemo(() => [...new Set(page.map((r) => r.coin.creator.toLowerCase()))], [page]);
+  const profiles = useProfiles(creators, known);
 
   const usd = (eth: number | undefined) => (eth === undefined ? "—" : ethUsd ? compactUsd(eth * ethUsd) : `${ethText(eth)} ETH`);
 
   return (
-    <section id="board" aria-labelledby="board-title" className="scroll-mt-20">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pb-3">
-        <h2 id="board-title" className="flex min-w-0 items-baseline gap-2.5 text-[20px] font-semibold tracking-[-0.02em]">
-          The board
-          <span className="hidden truncate text-[13px] font-normal tracking-normal text-muted sm:inline">Every coin against ETH, in its own locked pool</span>
+    <section id="board" aria-labelledby="board-title" className="scroll-mt-24">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 pb-4">
+        <h2 id="board-title" className="flex items-baseline gap-2.5 px-1 text-[28px] leading-none font-semibold tracking-[-0.03em]">
+          Board
+          {!waiting && rows.length > 0 ? <span className="num text-[15px] font-medium tracking-normal text-faint">{rows.length}</span> : null}
         </h2>
-        <div className="flex items-center gap-2">
+        <span className="flex items-center gap-2">
           <QuickAmount />
-          <Link to="/board" className="btn btn-sm btn-secondary">
-            Full board
-            <IconChevronRight size={14} />
+          <Link to="/launch" className="btn btn-sm btn-light hidden sm:inline-flex">
+            <IconPlus size={15} />
+            Launch a coin
           </Link>
-        </div>
+        </span>
+      </div>
+      <div className="no-scrollbar -mx-1 flex items-center justify-between gap-2 overflow-x-auto px-1 pb-3">
+        <Seg
+          label="Order the board by"
+          value={sort}
+          onChange={(next) => {
+            setSort(next);
+            setShown(PAGE);
+          }}
+          options={[
+            ["trending", "Trending"],
+            ["new", "New"],
+            ["top", "Top"],
+            ["gainers", "Gainers"],
+          ]}
+        />
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 lg:gap-5">
-        <PairList
-          kind="top"
-          title="Trading pairs"
-          count={waiting ? undefined : rows.length}
-          rows={ranked}
-          waiting={waiting}
-          resetOn={sort}
-          controls={
-            <Seg
-              label="Rank pairs by"
-              value={sort}
-              onChange={setSort}
-              options={[
-                ["trending", "Trending"],
-                ["top", "Top"],
-                ["gainers", "Gainers"],
-              ]}
-            />
-          }
-          head={
-            <>
-              <span>#</span>
-              <span>Pair</span>
-              <span className="pair-chg text-right">24h</span>
-              <span className="pair-cap text-right">Market cap</span>
-              <span className="pair-vol text-right">24h volume</span>
-              <span className="text-right">Buy</span>
-            </>
-          }
-          empty="Pairs show up here as soon as a coin launches."
-          render={(row, i) => {
-            const pending = !row.coin.preview && !tradesReady && row.stats.volEth === undefined;
-            return (
-              <>
-                <span className="num text-[12.5px] text-faint">{i + 1}</span>
-                <PairName row={row} sub={row.coin.name} />
-                <span className="pair-chg text-right text-[13.5px]">{pending ? <Dots /> : <Change value={row.stats.change} />}</span>
-                <span className="pair-cap text-right">
-                  <span className="num block text-[14px] font-medium">{usd(row.stats.capEth)}</span>
-                  <span className="pair-cap-chg text-[12px]">{pending ? null : <Change value={row.stats.change} />}</span>
-                </span>
-                <span className="pair-vol num text-right text-[14px] text-muted">{row.coin.preview ? "—" : pending ? <Dots /> : usd(row.stats.volEth)}</span>
-                <QuickBuy coin={row.coin} compact />
-              </>
-            );
-          }}
-        />
+      <div className="card overflow-hidden">
+        <div className="pairs-grid th border-b border-line/70 py-3">
+          <span className="pg-rank">#</span>
+          <span>Pair</span>
+          <span className="text-right">Market cap</span>
+          <span className="pg-chg text-right">24h</span>
+          <span className="pg-vol text-right">Volume</span>
+          <span className="pg-liq text-right">Liquidity</span>
+          <span className="pg-trades text-right">Trades</span>
+          <span className="pg-spark text-right">Last 24h</span>
+          <span className="text-right">Buy</span>
+        </div>
 
-        <NewPairs rows={rows} launched={launched} known={known} now={now} waiting={waiting} tradesReady={tradesReady} usd={usd} />
+        {waiting ? (
+          <ul aria-hidden>
+            {Array.from({ length: 6 }, (_, i) => (
+              <li key={i} className="flex min-h-[4.25rem] items-center gap-3 border-b border-line/60 px-4 last:border-0 sm:px-5">
+                <span className="skeleton size-10 shrink-0 rounded-full" />
+                <span className="flex-1 space-y-1.5">
+                  <span className="skeleton block h-3.5 w-2/5" />
+                  <span className="skeleton block h-3 w-1/4" />
+                </span>
+                <span className="skeleton h-4 w-16" />
+                <span className="skeleton h-7 w-16 rounded-full" />
+              </li>
+            ))}
+          </ul>
+        ) : rows.length === 0 ? (
+          <div className="px-4 py-12 text-center">
+            <p className="font-serif text-xl text-gold">첫 코인</p>
+            <p className="mt-3 text-[15px] font-semibold">Nothing has launched yet</p>
+            <p className="mt-1 text-sm text-muted">Pairs show up here as soon as a coin launches.</p>
+            <Link to="/launch" className="btn btn-primary mt-4">
+              <IconPlus size={16} />
+              Launch the first coin
+            </Link>
+          </div>
+        ) : (
+          <ul>
+            {page.map((row, i) => {
+              const pending = !row.coin.preview && !tradesReady && row.stats.volEth === undefined;
+              const creator = row.coin.creator.toLowerCase();
+              const by = profiles[creator]?.name?.replace(/\.up\.id$/, "") ?? shortWallet(creator);
+              const fresh = row.born !== undefined && now - row.born < 24 * 60 * 60;
+              return (
+                <li key={row.coin.token} className="pair-item border-b border-line/60 last:border-0">
+                  <div className="pairs-grid min-h-[4.25rem] py-2.5">
+                    <span className="pg-rank num text-[13px] text-faint">{i + 1}</span>
+                    <Link to="/coin/$address" params={{ address: row.coin.token }} className="pair-name">
+                      <TokenLogo symbol={row.coin.symbol} image={row.image} size={40} />
+                      <span className="min-w-0">
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate text-[15px] font-semibold">{row.coin.name}</span>
+                          {row.coin.preview ? <span className="chip h-[18px] shrink-0 px-1.5 text-[10.5px]">preview</span> : null}
+                        </span>
+                        <span className="num flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted">
+                          <span className="shrink-0">${row.coin.symbol}</span>
+                          {row.born !== undefined ? <span className={`shrink-0 ${fresh ? "text-ok" : ""}`}>{ago(Math.max(0, now - row.born))}</span> : null}
+                          <span className="hidden truncate text-faint xl:inline">by {by}</span>
+                        </span>
+                      </span>
+                    </Link>
+                    <span className="text-right">
+                      <span className="num block text-[15px] font-semibold">{usd(row.stats.capEth)}</span>
+                      <span className="pg-chg-inline text-[12.5px]">{pending ? null : <Change value={row.stats.change} />}</span>
+                    </span>
+                    <span className="pg-chg text-right text-[14px]">{pending ? <Dots /> : <Change value={row.stats.change} />}</span>
+                    <span className="pg-vol num text-right text-[14px] text-muted">{row.coin.preview ? "—" : pending ? <Dots /> : usd(row.stats.volEth)}</span>
+                    <span className="pg-liq num text-right text-[14px] text-muted">{row.coin.preview ? "—" : usd(row.liqEth)}</span>
+                    <span className="pg-trades num text-right text-[14px] text-muted">{pending ? <Dots /> : (row.stats.trades ?? 0).toLocaleString("en-US")}</span>
+                    <span className="pg-spark flex justify-end">
+                      {row.stats.spark.length > 1 ? <Sparkline values={row.stats.spark} width={112} height={30} fluid /> : <span className="block h-[30px] w-[112px]" />}
+                    </span>
+                    <span className="flex justify-end">
+                      <QuickBuy coin={row.coin} compact />
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {ranked.length > shown ? (
+          <button type="button" onClick={() => setShown((n) => n + PAGE)} className="w-full border-t border-line/70 py-3 text-sm font-medium text-muted hover:text-fg">
+            Show more ({ranked.length - shown} left)
+          </button>
+        ) : !waiting && rows.length > 0 && rows.length < 6 ? (
+          <Link to="/launch" className="pair-invite border-t border-line/60">
+            <span className="grid size-10 shrink-0 place-items-center rounded-full border border-dashed border-edge text-muted">
+              <IconPlus size={16} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[14.5px] font-semibold text-fg">Your pair here</span>
+              <span className="block truncate text-[12.5px]">Launch a coin in one transaction</span>
+            </span>
+          </Link>
+        ) : null}
       </div>
     </section>
-  );
-}
-
-/** The pairs by when they launched, newest first: how old, who launched it, and where it stands now. */
-function NewPairs({
-  rows,
-  launched,
-  known,
-  now,
-  waiting,
-  tradesReady,
-  usd,
-}: {
-  rows: Row[];
-  launched?: Map<string, number>;
-  known?: Record<string, Profile>;
-  now: number;
-  waiting: boolean;
-  tradesReady: boolean;
-  usd: (eth: number | undefined) => string;
-}) {
-  const creators = useMemo(() => [...new Set(rows.slice(0, 40).map((r) => r.coin.creator.toLowerCase()))], [rows]);
-  const profiles = useProfiles(creators, known);
-  const age = (token: string) => {
-    const at = launched?.get(token.toLowerCase());
-    return at === undefined ? undefined : ago(Math.max(0, now - at));
-  };
-  return (
-    <PairList
-      kind="new"
-      title="New pairs"
-      note="newest first"
-      rows={rows}
-      waiting={waiting}
-      head={
-        <>
-          <span>Pair</span>
-          <span className="pair-age text-right">Age</span>
-          <span className="pair-chg text-right">24h</span>
-          <span className="pair-cap text-right">Market cap</span>
-          <span className="text-right">Buy</span>
-        </>
-      }
-      empty="Nothing has launched yet."
-      invite
-      render={(row) => {
-        const creator = row.coin.creator.toLowerCase();
-        const by = profiles[creator]?.name?.replace(/\.up\.id$/, "") ?? shortWallet(creator);
-        const old = age(row.coin.token);
-        const pending = !row.coin.preview && !tradesReady && row.stats.volEth === undefined;
-        return (
-          <>
-            <PairName
-              row={row}
-              sub={
-                <>
-                  <span className="pair-age-inline">{old ? `${old} · ` : null}</span>by {by}
-                </>
-              }
-            />
-            <span className="pair-age num text-right text-[13.5px] text-muted">{old ?? "—"}</span>
-            <span className="pair-chg text-right text-[13.5px]">{pending ? <Dots /> : <Change value={row.stats.change} />}</span>
-            <span className="pair-cap text-right">
-              <span className="num block text-[14px] font-medium">{usd(row.stats.capEth)}</span>
-              <span className="pair-cap-chg text-[12px]">{pending ? null : <Change value={row.stats.change} />}</span>
-            </span>
-            <QuickBuy coin={row.coin} compact />
-          </>
-        );
-      }}
-    />
-  );
-}
-
-/** The coin against ETH, as the start of a row. Pressing anywhere on the row but its buy button opens the coin. */
-function PairName({ row, sub }: { row: Row; sub: ReactNode }) {
-  return (
-    <Link to="/coin/$address" params={{ address: row.coin.token }} className="pair-name">
-      <TokenLogo symbol={row.coin.symbol} image={row.image} size={32} />
-      <span className="min-w-0">
-        <span className="flex items-center gap-1.5">
-          <span className="truncate text-[14.5px] font-semibold">
-            {row.coin.symbol}
-            <span className="font-normal text-faint">/ETH</span>
-          </span>
-          {row.coin.preview ? <span className="chip h-[18px] shrink-0 px-1.5 text-[10.5px]">preview</span> : null}
-        </span>
-        <span className="block truncate text-[12.5px] text-muted">{sub}</span>
-      </span>
-    </Link>
   );
 }
 
 function Dots() {
   return <span className="skeleton ml-auto h-3.5 w-10" />;
-}
-
-/** One of the two lists: a heading, the column names, a page of rows, and a way to the next page. */
-function PairList({
-  kind,
-  title,
-  note,
-  count,
-  rows,
-  waiting,
-  controls,
-  head,
-  render,
-  empty,
-  invite = false,
-  resetOn,
-}: {
-  kind: "top" | "new";
-  title: string;
-  note?: string;
-  count?: number;
-  rows: Row[];
-  waiting: boolean;
-  controls?: ReactNode;
-  head: ReactNode;
-  render: (row: Row, index: number) => ReactNode;
-  empty: string;
-  /** End a short list with a way to add to it. */
-  invite?: boolean;
-  /** Going back to the first page when this changes (the order picked, say). */
-  resetOn?: string;
-}) {
-  const [at, setAt] = useState<{ page: number; of?: string }>({ page: 0, of: resetOn });
-  const [short, setShort] = useState(true);
-  const pages = Math.max(1, Math.ceil(rows.length / PAGE));
-  const page = at.of === resetOn ? Math.min(at.page, pages - 1) : 0;
-  const start = page * PAGE;
-  const shown = rows.slice(start, start + PAGE);
-  const go = (next: number) => setAt({ page: next, of: resetOn });
-
-  return (
-    <section className={`card pairs pairs-${kind} overflow-hidden`} data-short={short ? "" : undefined} aria-label={title}>
-      <div className="flex min-h-[3.75rem] flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-2.5 sm:px-4">
-        <h3 className="flex items-baseline gap-2 text-[15px] font-semibold">
-          {title}
-          {count !== undefined && count > 0 ? <span className="num text-[12px] font-normal text-faint">{count}</span> : null}
-          {note ? <span className="text-[12px] font-normal text-faint">{note}</span> : null}
-        </h3>
-        {controls}
-      </div>
-      <div className="pair-head th border-y border-line/70 py-2">{head}</div>
-
-      {waiting ? (
-        <ul aria-hidden>
-          {Array.from({ length: SHORT }, (_, i) => (
-            <li key={i} className="pair-item">
-              <div className="flex min-h-[3.25rem] items-center gap-3 px-3 sm:px-4">
-                <span className="skeleton size-8 shrink-0 rounded-full" />
-                <span className="flex-1 space-y-1.5">
-                  <span className="skeleton block h-3.5 w-2/5" />
-                  <span className="skeleton block h-3 w-1/4" />
-                </span>
-                <span className="skeleton h-4 w-14" />
-                <span className="skeleton h-7 w-16 rounded-lg" />
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : rows.length === 0 ? (
-        <div className="px-4 py-8 text-center">
-          <p className="text-sm text-muted">{empty}</p>
-          <Link to="/launch" className="btn btn-sm btn-primary mt-3">
-            <IconPlus size={15} />
-            Launch a coin
-          </Link>
-        </div>
-      ) : (
-        <>
-          <ul className={pages > 1 ? "pair-rows-paged" : undefined}>
-            {shown.map((row, i) => (
-              <li key={row.coin.token} className="pair-item">
-                <div className="pair-row">{render(row, start + i)}</div>
-              </li>
-            ))}
-            {invite && pages === 1 && rows.length < SHORT ? (
-              <li className="pair-item">
-                <Link to="/launch" className="pair-invite">
-                  <span className="grid size-8 shrink-0 place-items-center rounded-full border border-dashed border-edge text-muted">
-                    <IconPlus size={15} />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-[14px] font-semibold text-fg">Your pair here</span>
-                    <span className="block truncate text-[12.5px]">Launch a coin in one transaction</span>
-                  </span>
-                </Link>
-              </li>
-            ) : null}
-          </ul>
-          {shown.length > SHORT ? (
-            <button type="button" onClick={() => setShort(false)} className="pair-more">
-              Show {shown.length - SHORT} more
-            </button>
-          ) : null}
-          {pages > 1 ? (
-            <div className="pair-pager flex items-center justify-between gap-3 border-t border-line/70 px-3 py-2 sm:px-4">
-              <span className="num text-[12.5px] text-muted">
-                {start + 1}–{start + shown.length} of {rows.length}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <button type="button" disabled={page === 0} onClick={() => go(page - 1)} aria-label={`Previous ${PAGE} pairs`} className="btn btn-sm btn-icon btn-secondary disabled:opacity-35">
-                  <IconChevronLeft size={15} />
-                </button>
-                <button type="button" disabled={page >= pages - 1} onClick={() => go(page + 1)} aria-label={`Next ${PAGE} pairs`} className="btn btn-sm btn-icon btn-secondary disabled:opacity-35">
-                  <IconChevronRight size={15} />
-                </button>
-              </span>
-            </div>
-          ) : null}
-        </>
-      )}
-    </section>
-  );
 }
