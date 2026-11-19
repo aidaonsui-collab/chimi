@@ -19,6 +19,7 @@ import { Route as SwapRouteImport } from './routes/swap'
 import { Route as TradersRouteImport } from './routes/traders'
 import { Route as ApiCommentsRouteImport } from './routes/api/comments'
 import { Route as ApiFeedRouteImport } from './routes/api/feed'
+import { Route as ApiFlywheelRouteImport } from './routes/api/flywheel'
 import { Route as ApiFollowsRouteImport } from './routes/api/follows'
 import { Route as ApiHousesRouteImport } from './routes/api/houses'
 import { Route as ApiInboxRouteImport } from './routes/api/inbox'
@@ -31,6 +32,7 @@ import { Route as HousesIndexRouteImport } from './routes/houses.index'
 import { Route as HousesTagRouteImport } from './routes/houses.$tag'
 import { Route as PoolAddressRouteImport } from './routes/pool.$address'
 import { Route as UAddressRouteImport } from './routes/u.$address'
+import { Route as ApiKeeperFlywheelRouteImport } from './routes/api/keeper/flywheel'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -80,6 +82,11 @@ const ApiCommentsRoute = ApiCommentsRouteImport.update({
 const ApiFeedRoute = ApiFeedRouteImport.update({
   id: '/api/feed',
   path: '/api/feed',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFlywheelRoute = ApiFlywheelRouteImport.update({
+  id: '/api/flywheel',
+  path: '/api/flywheel',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiFollowsRoute = ApiFollowsRouteImport.update({
@@ -142,6 +149,11 @@ const UAddressRoute = UAddressRouteImport.update({
   path: '/u/$address',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiKeeperFlywheelRoute = ApiKeeperFlywheelRouteImport.update({
+  id: '/api/keeper/flywheel',
+  path: '/api/keeper/flywheel',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -154,6 +166,7 @@ export interface FileRoutesByFullPath {
   '/traders': typeof TradersRoute
   '/api/comments': typeof ApiCommentsRoute
   '/api/feed': typeof ApiFeedRoute
+  '/api/flywheel': typeof ApiFlywheelRoute
   '/api/follows': typeof ApiFollowsRoute
   '/api/houses': typeof ApiHousesRoute
   '/api/inbox': typeof ApiInboxRoute
@@ -166,6 +179,7 @@ export interface FileRoutesByFullPath {
   '/pool/$address': typeof PoolAddressRoute
   '/u/$address': typeof UAddressRoute
   '/houses/': typeof HousesIndexRoute
+  '/api/keeper/flywheel': typeof ApiKeeperFlywheelRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -178,6 +192,7 @@ export interface FileRoutesByTo {
   '/traders': typeof TradersRoute
   '/api/comments': typeof ApiCommentsRoute
   '/api/feed': typeof ApiFeedRoute
+  '/api/flywheel': typeof ApiFlywheelRoute
   '/api/follows': typeof ApiFollowsRoute
   '/api/houses': typeof ApiHousesRoute
   '/api/inbox': typeof ApiInboxRoute
@@ -190,6 +205,7 @@ export interface FileRoutesByTo {
   '/pool/$address': typeof PoolAddressRoute
   '/u/$address': typeof UAddressRoute
   '/houses': typeof HousesIndexRoute
+  '/api/keeper/flywheel': typeof ApiKeeperFlywheelRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -203,6 +219,7 @@ export interface FileRoutesById {
   '/traders': typeof TradersRoute
   '/api/comments': typeof ApiCommentsRoute
   '/api/feed': typeof ApiFeedRoute
+  '/api/flywheel': typeof ApiFlywheelRoute
   '/api/follows': typeof ApiFollowsRoute
   '/api/houses': typeof ApiHousesRoute
   '/api/inbox': typeof ApiInboxRoute
@@ -215,6 +232,7 @@ export interface FileRoutesById {
   '/pool/$address': typeof PoolAddressRoute
   '/u/$address': typeof UAddressRoute
   '/houses/': typeof HousesIndexRoute
+  '/api/keeper/flywheel': typeof ApiKeeperFlywheelRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -229,6 +247,7 @@ export interface FileRouteTypes {
     | '/traders'
     | '/api/comments'
     | '/api/feed'
+    | '/api/flywheel'
     | '/api/follows'
     | '/api/houses'
     | '/api/inbox'
@@ -241,6 +260,7 @@ export interface FileRouteTypes {
     | '/pool/$address'
     | '/u/$address'
     | '/houses/'
+    | '/api/keeper/flywheel'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -253,6 +273,7 @@ export interface FileRouteTypes {
     | '/traders'
     | '/api/comments'
     | '/api/feed'
+    | '/api/flywheel'
     | '/api/follows'
     | '/api/houses'
     | '/api/inbox'
@@ -265,6 +286,7 @@ export interface FileRouteTypes {
     | '/pool/$address'
     | '/u/$address'
     | '/houses'
+    | '/api/keeper/flywheel'
   id:
     | '__root__'
     | '/'
@@ -277,6 +299,7 @@ export interface FileRouteTypes {
     | '/traders'
     | '/api/comments'
     | '/api/feed'
+    | '/api/flywheel'
     | '/api/follows'
     | '/api/houses'
     | '/api/inbox'
@@ -289,6 +312,7 @@ export interface FileRouteTypes {
     | '/pool/$address'
     | '/u/$address'
     | '/houses/'
+    | '/api/keeper/flywheel'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -302,6 +326,7 @@ export interface RootRouteChildren {
   TradersRoute: typeof TradersRoute
   ApiCommentsRoute: typeof ApiCommentsRoute
   ApiFeedRoute: typeof ApiFeedRoute
+  ApiFlywheelRoute: typeof ApiFlywheelRoute
   ApiFollowsRoute: typeof ApiFollowsRoute
   ApiHousesRoute: typeof ApiHousesRoute
   ApiInboxRoute: typeof ApiInboxRoute
@@ -314,6 +339,7 @@ export interface RootRouteChildren {
   PoolAddressRoute: typeof PoolAddressRoute
   UAddressRoute: typeof UAddressRoute
   HousesIndexRoute: typeof HousesIndexRoute
+  ApiKeeperFlywheelRoute: typeof ApiKeeperFlywheelRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -386,6 +412,13 @@ declare module '@tanstack/react-router' {
       path: '/api/feed'
       fullPath: '/api/feed'
       preLoaderRoute: typeof ApiFeedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/flywheel': {
+      id: '/api/flywheel'
+      path: '/api/flywheel'
+      fullPath: '/api/flywheel'
+      preLoaderRoute: typeof ApiFlywheelRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/follows': {
@@ -472,6 +505,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UAddressRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/keeper/flywheel': {
+      id: '/api/keeper/flywheel'
+      path: '/api/keeper/flywheel'
+      fullPath: '/api/keeper/flywheel'
+      preLoaderRoute: typeof ApiKeeperFlywheelRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -486,6 +526,7 @@ const rootRouteChildren: RootRouteChildren = {
   TradersRoute: TradersRoute,
   ApiCommentsRoute: ApiCommentsRoute,
   ApiFeedRoute: ApiFeedRoute,
+  ApiFlywheelRoute: ApiFlywheelRoute,
   ApiFollowsRoute: ApiFollowsRoute,
   ApiHousesRoute: ApiHousesRoute,
   ApiInboxRoute: ApiInboxRoute,
@@ -498,6 +539,7 @@ const rootRouteChildren: RootRouteChildren = {
   PoolAddressRoute: PoolAddressRoute,
   UAddressRoute: UAddressRoute,
   HousesIndexRoute: HousesIndexRoute,
+  ApiKeeperFlywheelRoute: ApiKeeperFlywheelRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -12,15 +12,15 @@ import {
   type WalletClient,
 } from "viem";
 import {
+  dexOf,
   erc20Abi,
   giwaSepolia,
-  POOL_FEE,
   positionManagerAbi,
   wethAbi,
   type Deployment,
 } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
-import { fmt, short, type Coin, type PoolSwap } from "@/lib/chimi/market";
+import { feeLabel, fmt, short, type Coin, type PoolSwap } from "@/lib/chimi/market";
 import { useTokenProfile } from "@/lib/chimi/token-image";
 import { IconArrowLeft, IconChevronRight } from "@/components/chimi/icons";
 import { EthLogo, TokenLogo } from "@/components/chimi/token-logo";
@@ -31,9 +31,8 @@ import {
   bandPercents,
   depositSide,
   formatTokenPrice,
+  fullRange,
   isFullRange,
-  MAX_TICK,
-  MIN_TICK,
   pairAmount,
   parseTokenPrice,
   presetRange,
@@ -47,6 +46,12 @@ import {
 } from "@/lib/chimi/range";
 
 const MAX128 = 2n ** 128n - 1n;
+
+/** Waits for a transaction and throws if it reverted, so a failed step never reads as done. */
+async function landed(hash: `0x${string}`, what: string) {
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error(`${what} failed on-chain, so nothing changed. Try again.`);
+}
 const GAS_RESERVE = 50_000_000_000_000n;
 
 type Held = {
@@ -57,7 +62,7 @@ type Held = {
 };
 
 const PRESETS: { id: RangePreset; title: string; blurb: string }[] = [
-  { id: "tight", title: "Tight", blurb: "Smallest band on a 1% pool." },
+  { id: "tight", title: "Tight", blurb: "The smallest band the pool allows." },
   { id: "wide", title: "Wide", blurb: "Around the current price." },
   { id: "lower", title: "Below price", blurb: "Earns fees if the price falls." },
   { id: "upper", title: "Above price", blurb: "Earns fees if the price rises." },
@@ -93,11 +98,11 @@ function signed(n: number): string {
   return n < 0 ? `−${body}%` : `+${body}%`;
 }
 
-function presetLabel(preset: RangePreset, sqrtPriceX96: bigint, tokenIs0: boolean): string {
+function presetLabel(preset: RangePreset, sqrtPriceX96: bigint, tokenIs0: boolean, spacing: number): string {
   if (preset === "wide") return "−50% to +100%";
   if (preset === "lower") return "−50%";
   if (preset === "upper") return "+100%";
-  const band = bandPercents(presetRange(preset, sqrtPriceX96, tokenIs0), sqrtPriceX96, tokenIs0);
+  const band = bandPercents(presetRange(preset, sqrtPriceX96, tokenIs0, spacing), sqrtPriceX96, tokenIs0);
   return `${signed(band.down)} to ${signed(band.up)}`;
 }
 
@@ -107,8 +112,8 @@ function sideCopy(side: DepositSide, symbol: string): string {
   return "Both tokens are used at the current price. Anything that does not fit is returned.";
 }
 
-function rangeLabel(range: TickRange, tokenIs0: boolean, symbol: string): string {
-  if (isFullRange(range)) return "Full range";
+function rangeLabel(range: TickRange, tokenIs0: boolean, symbol: string, spacing: number): string {
+  if (isFullRange(range, spacing)) return "Full range";
   const bounds = tokenPriceBounds(range.tickLower, range.tickUpper, tokenIs0);
   return `${formatTokenPrice(bounds.min)} – ${formatTokenPrice(bounds.max)} ${symbol} per ETH`;
 }
@@ -173,12 +178,17 @@ export function PositionDesk({
   onBack?: () => void;
 }) {
   const { ensureChain } = useChimi();
+  // The coin's own DEX: its position manager, its pool's fee and price step.
+  const dex = dexOf(deployment, coin);
+  const npm = dex.positionManager;
+  const spacing = dex.tickSpacing;
+  const fee = coin.fee ?? dex.fee;
   const [positions, setPositions] = useState<Held[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
   const [reload, setReload] = useState(0);
   const [rangeMode, setRangeMode] = useState<"full" | "custom">("full");
   const [preset, setPreset] = useState<RangePreset | null>("wide");
-  const [ticks, setTicks] = useState<TickRange>({ tickLower: MIN_TICK, tickUpper: MAX_TICK });
+  const [ticks, setTicks] = useState<TickRange>(() => fullRange(spacing));
   const [minText, setMinText] = useState("");
   const [maxText, setMaxText] = useState("");
   const [createEth, setCreateEth] = useState("");
@@ -200,7 +210,7 @@ export function PositionDesk({
   const dragRef = useRef<"min" | "max" | null>(null);
 
   const selected = positions.find((position) => position.id.toString() === selectedId) ?? positions[0];
-  const createRange: TickRange = rangeMode === "full" ? { tickLower: MIN_TICK, tickUpper: MAX_TICK } : ticks;
+  const createRange: TickRange = rangeMode === "full" ? fullRange(spacing) : ticks;
 
   const createSide = depositSide(coin.sqrtPriceX96, createRange, coin.tokenIs0);
   const currentTokens = coin.sqrtPriceX96 > 0n
@@ -215,7 +225,7 @@ export function PositionDesk({
     let cancel = false;
     void (async () => {
       const count = await publicClient.readContract({
-        address: deployment.positionManager,
+        address: npm,
         abi: positionManagerAbi,
         functionName: "balanceOf",
         args: [account],
@@ -223,19 +233,19 @@ export function PositionDesk({
       const next: Held[] = [];
       for (let i = 0n; i < count; i++) {
         const id = await publicClient.readContract({
-          address: deployment.positionManager,
+          address: npm,
           abi: positionManagerAbi,
           functionName: "tokenOfOwnerByIndex",
           args: [account, i],
         });
         const pos = await publicClient.readContract({
-          address: deployment.positionManager,
+          address: npm,
           abi: positionManagerAbi,
           functionName: "positions",
           args: [id],
         });
         const tokens = [pos[2].toLowerCase(), pos[3].toLowerCase()];
-        if (pos[4] !== POOL_FEE) continue;
+        if (pos[4] !== fee) continue;
         if (!tokens.includes(coin.token.toLowerCase()) || !tokens.includes(deployment.weth.toLowerCase())) continue;
         next.push({ id, liquidity: pos[7], tickLower: Number(pos[5]), tickUpper: Number(pos[6]) });
       }
@@ -267,7 +277,7 @@ export function PositionDesk({
   }, [account, coin.token, deployment, reload]);
 
   function applyPreset(next: RangePreset) {
-    const range = presetRange(next, coin.sqrtPriceX96, coin.tokenIs0);
+    const range = presetRange(next, coin.sqrtPriceX96, coin.tokenIs0, spacing);
     const bounds = tokenPriceBounds(range.tickLower, range.tickUpper, coin.tokenIs0);
     setPreset(next);
     setRangeMode("custom");
@@ -280,7 +290,7 @@ export function PositionDesk({
   }
 
   function pricesToRange(min: number, max: number): TickRange {
-    return ticksFromTokenPrices(min, max, coin.tokenIs0);
+    return ticksFromTokenPrices(min, max, coin.tokenIs0, spacing);
   }
 
   function commitPrices() {
@@ -337,7 +347,6 @@ export function PositionDesk({
     if (!account) return;
     await ensureChain();
     const wallet = clientFor(account);
-    const npm = deployment.positionManager;
     const weth = deployment.weth;
     const [token0, token1] = weth.toLowerCase() < coin.token.toLowerCase() ? [weth, coin.token] : [coin.token, weth];
     const amount0 = token0.toLowerCase() === weth.toLowerCase() ? eth : tokens;
@@ -352,7 +361,7 @@ export function PositionDesk({
         functionName: "deposit",
         value: eth,
       });
-      await publicClient.waitForTransactionReceipt({ hash: wrap });
+      await landed(wrap, "Wrapping ETH");
     }
     for (const [asset, amt] of [[weth, eth], [coin.token, tokens]] as const) {
       if (amt === 0n) continue;
@@ -372,7 +381,7 @@ export function PositionDesk({
           functionName: "approve",
           args: [npm, maxUint256],
         });
-        await publicClient.waitForTransactionReceipt({ hash: approve });
+        await landed(approve, "The approval");
       }
     }
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200);
@@ -393,7 +402,7 @@ export function PositionDesk({
           deadline,
         }],
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      await landed(hash, "Adding liquidity");
       setNote("Liquidity added. Unused tokens were returned.");
       toast({ kind: "good", title: "Liquidity added" });
       setIncEth("");
@@ -409,7 +418,7 @@ export function PositionDesk({
         args: [{
           token0,
           token1,
-          fee: POOL_FEE,
+          fee,
           tickLower: range.tickLower,
           tickUpper: range.tickUpper,
           amount0Desired: amount0,
@@ -420,7 +429,7 @@ export function PositionDesk({
           deadline,
         }],
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      await landed(hash, "Creating the position");
       setNote("Position created. Unused tokens were returned.");
       toast({ kind: "good", title: "Position created", body: `Your ${coin.symbol}/ETH position is earning fees.` });
       setCreateEth("");
@@ -507,12 +516,12 @@ export function PositionDesk({
       const hash = await wallet.writeContract({
         account,
         chain: giwaSepolia,
-        address: deployment.positionManager,
+        address: npm,
         abi: positionManagerAbi,
         functionName: "multicall",
         args: [calls],
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      await landed(hash, "Removing liquidity");
       setNote(pct === 100 ? "Position closed. Tokens are in your wallet." : `${pct}% removed. Tokens are in your wallet.`);
       setReload((n) => n + 1);
       onChanged();
@@ -538,7 +547,7 @@ export function PositionDesk({
       encodeFunctionData({
         abi: positionManagerAbi,
         functionName: "collect",
-        args: [{ tokenId, recipient: deployment.positionManager, amount0Max: MAX128, amount1Max: MAX128 }],
+        args: [{ tokenId, recipient: npm, amount0Max: MAX128, amount1Max: MAX128 }],
       }),
       encodeFunctionData({
         abi: positionManagerAbi,
@@ -563,12 +572,12 @@ export function PositionDesk({
       const hash = await wallet.writeContract({
         account,
         chain: giwaSepolia,
-        address: deployment.positionManager,
+        address: npm,
         abi: positionManagerAbi,
         functionName: "multicall",
         args: [collectCalls(selected.id, receiveEth)],
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      await landed(hash, "Collecting fees");
       setNote("Fees collected.");
       toast({ kind: "good", title: "Fees collected" });
       setReload((n) => n + 1);
@@ -645,7 +654,7 @@ export function PositionDesk({
     const min = which === "min" ? shownBounds.min * factor : shownBounds.min;
     const max = which === "max" ? shownBounds.max * factor : shownBounds.max;
     if (!(max > min)) return;
-    const range = ticksFromTokenPrices(min, max, coin.tokenIs0);
+    const range = ticksFromTokenPrices(min, max, coin.tokenIs0, spacing);
     const next = tokenPriceBounds(range.tickLower, range.tickUpper, coin.tokenIs0);
     setTicks(range);
     setPreset(null);
@@ -667,7 +676,7 @@ export function PositionDesk({
       const min = which === "min" ? price : bounds.min;
       const max = which === "max" ? price : bounds.max;
       if (!(Math.max(min, max) > Math.min(min, max) * 1.001)) return;
-      const range = ticksFromTokenPrices(Math.min(min, max), Math.max(min, max), coin.tokenIs0);
+      const range = ticksFromTokenPrices(Math.min(min, max), Math.max(min, max), coin.tokenIs0, spacing);
       const next = tokenPriceBounds(range.tickLower, range.tickUpper, coin.tokenIs0);
       setRangeMode("custom");
       setTicks(range);
@@ -712,7 +721,7 @@ export function PositionDesk({
               <PairMark symbol={coin.symbol} image={image} size={44} />
               <div>
                 <div className="text-xl font-semibold tracking-[-0.02em]">{coin.symbol} / ETH</div>
-                <span className="chip mt-1.5 h-6">v3 · 1%</span>
+                <span className="chip mt-1.5 h-6">v3 · {feeLabel(fee)}</span>
               </div>
             </div>
             <p className="mt-5 text-[13px] text-muted">Current price</p>
@@ -737,7 +746,7 @@ export function PositionDesk({
                   {heldInRange ? "In range" : "Out of range"}
                 </span>
               </div>
-              <p className="mt-1 text-[13px] text-muted">{rangeLabel(increaseRange, coin.tokenIs0, coin.symbol)} · #{selected.id.toString()}</p>
+              <p className="mt-1 text-[13px] text-muted">{rangeLabel(increaseRange, coin.tokenIs0, coin.symbol, spacing)} · #{selected.id.toString()}</p>
               {selected.liquidity > 0n ? (
                 <>
                   <div className="mt-4 flex items-center justify-between gap-3 text-sm">
@@ -780,7 +789,7 @@ export function PositionDesk({
             <button type="button" aria-pressed={rangeMode === "custom"} onClick={() => (minText && maxText ? setRangeMode("custom") : applyPreset(preset ?? "wide"))} className={`h-10 rounded-lg transition-colors ${rangeMode === "custom" ? "bg-raise2 text-fg shadow-[inset_0_1px_0_rgba(255,255,255,.05)]" : "text-muted hover:text-fg"}`}>Custom range</button>
           </div>
           <p className="mt-3.5 text-sm text-muted">
-            {full ? "Earns fees at every price. A 1% pool cannot hold a band tighter than about 2%." : "The band earns fees only while the price stays inside it."}
+            {full ? `Earns fees at every price. A ${feeLabel(fee)} pool cannot hold a band tighter than about ${spacing / 100}%.` : "The band earns fees only while the price stays inside it."}
           </p>
 
           <div className="mt-4 overflow-hidden rounded-xl border border-line bg-bg">
@@ -833,7 +842,7 @@ export function PositionDesk({
                 {PRESETS.map((item) => (
                   <button key={item.id} type="button" onClick={() => applyPreset(item.id)} className={`rounded-xl border px-4 py-4 text-left transition-colors ${preset === item.id ? "border-gold/70 bg-gold/8" : "border-line bg-bg hover:border-edge"}`}>
                     <span className="block text-[15px] font-semibold">{item.title}</span>
-                    <span className="mt-1.5 block text-[17px] font-medium text-gold tabular-nums">{presetLabel(item.id, coin.sqrtPriceX96, coin.tokenIs0)}</span>
+                    <span className="mt-1.5 block text-[17px] font-medium text-gold tabular-nums">{presetLabel(item.id, coin.sqrtPriceX96, coin.tokenIs0, spacing)}</span>
                     <span className="mt-1 block text-[13px] text-muted">{item.blurb}</span>
                   </button>
                 ))}

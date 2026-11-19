@@ -1,8 +1,16 @@
-/** Uniswap v3 tick math for the Chimi 1% pool. Tick spacing is 200, about a 2% price step. */
+/**
+ * Uniswap v3 tick math for Chimi's pools. A pool's tick spacing is its price step: 200 on the 1% pools (about 2%),
+ * 400 on the 2% pools (about 4%). Every function takes the spacing and defaults to the 1% pool's.
+ */
 
 export const TICK_SPACING = 200;
 export const MIN_TICK = -887200;
 export const MAX_TICK = 887200;
+
+/** The highest tick a position can use at this spacing (887200 at 200 and 400). */
+export const maxTickFor = (spacing: number = TICK_SPACING) => Math.floor(887_272 / spacing) * spacing;
+/** The whole price range at this spacing. */
+export const fullRange = (spacing: number = TICK_SPACING): TickRange => ({ tickLower: -maxTickFor(spacing), tickUpper: maxTickFor(spacing) });
 
 const Q96 = 2n ** 96n;
 
@@ -11,21 +19,22 @@ export type DepositSide = "both" | "eth" | "token";
 
 export type TickRange = { tickLower: number; tickUpper: number };
 
-function floorSpacing(tick: number): number {
-  return Math.max(MIN_TICK, Math.floor(tick / TICK_SPACING) * TICK_SPACING);
+function floorSpacing(tick: number, s: number): number {
+  return Math.max(-maxTickFor(s), Math.floor(tick / s) * s);
 }
 
-function ceilSpacing(tick: number): number {
-  return Math.min(MAX_TICK, Math.ceil(tick / TICK_SPACING - 1e-9) * TICK_SPACING);
+function ceilSpacing(tick: number, s: number): number {
+  return Math.min(maxTickFor(s), Math.ceil(tick / s - 1e-9) * s);
 }
 
-function clampRange(tickLower: number, tickUpper: number): TickRange {
-  let lower = Math.max(MIN_TICK, Math.min(MAX_TICK - TICK_SPACING, tickLower));
-  let upper = Math.max(MIN_TICK + TICK_SPACING, Math.min(MAX_TICK, tickUpper));
-  lower = Math.round(lower / TICK_SPACING) * TICK_SPACING;
-  upper = Math.round(upper / TICK_SPACING) * TICK_SPACING;
-  if (lower >= upper) upper = Math.min(MAX_TICK, lower + TICK_SPACING);
-  if (lower >= upper) lower = upper - TICK_SPACING;
+function clampRange(tickLower: number, tickUpper: number, s: number): TickRange {
+  const max = maxTickFor(s);
+  let lower = Math.max(-max, Math.min(max - s, tickLower));
+  let upper = Math.max(-max + s, Math.min(max, tickUpper));
+  lower = Math.round(lower / s) * s;
+  upper = Math.round(upper / s) * s;
+  if (lower >= upper) upper = Math.min(max, lower + s);
+  if (lower >= upper) lower = upper - s;
   return { tickLower: lower, tickUpper: upper };
 }
 
@@ -80,64 +89,65 @@ export function bandPercents(range: TickRange, sqrtPriceX96: bigint, tokenIs0: b
   return { down: (bounds.min / current - 1) * 100, up: (bounds.max / current - 1) * 100 };
 }
 
-function tight(current: number): TickRange {
-  let lower = floorSpacing(current);
-  let upper = lower + TICK_SPACING;
-  if (upper > MAX_TICK) {
-    upper = MAX_TICK;
-    lower = MAX_TICK - TICK_SPACING;
+function tight(current: number, s: number): TickRange {
+  const max = maxTickFor(s);
+  let lower = floorSpacing(current, s);
+  let upper = lower + s;
+  if (upper > max) {
+    upper = max;
+    lower = max - s;
   }
   return { tickLower: lower, tickUpper: upper };
 }
 
-function wide(current: number, tokenIs0: boolean): TickRange {
+function wide(current: number, tokenIs0: boolean, s: number): TickRange {
   const eth = ethPerTokenFromTick(current, tokenIs0);
   const down = tickFromEthPerToken(eth * 0.5, tokenIs0);
   const up = tickFromEthPerToken(eth * 2, tokenIs0);
-  let tickLower = floorSpacing(Math.min(down, up));
-  let tickUpper = ceilSpacing(Math.max(down, up));
-  if (current < tickLower) tickLower = floorSpacing(current);
-  if (current >= tickUpper) tickUpper = Math.min(MAX_TICK, ceilSpacing(current) + TICK_SPACING);
-  return clampRange(tickLower, tickUpper);
+  let tickLower = floorSpacing(Math.min(down, up), s);
+  let tickUpper = ceilSpacing(Math.max(down, up), s);
+  if (current < tickLower) tickLower = floorSpacing(current, s);
+  if (current >= tickUpper) tickUpper = Math.min(maxTickFor(s), ceilSpacing(current, s) + s);
+  return clampRange(tickLower, tickUpper, s);
 }
 
 /** `below` sits under the tokens-per-ETH price. `above` sits over it. */
-function displayedSide(current: number, tokenIs0: boolean, side: "below" | "above"): TickRange {
+function displayedSide(current: number, tokenIs0: boolean, side: "below" | "above", s: number): TickRange {
   const shown = tokensPerEthFromTick(current, tokenIs0);
   const farTick = tickFromEthPerToken(1 / (shown * (side === "below" ? 0.5 : 2)), tokenIs0);
   const fallsAsTickRises = tokensPerEthFromTick(current + 10, tokenIs0) < shown;
   const towardHigherTicks = side === "below" ? fallsAsTickRises : !fallsAsTickRises;
   if (towardHigherTicks) {
-    let tickLower = ceilSpacing(current);
-    if (tickLower <= current) tickLower = Math.min(MAX_TICK, tickLower + TICK_SPACING);
-    const tickUpper = ceilSpacing(Math.max(farTick, tickLower + TICK_SPACING));
-    return clampRange(tickLower, tickUpper);
+    let tickLower = ceilSpacing(current, s);
+    if (tickLower <= current) tickLower = Math.min(maxTickFor(s), tickLower + s);
+    const tickUpper = ceilSpacing(Math.max(farTick, tickLower + s), s);
+    return clampRange(tickLower, tickUpper, s);
   }
-  let tickUpper = floorSpacing(current);
-  if (tickUpper > current) tickUpper = Math.max(MIN_TICK, tickUpper - TICK_SPACING);
-  const tickLower = floorSpacing(Math.min(farTick, tickUpper - TICK_SPACING));
-  return clampRange(tickLower, tickUpper);
+  let tickUpper = floorSpacing(current, s);
+  if (tickUpper > current) tickUpper = Math.max(-maxTickFor(s), tickUpper - s);
+  const tickLower = floorSpacing(Math.min(farTick, tickUpper - s), s);
+  return clampRange(tickLower, tickUpper, s);
 }
 
-export function presetRange(preset: RangePreset, sqrtPriceX96: bigint, tokenIs0: boolean): TickRange {
+export function presetRange(preset: RangePreset, sqrtPriceX96: bigint, tokenIs0: boolean, spacing: number = TICK_SPACING): TickRange {
   const current = tickFromSqrtPriceX96(sqrtPriceX96);
-  if (preset === "tight") return tight(current);
-  if (preset === "wide") return wide(current, tokenIs0);
-  if (preset === "lower") return displayedSide(current, tokenIs0, "below");
-  return displayedSide(current, tokenIs0, "above");
+  if (preset === "tight") return tight(current, spacing);
+  if (preset === "wide") return wide(current, tokenIs0, spacing);
+  if (preset === "lower") return displayedSide(current, tokenIs0, "below", spacing);
+  return displayedSide(current, tokenIs0, "above", spacing);
 }
 
-export function ticksFromTokenPrices(minTokensPerEth: number, maxTokensPerEth: number, tokenIs0: boolean): TickRange {
+export function ticksFromTokenPrices(minTokensPerEth: number, maxTokensPerEth: number, tokenIs0: boolean, spacing: number = TICK_SPACING): TickRange {
   const low = Math.min(minTokensPerEth, maxTokensPerEth);
   const high = Math.max(minTokensPerEth, maxTokensPerEth);
   const tickAt = (tokensPerEth: number) => tickFromEthPerToken(1 / tokensPerEth, tokenIs0);
   const a = tickAt(low);
   const b = tickAt(high);
-  return clampRange(floorSpacing(Math.min(a, b)), ceilSpacing(Math.max(a, b)));
+  return clampRange(floorSpacing(Math.min(a, b), spacing), ceilSpacing(Math.max(a, b), spacing), spacing);
 }
 
-export function isFullRange(range: TickRange): boolean {
-  return range.tickLower <= MIN_TICK && range.tickUpper >= MAX_TICK;
+export function isFullRange(range: TickRange, spacing: number = TICK_SPACING): boolean {
+  return range.tickLower <= -maxTickFor(spacing) && range.tickUpper >= maxTickFor(spacing);
 }
 
 export function formatTokenPrice(n: number): string {

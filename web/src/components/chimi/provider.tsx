@@ -13,6 +13,7 @@ import {
 import {
   POOL_FEE,
   ROUTER_KEEPS,
+  dexOf,
   erc20Abi,
   factoryAbi,
   giwaSepolia,
@@ -23,6 +24,7 @@ import {
   type Deployment,
 } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
+import type { LockedPosition } from "@/lib/chimi/fees";
 import { loadCoins, short, type Coin } from "@/lib/chimi/market";
 import { previewCoins } from "@/lib/chimi/mocks";
 
@@ -52,10 +54,10 @@ type ChimiContext = {
   /** Turns wrapped ETH back into ETH: the whole balance, or just `amount`. */
   unwrap: (amount?: bigint) => Promise<string>;
   /**
-   * Sweeps the pool fees of these launch positions. Anyone can send it; each creator's share goes to
-   * the wallet stamped on the lock, as wrapped ETH. Answers with what this wallet received.
+   * Sweeps the pool fees of these launch positions, one transaction per locker. Anyone can send it; each
+   * creator's share goes to the wallet stamped on the lock, as wrapped ETH. Answers with what this wallet received.
    */
-  claimFees: (positionIds: bigint[]) => Promise<{ hash: string; received: bigint }>;
+  claimFees: (positions: LockedPosition[]) => Promise<{ hash: string; received: bigint }>;
   /** Personal-sign with the connected wallet (used to publish token pictures). */
   signMessage: (message: string) => Promise<`0x${string}`>;
 };
@@ -307,18 +309,21 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       if (!deployment) throw new Error("Factory not loaded.");
       const { who, client } = await ready();
       const qty = parseEther(amount.trim());
+      // Each coin trades on the DEX that made its pool, at that pool's fee.
+      const router = dexOf(deployment, coin).swapRouter;
+      const fee = coin.fee ?? POOL_FEE;
       if (side === "buy") {
         const hash = await client.writeContract({
           account: who,
           chain: giwaSepolia,
-          address: deployment.swapRouter,
+          address: router,
           abi: routerAbi,
           functionName: "exactInputSingle",
           args: [
             {
               tokenIn: deployment.weth,
               tokenOut: coin.token,
-              fee: POOL_FEE,
+              fee,
               recipient: who,
               amountIn: qty,
               amountOutMinimum: minOut,
@@ -338,7 +343,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
         address: coin.token,
         abi: erc20Abi,
         functionName: "allowance",
-        args: [who, deployment.swapRouter],
+        args: [who, router],
       });
       if (allowed < qty) {
         const approve = await client.writeContract({
@@ -347,7 +352,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
           address: coin.token,
           abi: erc20Abi,
           functionName: "approve",
-          args: [deployment.swapRouter, qty],
+          args: [router, qty],
         });
         await publicClient.waitForTransactionReceipt({ hash: approve });
       }
@@ -357,7 +362,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       const hash = await client.writeContract({
         account: who,
         chain: giwaSepolia,
-        address: deployment.swapRouter,
+        address: router,
         abi: routerAbi,
         functionName: "multicall",
         args: [
@@ -370,7 +375,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
                 {
                   tokenIn: coin.token,
                   tokenOut: deployment.weth,
-                  fee: POOL_FEE,
+                  fee,
                   recipient: ROUTER_KEEPS,
                   amountIn: qty,
                   amountOutMinimum: minOut,
@@ -396,14 +401,16 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       if (!deployment) throw new Error("Factory not loaded.");
       const { who } = await ready();
       const qty = parseEther(eth);
+      const router = dexOf(deployment, coin).swapRouter;
+      const fee = coin.fee ?? POOL_FEE;
       let expected: bigint;
       try {
         const run = await publicClient.simulateContract({
           account: who,
-          address: deployment.swapRouter,
+          address: router,
           abi: routerAbi,
           functionName: "exactInputSingle",
-          args: [{ tokenIn: deployment.weth, tokenOut: coin.token, fee: POOL_FEE, recipient: who, amountIn: qty, amountOutMinimum: 0n, sqrtPriceLimitX96: 0n }],
+          args: [{ tokenIn: deployment.weth, tokenOut: coin.token, fee, recipient: who, amountIn: qty, amountOutMinimum: 0n, sqrtPriceLimitX96: 0n }],
           value: qty,
         });
         expected = run.result;
@@ -442,34 +449,26 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
   );
 
   const claimFees = useCallback(
-    async (positionIds: bigint[]) => {
+    async (positions: LockedPosition[]) => {
       if (!deployment) throw new Error("Factory not loaded.");
-      if (positionIds.length === 0) throw new Error("Nothing to claim.");
+      if (positions.length === 0) throw new Error("Nothing to claim.");
       const { who, client } = await ready();
       const wrapped = () => publicClient.readContract({ address: deployment.weth, abi: wethAbi, functionName: "balanceOf", args: [who] });
       const before = await wrapped();
-      const hash =
-        positionIds.length === 1
-          ? await client.writeContract({
-              account: who,
-              chain: giwaSepolia,
-              address: deployment.locker,
-              abi: lockerAbi,
-              functionName: "collectFees",
-              args: [positionIds[0]!],
-            })
-          : await client.writeContract({
-              account: who,
-              chain: giwaSepolia,
-              address: deployment.locker,
-              abi: lockerAbi,
-              functionName: "collectFeesBatch",
-              args: [positionIds],
-            });
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      if (receipt.status !== "success") throw new Error("The claim didn’t go through.");
+      // Position ids repeat across DEXes, so each locker gets its own sweep.
+      const byLocker = new Map<Address, bigint[]>();
+      for (const p of positions) byLocker.set(p.locker, [...(byLocker.get(p.locker) ?? []), p.positionId]);
+      let hash: `0x${string}` | undefined;
+      for (const [locker, ids] of byLocker) {
+        hash =
+          ids.length === 1
+            ? await client.writeContract({ account: who, chain: giwaSepolia, address: locker, abi: lockerAbi, functionName: "collectFees", args: [ids[0]!] })
+            : await client.writeContract({ account: who, chain: giwaSepolia, address: locker, abi: lockerAbi, functionName: "collectFeesBatch", args: [ids] });
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        if (receipt.status !== "success") throw new Error("The claim didn’t go through.");
+      }
       const after = await wrapped();
-      return { hash, received: after > before ? after - before : 0n };
+      return { hash: hash!, received: after > before ? after - before : 0n };
     },
     [deployment],
   );

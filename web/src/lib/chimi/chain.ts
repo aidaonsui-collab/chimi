@@ -35,6 +35,7 @@ export const erc20Abi = parseAbi([
 export const poolAbi = parseAbi([
   "function token0() view returns (address)",
   "function fee() view returns (uint24)",
+  "function factory() view returns (address)",
   "function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16, uint16, uint16, uint8 feeProtocol, bool unlocked)",
 ]);
 
@@ -54,6 +55,25 @@ export const lockerAbi = parseAbi([
   "function collectFees(uint256 tokenId) returns (uint256 amount0, uint256 amount1)",
   "function collectFeesBatch(uint256[] tokenIds)",
   "function creatorSplits(uint256 tokenId) view returns (address wallet, uint16 bps)",
+]);
+
+/** The CHIMI buyback-burn and holder rewards (contracts/src/ChimiFlywheel.sol). */
+export const flywheelAbi = parseAbi([
+  "function pending() view returns (uint256 toBurn, uint256 toHolders)",
+  "function burnBucket() view returns (uint256)",
+  "function holderBucket() view returns (uint256)",
+  "function totalIn() view returns (uint256)",
+  "function totalSpentOnBurns() view returns (uint256)",
+  "function totalChimiBurned() view returns (uint256)",
+  "function totalPaid() view returns (uint256)",
+  "function paidTo(address) view returns (uint256)",
+  "function batchDone(uint256 period, uint256 batch) view returns (bool)",
+  "function keeper() view returns (address)",
+  "function sync()",
+  "function buybackAndBurn(uint256 amountIn, uint256 minOut) returns (uint256 out)",
+  "function distribute(uint256 period, uint256 batch, address[] to, uint256[] amounts) returns (uint256 sent)",
+  "event Paid(uint256 indexed period, address indexed to, uint256 amount)",
+  "event BoughtAndBurned(uint256 ethIn, uint256 chimiBurned)",
 ]);
 
 export const wethAbi = parseAbi([
@@ -78,17 +98,52 @@ export const positionManagerAbi = parseAbi([
 
 export const FULL_RANGE = { lower: -887200, upper: 887200 } as const;
 
+/** One of the DEXes Chimi coins trade on: a copy of Uniswap v3 with its position manager, router and locker. */
+export type Dex = {
+  fee: number;
+  tickSpacing: number;
+  uniFactory: Address;
+  positionManager: Address;
+  swapRouter: Address;
+  locker: Address;
+};
+
 export type Deployment = {
   chainId: number;
   name: string;
   weth: Address;
+  /** The first DEX's addresses (kept at the top level for everything written before there were two). */
   uniFactory: Address;
   positionManager: Address;
   swapRouter: Address;
   bpsSource: Address;
   locker: Address;
   factory: Address;
+  /** Every DEX, oldest first; new coins launch on the last. Absent before the second DEX. */
+  dexes?: Dex[];
+  /** The CHIMI buyback-burn and holder rewards, fed by coins on the DEXes after the first. */
+  flywheel?: { address: Address; chimi: Address; keeper: Address; minHold: string };
 };
+
+/** The DEXes, oldest first. A deployment from before the second one has just its first. */
+export function dexesOf(d: Deployment): Dex[] {
+  if (d.dexes && d.dexes.length > 0) return d.dexes;
+  return [{ fee: POOL_FEE, tickSpacing: 200, uniFactory: d.uniFactory, positionManager: d.positionManager, swapRouter: d.swapRouter, locker: d.locker }];
+}
+
+/** Where new coins launch. */
+export const launchDex = (d: Deployment): Dex => dexesOf(d).at(-1)!;
+
+/**
+ * The DEX a coin trades on: the one whose factory made its pool, else the one with its fee, else the first. A coin
+ * read before its pool's factory is known falls back by fee, which tells the two DEXes apart (1% and 2%).
+ */
+export function dexOf(d: Deployment, coin: { uniFactory?: string; fee?: number }): Dex {
+  const all = dexesOf(d);
+  const byFactory = coin.uniFactory && all.find((x) => x.uniFactory.toLowerCase() === coin.uniFactory!.toLowerCase());
+  if (byFactory) return byFactory;
+  return all.find((x) => x.fee === coin.fee) ?? all[0]!;
+}
 
 export function isDeployed(d: Deployment): boolean {
   return d.factory !== zeroAddress && d.swapRouter !== zeroAddress;

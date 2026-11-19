@@ -9,7 +9,7 @@
  */
 import { formatEther, type Address } from "viem";
 import deployment from "../../public/deployments.json";
-import { factoryAbi, giwaSepolia, poolAbi } from "@/lib/chimi/chain";
+import { dexesOf, factoryAbi, giwaSepolia, poolAbi, type Deployment } from "@/lib/chimi/chain";
 import { LEDGER_VERSION, byChainOrder, emptyWallet, record, type LedgerCursor, type Trade, type WalletBook } from "@/lib/chimi/ledger-rules";
 import { env } from "@/server/env";
 import { kvMGetJson, kvReady } from "@/server/kv";
@@ -196,7 +196,7 @@ async function advance(prev: LedgerCursor | null): Promise<LedgerCursor> {
   // Swaps on every Chimi pool, a few spans at a time. The trader is whoever received the swap's output, unless a router
   // took it to unwrap: then it is whoever sent the transaction.
   const pools = Object.keys(cursor.pools) as Address[];
-  const routers = new Set([deployment.swapRouter, deployment.positionManager].map((a) => a.toLowerCase()));
+  const routers = new Set(dexesOf(deployment as Deployment).flatMap((d) => [d.swapRouter, d.positionManager]).map((a) => a.toLowerCase()));
   for (let spans = 0; cursor.through < headNum && spans < MAX_SPANS && Date.now() - started < TIME_BUDGET_MS; spans += PARALLEL) {
     const from = cursor.through + 1;
     const to = Math.min(headNum, from + SPAN * PARALLEL - 1);

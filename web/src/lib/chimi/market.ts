@@ -16,6 +16,8 @@ export type Coin = {
   liquidity: bigint;
   /** Pool fee tier in hundredths of a bip (10000 = 1%). Read from the pool. */
   fee?: number;
+  /** The Uniswap v3 factory that made the pool: which of Chimi's DEXes the coin trades on (`dexOf` in chain.ts). */
+  uniFactory?: Address;
   preview?: boolean;
 };
 
@@ -52,10 +54,10 @@ export function shortAddr(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
-/** Spot estimate after the 1% pool fee. Buying a token spends ETH. */
-export function estimatedOut(amountIn: bigint, priceWethPerToken: bigint, buyingToken: boolean): bigint {
+/** Spot estimate after the pool's fee (`fee` in hundredths of a bip, 10000 = 1%). Buying a token spends ETH. */
+export function estimatedOut(amountIn: bigint, priceWethPerToken: bigint, buyingToken: boolean, fee: number = POOL_FEE): bigint {
   if (amountIn <= 0n || priceWethPerToken <= 0n) return 0n;
-  const afterFee = (amountIn * 99n) / 100n;
+  const afterFee = (amountIn * BigInt(1_000_000 - fee)) / 1_000_000n;
   if (buyingToken) return (afterFee * 10n ** 18n) / priceWethPerToken;
   return (afterFee * priceWethPerToken) / 10n ** 18n;
 }
@@ -79,10 +81,11 @@ export async function loadCoins(dep: Deployment): Promise<Coin[]> {
           publicClient.readContract({ address: token, abi: erc20Abi, functionName: "symbol" }),
           publicClient.readContract({ address: dep.factory, abi: factoryAbi, functionName: "getPool", args: [token] }),
         ]);
-        const [token0, slot0, fee] = await Promise.all([
+        const [token0, slot0, fee, uniFactory] = await Promise.all([
           publicClient.readContract({ address: pool.uniPool, abi: poolAbi, functionName: "token0" }),
           publicClient.readContract({ address: pool.uniPool, abi: poolAbi, functionName: "slot0" }),
           publicClient.readContract({ address: pool.uniPool, abi: poolAbi, functionName: "fee" }).catch(() => POOL_FEE),
+          publicClient.readContract({ address: pool.uniPool, abi: poolAbi, functionName: "factory" }).catch(() => undefined),
         ]);
         return {
           token,
@@ -95,6 +98,7 @@ export async function loadCoins(dep: Deployment): Promise<Coin[]> {
           tokenIs0: token0.toLowerCase() === token.toLowerCase(),
           liquidity: pool.liquidity,
           fee: Number(fee),
+          uniFactory,
         };
       } catch {
         // One unreadable coin shouldn't blank the board.
@@ -114,12 +118,13 @@ export async function loadCoin(dep: Deployment, token: Address): Promise<Coin | 
     args: [token],
   });
   if (pool.uniPool === zeroAddress) return null;
-  const [name, symbol, token0, slot0, fee] = await Promise.all([
+  const [name, symbol, token0, slot0, fee, uniFactory] = await Promise.all([
     publicClient.readContract({ address: token, abi: erc20Abi, functionName: "name" }),
     publicClient.readContract({ address: token, abi: erc20Abi, functionName: "symbol" }),
     publicClient.readContract({ address: pool.uniPool, abi: poolAbi, functionName: "token0" }),
     publicClient.readContract({ address: pool.uniPool, abi: poolAbi, functionName: "slot0" }),
     publicClient.readContract({ address: pool.uniPool, abi: poolAbi, functionName: "fee" }).catch(() => POOL_FEE),
+    publicClient.readContract({ address: pool.uniPool, abi: poolAbi, functionName: "factory" }).catch(() => undefined),
   ]);
   return {
     token,
@@ -132,6 +137,7 @@ export async function loadCoin(dep: Deployment, token: Address): Promise<Coin | 
     tokenIs0: token0.toLowerCase() === token.toLowerCase(),
     liquidity: pool.liquidity,
     fee: Number(fee),
+    uniFactory,
   };
 }
 

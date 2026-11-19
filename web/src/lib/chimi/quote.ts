@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { encodeAbiParameters, keccak256, numberToHex, type Address, type Hex } from "viem";
-import { POOL_FEE, routerAbi, type Deployment } from "@/lib/chimi/chain";
+import { POOL_FEE, dexOf, routerAbi, type Deployment } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import type { Coin } from "@/lib/chimi/market";
 
@@ -22,12 +22,13 @@ const allowanceSlot = (owner: Address, spender: Address): Hex =>
 export async function quoteTrade(deployment: Deployment, coin: Coin, side: "buy" | "sell", amountIn: bigint): Promise<bigint> {
   const buying = side === "buy";
   const word = numberToHex(amountIn, { size: 32 });
+  const router = dexOf(deployment, coin).swapRouter;
   const { result } = await publicClient.simulateContract({
     account: STAND_IN,
-    address: deployment.swapRouter,
+    address: router,
     abi: routerAbi,
     functionName: "exactInputSingle",
-    args: [{ tokenIn: buying ? deployment.weth : coin.token, tokenOut: buying ? coin.token : deployment.weth, fee: POOL_FEE, recipient: STAND_IN, amountIn, amountOutMinimum: 0n, sqrtPriceLimitX96: 0n }],
+    args: [{ tokenIn: buying ? deployment.weth : coin.token, tokenOut: buying ? coin.token : deployment.weth, fee: coin.fee ?? POOL_FEE, recipient: STAND_IN, amountIn, amountOutMinimum: 0n, sqrtPriceLimitX96: 0n }],
     value: buying ? amountIn : 0n,
     stateOverride: buying
       ? [{ address: STAND_IN, balance: amountIn + 10n ** 18n }]
@@ -36,7 +37,7 @@ export async function quoteTrade(deployment: Deployment, coin: Coin, side: "buy"
             address: coin.token,
             stateDiff: [
               { slot: balanceSlot(STAND_IN), value: word },
-              { slot: allowanceSlot(STAND_IN, deployment.swapRouter), value: word },
+              { slot: allowanceSlot(STAND_IN, router), value: word },
             ],
           },
         ],

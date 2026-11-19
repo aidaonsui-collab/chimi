@@ -1,11 +1,12 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 import { formatEther, parseEther } from "viem";
-import { factoryAbi, giwaSepolia } from "@/lib/chimi/chain";
+import { POOL_FEE, factoryAbi, giwaSepolia } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { ethText, money } from "@/lib/chimi/format";
 import { useEthUsd } from "@/lib/chimi/live";
-import { fmt, short } from "@/lib/chimi/market";
+import { bpsLabel, splitFor } from "@/lib/chimi/fee-split";
+import { feeLabel, fmt, short } from "@/lib/chimi/market";
 import { saveTokenMeta, shrinkImage } from "@/lib/chimi/meta";
 import { publishTokenProfile, refreshTokenProfiles } from "@/lib/chimi/token-image";
 import { IconCheck, IconClose, IconImage, IconLock, IconPlus, IconTelegram, IconX } from "@/components/chimi/icons";
@@ -23,9 +24,10 @@ const VIRTUAL_TOKEN = 1_066_666_666_666_666_666_666_666_666n;
 const SUPPLY = 1_000_000_000n * 10n ** 18n;
 const GAS_RESERVE = 300_000_000_000_000n;
 
-function tokensOut(ethIn: bigint, virtualQuote: bigint): bigint {
+/** Coins for a first buy at the opening price, after the pool's fee (`fee` in hundredths of a bip, 20000 = 2%). */
+function tokensOut(ethIn: bigint, virtualQuote: bigint, fee: number): bigint {
   if (ethIn === 0n || virtualQuote === 0n) return 0n;
-  return (ethIn * 99n * VIRTUAL_TOKEN) / (100n * virtualQuote);
+  return (ethIn * BigInt(1_000_000 - fee) * VIRTUAL_TOKEN) / (1_000_000n * virtualQuote);
 }
 
 function compactTokens(raw: bigint): string {
@@ -184,7 +186,10 @@ function LaunchPage() {
   const total = due + buy;
   const mark = symbol.trim() || "TICKER";
   const quote = virtualQuote ?? 0n;
-  const received = buyOk ? tokensOut(buy, quote) : 0n;
+  // New coins launch on the last DEX: its fee and how the ETH side of fees is shared.
+  const split = deployment ? splitFor(deployment) : null;
+  const launchFee = split?.fee ?? POOL_FEE;
+  const received = buyOk ? tokensOut(buy, quote, launchFee) : 0n;
   const share = received === 0n ? 0 : Number((received * 10_000n) / SUPPLY) / 100;
   const fdvEth = quote === 0n ? 0 : Number((quote * SUPPLY) / VIRTUAL_TOKEN) / 1e18;
   const opensAt = fdvEth ? (ethUsd ? money(fdvEth * ethUsd) : `${ethText(fdvEth)} ETH`) : undefined;
@@ -339,7 +344,7 @@ function LaunchPage() {
                 <span className="text-muted">Leave it empty to launch without buying.</span>
               )}
             </p>
-            {buy > 0n && quote > 0n ? <p className="mt-1 text-xs text-faint">An estimate at the opening price, after the 1% pool fee.</p> : null}
+            {buy > 0n && quote > 0n ? <p className="mt-1 text-xs text-faint">An estimate at the opening price, after the {feeLabel(launchFee)} pool fee.</p> : null}
           </Panel>
 
           <details className="card group px-5 py-4 sm:px-6">
@@ -351,9 +356,15 @@ function LaunchPage() {
               {[
                 ["Supply", "1,000,000,000"],
                 ["Quote", "Wrapped ETH"],
-                ["Pool fee", "1%"],
+                ["Pool fee", feeLabel(launchFee)],
                 ["Lock", "100 years, then the beneficiary"],
-                ["Creator share", "70% of the wrapped-ETH trading fees"],
+                ["Creator share", `${bpsLabel(split?.creatorBps ?? 7_000)} of the ETH trading fees`],
+                ...(split?.flywheel
+                  ? [
+                      ["Platform share", bpsLabel(split.platformBps)],
+                      ["CHIMI flywheel", `${bpsLabel(split.burnBps + split.holdersBps)}: half burns CHIMI, half is paid to CHIMI holders`],
+                    ]
+                  : []),
                 ["Token-side fees", "Burned"],
                 ["Buy tax", "None"],
                 ["Opens at", opensAt ? `About ${opensAt} market cap` : "—"],

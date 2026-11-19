@@ -70,7 +70,7 @@ function SwapPage() {
     badAmount = true;
   }
   const tradable = Boolean(coin && live && !coin.preview);
-  const quote = coin && !badAmount ? estimatedOut(parsed, price, payEth) : 0n;
+  const quote = coin && !badAmount ? estimatedOut(parsed, price, payEth, coin.fee ?? POOL_FEE) : 0n;
   const minOut = (quote * BigInt(10_000 - slippageBps)) / 10_000n;
   const priceEth = Number(price) / 1e18;
   const usdOf = (wei: bigint, isEth: boolean) => (ethUsd && wei > 0n ? compactUsd((Number(wei) / 1e18) * (isEth ? 1 : priceEth) * ethUsd) : undefined);

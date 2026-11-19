@@ -5,6 +5,7 @@ import { houseOfWallet } from "@/lib/chimi/house-rules";
 import { DAILY_POOL, LEAD_SHARE, LEAGUES, dayEndMs, dayLabel, leagueOf, today, type Points, type Standing } from "@/lib/chimi/points-rules";
 import { fmtPoints, useHouses, useMyProfile, usePoints } from "@/lib/chimi/rewards";
 import { IconChevronRight, IconSearch } from "@/components/chimi/icons";
+import { FlywheelCard } from "@/components/chimi/flywheel-card";
 import { useChimi } from "@/components/chimi/provider";
 import { LeaguesRoof } from "@/components/chimi/leagues-roof";
 import { Empty } from "@/components/chimi/ui";
@@ -82,7 +83,11 @@ function PointsPage() {
           </p>
         ) : null}
 
-        <div className="mt-8 grid grid-cols-1 items-start gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
+        <div className="mt-8 empty:hidden">
+          <FlywheelCard />
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
           <YourCard points={points ?? null} loading={loading} houseOf={houseOf} />
 
           <div className="card min-w-0 overflow-hidden">

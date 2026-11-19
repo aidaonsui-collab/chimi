@@ -5,7 +5,7 @@
  */
 import { createPublicClient, formatEther, http, parseAbiItem, type Address } from "viem";
 import deployment from "../../public/deployments.json";
-import { factoryAbi, giwaSepolia, poolAbi } from "@/lib/chimi/chain";
+import { dexesOf, factoryAbi, giwaSepolia, poolAbi, type Deployment } from "@/lib/chimi/chain";
 import { followingOf, type FollowsState } from "@/lib/chimi/follow-rules";
 import { readProfiles } from "@/lib/chimi/identity";
 import {
@@ -134,7 +134,7 @@ async function advance(prev: PointsFile | null, settings: PointsSettings, leads:
   // Swaps on every Chimi pool, a span at a time. A swap pays out to its recipient, which is the trader, unless a
   // router took the output to unwrap it: then the trader is whoever sent the transaction.
   const pools = Object.keys(book.pools) as Address[];
-  const routers = new Set([deployment.swapRouter, deployment.positionManager].map((a) => a.toLowerCase()));
+  const routers = new Set(dexesOf(deployment as Deployment).flatMap((d) => [d.swapRouter, d.positionManager]).map((a) => a.toLowerCase()));
   // Who follows whom, as it stands now: a followed wallet earns when a follower buys a coin after it (points-rules).
   // If the list can't be read, the swaps still score; they just lead nobody this time.
   const follows = await docStore<FollowsState>("chimi:follows:v1")
