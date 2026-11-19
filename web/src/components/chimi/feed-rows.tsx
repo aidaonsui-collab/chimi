@@ -3,9 +3,9 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { giwaSepolia } from "@/lib/chimi/chain";
 import { NEED_DOJANG_TO_LIKE, stance } from "@/lib/chimi/comment-rules";
 import { useLike } from "@/lib/chimi/comments";
-import { knownTime } from "@/lib/chimi/feed";
+import { knownTime, type TickItem } from "@/lib/chimi/feed";
 import { ordinal, type BurstItem, type FeedItem, type TradeItem } from "@/lib/chimi/feed-rules";
-import { ago, compactCount, compactUsd, ethText } from "@/lib/chimi/format";
+import { ago, compactCount, compactUsd, ethText, tokenUsd } from "@/lib/chimi/format";
 import { heldKey } from "@/lib/chimi/holdings";
 import { DOJANG_URL } from "@/lib/chimi/identity";
 import { fetchSwaps, type CoinStats } from "@/lib/chimi/live";
@@ -502,28 +502,65 @@ function FeedLike({ item }: { item: Extract<FeedItem, { kind: "comment" }> }) {
   return <LikeButton count={shown.count} liked={shown.liked} own={item.mine} onToggle={() => void toggle()} />;
 }
 
-function CommentRow({ item, ctx, coin, fresh }: { item: Extract<FeedItem, { kind: "comment" }>; ctx: RowContext; coin: Coin; fresh?: boolean }) {
+/**
+ * The coin a post is about, as a card under what was said: its picture and name, its price and the day's move, and
+ * the day's line. Pressing it opens the coin.
+ */
+function CoinCard({ ctx, coin }: { ctx: RowContext; coin: Coin }) {
+  const stats = ctx.stats[coin.token.toLowerCase()];
+  const price = stats && ctx.ethUsd ? tokenUsd(stats.priceEth * ctx.ethUsd) : stats ? `${stats.priceEth.toPrecision(3)} ETH` : "—";
+  return (
+    <Link to="/coin/$address" params={{ address: coin.token }} className="post-coin" aria-label={`${coin.name}, ${money(ctx, stats?.capEth)} market cap`}>
+      <TokenLogo symbol={coin.symbol} image={ctx.images[coin.token.toLowerCase()]} size={40} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[15px] font-semibold text-fg">{coin.name}</span>
+        <span className="num flex min-w-0 items-center gap-2 overflow-hidden text-[13px] whitespace-nowrap">
+          <span className="text-muted">${coin.symbol}</span>
+          <span className="font-semibold text-fg">{price}</span>
+          <Change value={stats?.change} />
+          <span className="hidden truncate text-faint sm:inline">{money(ctx, stats?.capEth)} cap</span>
+        </span>
+      </span>
+      {stats && stats.spark.length > 2 ? <Sparkline values={stats.spark} width={150} height={44} fluid className="post-coin-line" /> : null}
+    </Link>
+  );
+}
+
+/**
+ * A comment, as a post: who said it and what they hold of the coin, what they said, the coin as a card under it, and
+ * its likes and replies. This is the social part of the feed, so it gets room the trade rows don't.
+ */
+function CommentPost({ item, ctx, coin, fresh }: { item: Extract<FeedItem, { kind: "comment" }>; ctx: RowContext; coin: Coin; fresh?: boolean }) {
   const creator = item.wallet === coin.creator.toLowerCase();
   return (
-    <Row ctx={ctx} coin={coin} time={item.time} fresh={fresh} followed={item.followed} lead={<Avatar ctx={ctx} wallet={item.wallet} />}>
-      <p className="feed-line">
-        <Who ctx={ctx} wallet={item.wallet} /> {creator ? <Tag tone="gold">Creator</Tag> : null} <Held ctx={ctx} token={item.token} wallet={item.wallet} />{" "}
-        <span className="text-muted">{item.replyTo ? "replied on" : "on"}</span> <CoinName coin={coin} />
-      </p>
-      <p className="feed-said">{item.text}</p>
-      <div className="feed-meta feed-meta-acts">
-        <FeedLike item={item} />
-        <Link to="/coin/$address" params={{ address: coin.token }} search={{ tab: "comments", c: item.id }} className="comment-act">
-          <IconComment size={13} />
-          {item.replies > 0 ? <span className="num">{item.replies}</span> : null}
-          Reply
-        </Link>
-        {item.followed ? <Followed /> : null}
-        <span className="ml-auto pr-1">
-          <MetaTime ctx={ctx} time={item.time} />
-        </span>
+    <li className={`feed-item post ${fresh ? "feed-item-new" : ""} ${item.followed ? "feed-item-followed" : ""}`}>
+      <span className="post-lead">
+        <Avatar ctx={ctx} wallet={item.wallet} size={38} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="post-head">
+          <Who ctx={ctx} wallet={item.wallet} />
+          {creator ? <Tag tone="gold">Creator</Tag> : null}
+          <Held ctx={ctx} token={item.token} wallet={item.wallet} />
+          {item.followed ? <Followed /> : null}
+          <span className="num shrink-0 text-faint">· {when(ctx, item.time)}</span>
+        </p>
+        {item.replyTo ? (
+          <p className="text-[12.5px] text-faint">
+            Replying in a thread on <CoinName coin={coin} />
+          </p>
+        ) : null}
+        <p className="post-text">{item.text}</p>
+        <CoinCard ctx={ctx} coin={coin} />
+        <div className="post-acts">
+          <Link to="/coin/$address" params={{ address: coin.token }} search={{ tab: "comments", c: item.id }} className="comment-act" aria-label={item.replies > 0 ? `${item.replies} replies` : "Reply"}>
+            <IconComment size={15} />
+            {item.replies > 0 ? <span className="num">{item.replies}</span> : <span>Reply</span>}
+          </Link>
+          <FeedLike item={item} />
+        </div>
       </div>
-    </Row>
+    </li>
   );
 }
 
@@ -598,7 +635,7 @@ export function FeedRow({ item, ctx, fresh }: { item: FeedItem; ctx: RowContext;
   if (item.kind === "trade") return <TradeRow item={item} ctx={ctx} coin={coin} fresh={fresh} />;
   if (item.kind === "burst") return <BurstRow item={item} ctx={ctx} coin={coin} fresh={fresh} />;
   if (item.kind === "launch") return <LaunchRow item={item} ctx={ctx} coin={coin} fresh={fresh} />;
-  if (item.kind === "comment") return <CommentRow item={item} ctx={ctx} coin={coin} fresh={fresh} />;
+  if (item.kind === "comment") return <CommentPost item={item} ctx={ctx} coin={coin} fresh={fresh} />;
   if (item.kind === "milestone") return <MilestoneRow item={item} ctx={ctx} coin={coin} fresh={fresh} />;
   return <CopiedRow item={item} ctx={ctx} coin={coin} fresh={fresh} />;
 }
@@ -637,52 +674,76 @@ export function holdersIn(items: FeedItem[]): { token: string; wallet: string }[
 }
 
 /**
- * The strip under the top bar: the last day's trades and launches moving past. It stops while the pointer is on it,
- * and stands still for visitors who ask for less motion (.ticker in styles.css).
+ * The strip along the top of every page: the last day's trades and launches moving past, the way a trading floor's
+ * board does. It stops while the pointer is on it, and stands still for visitors who ask for less motion (.ticker in
+ * styles.css). On a quiet day it says so instead of showing old news.
  */
-export function Ticker({ items, ctx }: { items: FeedItem[]; ctx: RowContext }) {
-  // Only the last day: a strip marked Live shouldn't lead with last week's news.
-  const recent = items
-    .filter((i): i is Extract<FeedItem, { kind: "trade" | "launch" }> => (i.kind === "trade" || i.kind === "launch") && knownTime(i.time) && ctx.now - i.time < 24 * 60 * 60 && ctx.byToken.has(i.token))
-    .slice(0, 14);
-  if (recent.length === 0) return null;
+export function Ticker({
+  items,
+  byToken,
+  images,
+  profiles,
+  now,
+  className = "",
+}: {
+  items: TickItem[];
+  byToken: Map<string, Coin>;
+  images: Record<string, string | undefined>;
+  profiles: Record<string, Profile>;
+  /** Unix seconds. */
+  now: number;
+  className?: string;
+}) {
+  const recent = items.filter((item) => byToken.has(item.token));
+  const name = (wallet: string) => profiles[wallet]?.name?.replace(/\.up\.id$/, "") ?? shortWallet(wallet);
+  const live = (
+    <span className="ticker-live">
+      <span className="live-dot text-ok" />
+      Live
+    </span>
+  );
+  if (recent.length === 0) {
+    return (
+      <div className={`ticker ${className}`}>
+        {live}
+        <span className="truncate text-faint">Quiet on GIWA: no trades in the last day</span>
+      </div>
+    );
+  }
   const row = (hidden: boolean) => (
     <div className="ticker-row" aria-hidden={hidden || undefined}>
       {recent.map((item) => {
-        const coin = ctx.byToken.get(item.token)!;
-        const wallet = item.kind === "trade" ? item.wallet : item.creator;
+        const coin = byToken.get(item.token)!;
         return (
           <span key={item.key} className="flex shrink-0 items-center gap-1.5">
-            <Link to="/u/$address" params={{ address: wallet }} tabIndex={hidden ? -1 : undefined} className="num font-semibold text-fg hover:text-gold">
-              {nameOf(ctx, wallet)}
+            <Link to="/u/$address" params={{ address: item.wallet }} tabIndex={hidden ? -1 : undefined} className="inline-flex items-center gap-1.5 font-medium text-fg/90 hover:text-gold">
+              <Blockie address={item.wallet} size={16} />
+              <span className="num">{name(item.wallet)}</span>
             </Link>
             {item.kind === "trade" ? (
               <>
-                {item.buy ? "bought" : "sold"}
-                <span className={`num font-medium ${item.buy ? "text-ok" : "text-down"}`}>{ethText(item.eth)} ETH</span>
+                <span className={`num font-medium ${item.buy ? "text-ok" : "text-down"}`}>
+                  {item.buy ? "bought" : "sold"} {ethText(item.eth ?? 0)} ETH
+                </span>
                 of
               </>
             ) : (
-              "launched"
+              <span className="font-medium text-gold">launched</span>
             )}
             <Link to="/coin/$address" params={{ address: coin.token }} tabIndex={hidden ? -1 : undefined} className="inline-flex items-center gap-1.5 font-medium text-fg hover:text-gold">
-              <TokenLogo symbol={coin.symbol} image={ctx.images[coin.token.toLowerCase()]} size={16} ring={false} />
-              {coin.symbol}
+              <TokenLogo symbol={coin.symbol} image={images[coin.token.toLowerCase()]} size={16} ring={false} />${coin.symbol}
             </Link>
-            <span className="num text-faint">· {when(ctx, item.time)}</span>
+            <span className="num text-faint">{knownTime(item.time) ? ago(Math.max(0, now - item.time)) : ""}</span>
           </span>
         );
       })}
     </div>
   );
   // A handful of items fit without moving. More than that scroll, as two copies end to end so the loop has no seam.
-  const moving = recent.length > 4;
+  const moving = recent.length > 3;
   return (
-    <div className={`ticker ${moving ? "ticker-moving" : ""}`} style={{ "--ticker-s": `${recent.length * 6}s` } as CSSProperties}>
-      <span className="flex shrink-0 items-center gap-2 pr-5 text-[12px] font-semibold tracking-[0.06em] text-ok uppercase">
-        <span className="live-dot text-ok" />
-        Live
-      </span>
+    <div className={`ticker ${moving ? "ticker-moving" : ""} ${className}`} style={{ "--ticker-s": `${recent.length * 6}s` } as CSSProperties}>
+      {live}
       <div className="ticker-window">
         <div className="ticker-track">
           {row(false)}

@@ -40,25 +40,32 @@ npm install
 npm run dev
 ```
 
-The home page is the feed. The board of every coin, the launch sheet, a page per coin and a page per trader sit beside it. The site reads `/deployments.json` and talks to the GIWA Sepolia factory. Until that file has a factory address, the board shows preview coins and launch stays disabled.
+The home page is the board: every coin on Chimi. The feed is on the Traders page, and the launch sheet, a page per coin and a page per trader sit beside them. The site reads `/deployments.json` and talks to the GIWA Sepolia factory. Until that file has a factory address, the board shows preview coins and launch stays disabled.
 
-### The home feed
+### The home page
 
-`/` shows what is happening, newest first: buys and sales, launches, comments, a coin crossing a round market cap, and the times someone who follows you bought a coin after you did. The board that used to be the home page is at `/board`, and `/traders` lists everyone trading, by season points, followers or the day's volume.
+`/` is the roof banner, then the board: every pair on Chimi in one table (`web/src/components/chimi/home-hero.tsx`, `home-board.tsx`).
+
+- **The banner** keeps the roof; the message on it takes turns every seven seconds: what Chimi is, the traders to follow, the day's points, the houses. It holds still under the pointer and for visitors who ask for less motion, and the bars at its foot pick a message. Live totals sit on glass at its right on a laptop.
+- **The table** orders the pairs by Trending (the day's volume), New (launch time), Top (market cap) or Gainers (the day's move). A row is the pair, its age, market cap, the day's move, volume, liquidity, trades, the day's line and one quick-buy button; a phone keeps the pair, market cap and move, the line and the button, and the other columns come in as the screen widens. `/board` now sends to `/`.
+
+### Traders: the feed and the leaderboard
+
+`/traders` is the social side, laid out like a trading floor's social tab. Three tiles say what the last day was about: the coin with the most comments, the coin that took the most ETH in buys, and the wallet that traded the most (`web/src/lib/chimi/social-rules.ts`, tests in `web/test/social.test.ts`). Under them the feed runs beside the Top traders card (season points, or the day's trading before a season has points; Follow takes the number's place under the pointer; See all opens the leaderboard). `?view=leaderboard` is the whole list of traders, by season points, followers or the day's trading. A phone switches between Feed and Leaderboard with the control under the title, and the tiles scroll sideways.
+
+The feed shows what is happening, newest first: buys and sales, launches, comments, a coin crossing a round market cap, and the times someone who follows you bought a coin after you did.
 
 - **Tabs.** For you is everything; once the feed is crowded, small trades by wallets you don't follow drop out. Following is what the wallets you follow bought, sold, launched and said. New is launches. Top is the coins by the day's volume.
 - **Bursts.** Three or more trades on one coin, each within five minutes of the one before, are one row in For you: how many wallets, which way, how much and how fast, with the trades a press away (`groupBursts` in `feed-rules.ts`). A burst covers 30 minutes at most, so a coin that trades all day reads as several cards. Your own trades, those of wallets you follow and the day's largest buy always keep a card of their own. A burst that gains a trade moves to the top like a new row.
-- **Comments in the feed** carry their likes and their number of replies. The heart works from the row; Reply opens the comment on the coin's page.
+- **Comments in the feed are posts**: who said it and what they hold, what they said, the coin as a card under it (price, the day's move and line), and its replies and likes. The heart works from the post; Reply opens the comment on the coin's page. Trades stay compact rows.
 - **A row, not a card.** The feed is one list. A row is a line of who did what and a quieter line of detail, with the coin's market cap, the day's line and move, the time and one small buy button at its end. A 1440×900 screen shows about twelve rows and a phone eight or nine (cards showed three or four, and two or three). A lone trade by a wallet you don't follow is a single line; your own trades, those of wallets you follow, the day's largest buy and bursts get both lines, and what a wallet you follow did carries a gold edge. On a phone the buy button sits at the end of the second line so the sentence keeps the full width. Follow, Copy and a burst's Trades button appear under the pointer on a wide screen and are left out on a phone, where tapping a burst opens its trades.
 - **Proof beside a name.** A trade or comment row says what its wallet holds of that coin right now ("holds 1.2%", "sold all"); the balances of every row on screen are read together and again when the feed changes (`web/src/lib/chimi/holdings.ts`). A wallet in the season's top ten carries its rank ("#3"), and the Dojang mark stays.
 - **Quick buy** spends one amount, chosen once above the feed and remembered in the browser (`web/src/lib/chimi/quick.ts`). It is one confirmation. The minimum received comes from a dry run of that exact swap, so it allows for the price the buy itself moves, less 2% (`quickBuy` in `web/src/components/chimi/provider.tsx`). The button says what is happening: asking the wallet, then done.
 - **It opens at once.** The last feed a browser saw is kept and painted immediately on the next visit, then replaced by the chain's answer (`chimi.feed.last` in localStorage; written by `web/src/lib/chimi/feed.ts`).
 - **It stays live.** Every 8 seconds the page asks for just the trades since its last read, in one request for all pools (`loadSwapsSince` in `market.ts`, `tailSwaps` in `live.ts`). A new row is lit for a moment as it arrives, and a reader who has scrolled down gets a "3 new" pill instead of a jump. The full ten-request read still runs every ten minutes.
-- **One slim bar.** The heading, the tabs, the Live mark and the quick-buy amount share one bar that sticks under the top bar. On a phone the heading and the amount sit on one line above the tabs.
-- **Ranked lists beside the feed.** Hot coins (by the day's volume, with the day's move) and Top traders (by what they traded today, with their number of trades and followers), then who to follow. The rail stays in view while the feed scrolls.
+- **One slim bar.** The tabs, the Live mark and the quick-buy amount share one bar at the top of the feed.
 - **A quiet chain.** When nothing has happened for an hour the feed leads with the last day in three numbers and a way to start something. Every coin's launch is always in the feed, so it is never empty once a coin exists.
-- **The top of the page.** A first visit gets a hero with the roof, what Chimi is and where to start. After a wallet has connected, or the visitor has closed it, the roof sits behind the heading like every other tab's scene. A line of script in the page's head reads that choice before the first paint (`web/src/components/chimi/feed-hero.tsx`).
-- **The strip under the top bar** shows the last day's trades and launches moving past. It holds still under the pointer and for visitors who ask for less motion.
+- **The live strip** in the top bar of every page shows the last day's trades and launches moving past (`useTicker` in `feed.ts`, which reads only the pools, not the feed's comments and follows). It holds still under the pointer and for visitors who ask for less motion, and says so on a quiet day. On a phone it is a thin line above the bar.
 
 Nothing new is read from the chain for this. Trades come from the pools the board already follows, launch times from the factory's events, comments from `GET /api/comments?recent=20&tokens=…`, and who follows whom from the follow list. The rules that turn those into one list are in `web/src/lib/chimi/feed-rules.ts`, with tests in `web/test/feed.test.ts`.
 
@@ -101,7 +108,7 @@ Each coin's launch liquidity is held by the locker and earns the pool's 1% fee. 
 
 ### Look and feel
 
-The site is one dark theme, defined in `web/src/styles.css`: colour tokens under `@theme` (night-sky surfaces, the vermilion `seal` accent, `gold` for small highlights, `ok` and `down` for price moves) and a small set of component classes (`card`, `btn`, `field`, `seg`, `chip`, `skeleton`). Shared pieces live in `web/src/components/chimi/`: `shell.tsx` (side rail, top bar, status bar, phone tab bar), `ui.tsx`, `charts.tsx`, `icons.tsx`, `command.tsx` (search, opened with `/` or Cmd/Ctrl+K), `wallet-menu.tsx` and `toast.tsx`.
+The site is one dark theme, defined in `web/src/styles.css`: colour tokens under `@theme` (night-sky surfaces, the vermilion `seal` accent, `gold` for small highlights, `ok` and `down` for price moves) and a small set of component classes (`card`, `btn`, `field`, `seg`, `chip`, `skeleton`). Buttons, chips and tab controls are pills; the picked tab is a light pill. Shared pieces live in `web/src/components/chimi/`: `shell.tsx` (an icon-only side rail with names beside the icons under the pointer and Launch as its round light button; search opens with `/` or Cmd/Ctrl+K, and on a phone from the magnifier in the top bar, the top bar with the live strip, the status bar, and on a phone one floating bar of icons with Launch in the middle), `ui.tsx`, `charts.tsx`, `icons.tsx`, `command.tsx` (search, opened with `/` or Cmd/Ctrl+K), `wallet-menu.tsx` and `toast.tsx`.
 
 Numbers that several pages show (the ETH price, each pool's recent trades and ETH reserve, the chain head) are read once and shared through `web/src/lib/chimi/live.ts`. Contract reads go through Multicall3, and the board reads every pool's trades in one pass, so its cost doesn't grow with the number of coins.
 
@@ -117,7 +124,7 @@ The trades come from the trade record (`web/src/lib/chimi/ledger-rules.ts`, kept
 
 ### Following
 
-A wallet can follow other wallets and see their trades under **Following** in the live trades feed on the home page. Trader pages show a Follow button, how many followers a wallet has, and who it follows.
+A wallet can follow other wallets and see their trades under **Following** in the feed on the Traders page. Trader pages show a Follow button, how many followers a wallet has, and who it follows.
 
 - Following is a message the wallet signs, with no transaction, handled like house actions (`web/src/lib/chimi/follow-rules.ts`, `POST /api/follows`).
 - Only a wallet with a GIWA Dojang can follow, so a follower count is a count of people. Anyone can be followed and anyone can unfollow. A wallet follows at most 100 others.

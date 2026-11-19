@@ -101,7 +101,7 @@ function TraderPage() {
             mark="없음"
             title="That isn’t a wallet address"
             action={
-              <Link to="/board" className="btn btn-secondary">
+              <Link to="/" className="btn btn-secondary">
                 Back to the board
               </Link>
             }
@@ -246,7 +246,7 @@ function TraderPage() {
                 mark="빈 손"
                 title={mine ? "You haven’t traded on Chimi yet" : "This wallet hasn’t traded on Chimi"}
                 action={
-                  <Link to="/board" className="btn btn-primary">
+                  <Link to="/" className="btn btn-primary">
                     Find a coin
                   </Link>
                 }

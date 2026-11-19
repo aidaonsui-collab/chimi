@@ -6,7 +6,7 @@ import { shortAddr, wethPerToken } from "@/lib/chimi/market";
 import { useHouses } from "@/lib/chimi/rewards";
 import { useTokenImages } from "@/lib/chimi/token-image";
 import { HouseSeal } from "@/components/chimi/house-seal";
-import { IconBoard, IconChart, IconFeed, IconHouse, IconPlus, IconPoints, IconPools, IconSearch, IconSwap, IconTraders } from "@/components/chimi/icons";
+import { IconBoard, IconChart, IconHouse, IconPlus, IconPoints, IconPools, IconSearch, IconSwap, IconTraders } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
 import { TokenLogo } from "@/components/chimi/token-logo";
 import { Blockie, Modal } from "@/components/chimi/ui";
@@ -22,9 +22,8 @@ type Item = {
 };
 
 const PAGES = [
-  { to: "/", title: "Feed", sub: "Who is trading what", icon: IconFeed },
-  { to: "/board", title: "Board", sub: "Every coin on Chimi", icon: IconBoard },
-  { to: "/traders", title: "Traders", sub: "Who to follow", icon: IconTraders },
+  { to: "/", title: "Board", sub: "Every coin on Chimi", icon: IconBoard },
+  { to: "/traders", title: "Traders", sub: "The feed and who to follow", icon: IconTraders },
   { to: "/launch", title: "Launch a coin", sub: "One transaction, straight into a locked pool", icon: IconPlus },
   { to: "/swap", title: "Swap", sub: "Buy or sell any coin", icon: IconSwap },
   { to: "/pools", title: "Pools", sub: "Add liquidity and collect fees", icon: IconPools },
