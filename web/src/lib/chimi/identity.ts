@@ -16,8 +16,11 @@ export const DOJANG_ATTESTERS: { id: `0x${string}`; name: string }[] = [
   { id: "0xaa92f8c143657dde575de430aecaea6ca91f2e6072339b16932d426895d8d678", name: "GIWA testnet faucet" },
 ];
 
-/** Where a wallet gets a Dojang on Sepolia. */
-export const DOJANG_URL = "https://playground.giwa.io/";
+/**
+ * Where a wallet gets a Dojang on Sepolia: Issue Dojang on the GIWA Sepolia Playground (0.001 ETH plus gas). It moved
+ * here from playground.giwa.io, which no longer resolves.
+ */
+export const DOJANG_URL = "https://sepolia-playground.giwa.io/";
 
 const dojangAbi = parseAbi(["function isVerified(address account, bytes32 attesterId) view returns (bool)"]);
 const upIdAbi = parseAbi([
