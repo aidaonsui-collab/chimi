@@ -1355,6 +1355,119 @@
 }
 
 /* A line at the top of the feed that isn't an item: it is quiet, or the trades are still on their way. */
+/*
+ * The post box at the top of the Traders feed (post-box.tsx): the wallet's mark, the text, and under it the coin the
+ * post is about as a chip that opens a searchable list.
+ */
+.post-box {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.875rem 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-line) 75%, transparent);
+}
+@media (min-width: 640px) {
+  .post-box {
+    gap: 0.875rem;
+    padding: 1rem;
+  }
+}
+.pbox-field {
+  min-height: 4.25rem;
+  font-size: 15px;
+}
+/* A phone puts the hint on its own line under the coin and the button, and opens the coin list across the box. */
+.pbox-hint {
+  order: 3;
+  flex-basis: 100%;
+}
+.pbox-anchor {
+  position: static;
+}
+@media (min-width: 640px) {
+  .pbox-hint {
+    order: 0;
+    flex-basis: 0;
+  }
+  .pbox-anchor {
+    position: relative;
+  }
+}
+.pbox-coin {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 2rem;
+  padding: 0 0.6rem 0 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-edge);
+  background: var(--color-raise);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-fg);
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+.pbox-coin:hover,
+.pbox-coin[aria-expanded="true"] {
+  background: var(--color-raise2);
+}
+.pbox-coin-empty {
+  padding-left: 0.65rem;
+  border-style: dashed;
+  background: transparent;
+  color: var(--color-muted);
+}
+.pbox-pick {
+  position: absolute;
+  top: calc(100% - 0.5rem);
+  right: 0.75rem;
+  left: 0.75rem;
+  z-index: 50;
+  overflow: hidden;
+  border-radius: 1rem;
+  border: 1px solid var(--color-edge);
+  background: var(--color-chip);
+  box-shadow: var(--shadow-pop);
+}
+@media (min-width: 640px) {
+  .pbox-pick {
+    top: calc(100% + 8px);
+    right: auto;
+    left: 0;
+    width: 320px;
+  }
+}
+.pbox-search {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  height: 2.75rem;
+  padding: 0 0.85rem;
+  border-bottom: 1px solid var(--color-line);
+}
+.pbox-list {
+  max-height: 17rem;
+  overflow-y: auto;
+  padding: 0.35rem;
+}
+.pbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 0.75rem;
+  cursor: pointer;
+}
+.pbox-row[data-active] {
+  background: var(--color-raise);
+}
+.pbox-row[aria-selected="true"] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-gold) 45%, transparent);
+}
+
 .feed-note {
   display: flex;
   align-items: center;

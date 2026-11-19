@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PASS_TTL_MS, checkPass, commentMessage, likePassMessage, type CommentsView, type SignedAction } from "@/lib/chimi/comment-rules";
+import { PASS_TTL_MS, checkPass, cleanText, commentMessage, likePassMessage, type Comment, type CommentsView, type SignedAction } from "@/lib/chimi/comment-rules";
 import { useChimi } from "@/components/chimi/provider";
 
 const PAGE = 50;
@@ -95,13 +95,79 @@ export function useLike() {
   );
 }
 
+type Sent = { ok: true; view: CommentsView; time: number; who: string } | { ok: false; error: string; cancelled?: boolean };
+
+/**
+ * Signs one action on a coin's comments with the connected wallet (connecting first if needed) and sends it. Answers
+ * with the coin's comments as they are now, `limit` threads of them.
+ */
+function useSignedSend() {
+  const { account, connect, signMessage } = useChimi();
+  return useCallback(
+    async (token: string, action: SignedAction, limit: number): Promise<Sent> => {
+      const key = token.toLowerCase();
+      const time = Date.now();
+      let who: string | undefined;
+      let signature: string;
+      try {
+        who = account ?? (await connect())?.who;
+        if (!who) throw new Error("Connect a wallet first.");
+        signature = await signMessage(commentMessage(action, key, who, time));
+      } catch (e) {
+        if (cancelled(e)) return { ok: false, error: "You cancelled the signature.", cancelled: true };
+        return { ok: false, error: e instanceof Error && /No wallet|Connect/.test(e.message) ? e.message : "Your wallet couldn't sign the message." };
+      }
+      const res = await fetch("/api/comments", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: key, wallet: who, action, time, signature, limit }),
+      }).catch(() => null);
+      const body = (res ? await res.json().catch(() => ({})) : {}) as Partial<CommentsView> & { error?: string };
+      if (!res) return { ok: false, error: "Couldn't reach Chimi. Check your connection and try again." };
+      if (!res.ok || !body.items) return { ok: false, error: body.error ?? "Something went wrong. Try again." };
+      return { ok: true, view: body as CommentsView, time, who };
+    },
+    [account, connect, signMessage],
+  );
+}
+
+export type PostResult = { ok: true; comment?: Comment } | { ok: false; error: string; cancelled?: boolean };
+
+/**
+ * Posts a new comment on any coin, for the post box on the Traders feed. On success it answers with the comment as the
+ * server kept it (its id and time), so the feed can show it before its next read; that is absent only if the coin had
+ * so many new threads at that moment that it fell off the page that came back.
+ */
+export function usePostToCoin() {
+  const signedSend = useSignedSend();
+  const [pending, setPending] = useState(false);
+  const post = useCallback(
+    async (token: string, text: string): Promise<PostResult> => {
+      setPending(true);
+      try {
+        const out = await signedSend(token, { type: "post", text }, 5);
+        if (!out.ok) return out;
+        const who = out.who.toLowerCase();
+        const said = cleanText(text);
+        const comment = out.view.items.filter((c) => c.wallet === who && !c.replyTo && c.text === said).sort((a, b) => b.time - a.time)[0];
+        return { ok: true, comment };
+      } finally {
+        setPending(false);
+      }
+    },
+    [signedSend],
+  );
+  return { post, pending };
+}
+
 /**
  * One coin's comments, read again every half minute while the page is in view, and the ways to change them: write,
  * answer or delete with a message the connected wallet signs (connecting first if needed), and like with one press.
  * None of it is a transaction.
  */
 export function useComments(token: string | undefined) {
-  const { account, connect, signMessage } = useChimi();
+  const { account } = useChimi();
+  const signedSend = useSignedSend();
   const sendLike = useLike();
   const key = token?.toLowerCase();
   const me = account?.toLowerCase();
@@ -146,32 +212,16 @@ export function useComments(token: string | undefined) {
       if (!key) return { ok: false, error: "This coin has no comments." };
       setPending(action.type === "delete" ? action.id : action.replyTo ? `reply:${action.replyTo}` : "post");
       try {
-        const time = Date.now();
-        let who: string | undefined;
-        let signature: string;
-        try {
-          who = account ?? (await connect())?.who;
-          if (!who) throw new Error("Connect a wallet first.");
-          signature = await signMessage(commentMessage(action, key, who, time));
-        } catch (e) {
-          if (cancelled(e)) return { ok: false, error: "You cancelled the signature.", cancelled: true };
-          return { ok: false, error: e instanceof Error && /No wallet|Connect/.test(e.message) ? e.message : "Your wallet couldn't sign the message." };
-        }
-        const res = await fetch("/api/comments", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ token: key, wallet: who, action, time, signature, limit }),
-        });
-        const body = (await res.json().catch(() => ({}))) as Partial<CommentsView> & { error?: string };
-        if (!res.ok || !body.items) return { ok: false, error: body.error ?? "Something went wrong. Try again." };
-        changed.current = time;
-        setState({ of: key, view: body as CommentsView });
+        const out = await signedSend(key, action, limit);
+        if (!out.ok) return out;
+        changed.current = out.time;
+        setState({ of: key, view: out.view });
         return { ok: true };
       } finally {
         setPending(null);
       }
     },
-    [key, limit, account, connect, signMessage],
+    [key, limit, signedSend],
   );
 
   /** Likes or unlikes a comment. The heart moves at once and moves back if the like doesn't land. */
