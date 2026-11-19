@@ -60,7 +60,15 @@ async function askSite(link: StreamLink): Promise<StreamStatus | null> {
   }
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`YouTube answered ${res.status}`);
-  return readYouTubePage(await res.text(), Date.now());
+  const html = await res.text();
+  const status = readYouTubePage(html, Date.now());
+  // A page with neither a live video nor a channel name isn't one YouTube normally sends: say what it was.
+  if (!status.live && !status.name) {
+    const title = /<title>([^<]{0,120})/.exec(html)?.[1];
+    const signs = ["ytInitialPlayerResponse", "ytInitialData", "consent.youtube.com", "confirm you", "LOGIN_REQUIRED", "captcha"].filter((s) => html.includes(s));
+    console.warn("[streams] unreadable YouTube page", keyOf(link), res.status, res.url, html.length, JSON.stringify(title), signs.join(","), JSON.stringify(/"playabilityStatus":\{[^}]{0,200}/.exec(html)?.[0]));
+  }
+  return status;
 }
 
 type Seen = { status: StreamStatus | null; at: number; job?: Promise<StreamStatus | null> };
