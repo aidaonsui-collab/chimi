@@ -7,5 +7,15 @@
   "swapRouter": "0x84F486d7254aEDc89986bce392771D88bf5828EA",
   "bpsSource": "0x6705206Ea0631Ae5704c1F7B511543d12a14Ee25",
   "locker": "0xDCd1fbdc13B1EDa41Bd093b8b8dD14Bc145717F2",
-  "factory": "0x8d051f7FCf2F67f272b6ec96dAf2e9a847633394"
+  "factory": "0x8d051f7FCf2F67f272b6ec96dAf2e9a847633394",
+  "dexes": [
+    { "fee": 10000, "tickSpacing": 200, "uniFactory": "0xFCF6Bf9A66AA167BfE4F6165bb04baEd97B6C2aE", "positionManager": "0x701bA347BBd231E604fbc4303d5a2DCE8Abe52eD", "swapRouter": "0x84F486d7254aEDc89986bce392771D88bf5828EA", "locker": "0xDCd1fbdc13B1EDa41Bd093b8b8dD14Bc145717F2" },
+    { "fee": 20000, "tickSpacing": 400, "uniFactory": "0x1c62Ca0CBd73EdF5288A29Dbb69e5d850cC963EB", "positionManager": "0x6D742F49b9c771f637a78aaF52bf2F6D4d602Dee", "swapRouter": "0x20647d9cA81d31f0624aB9912eAf51892d62c24F", "locker": "0x17f10B74f695e1EA1AA0f4c09B722468F82De6A4" }
+  ],
+  "flywheel": {
+    "address": "0xa4957E724696b740b323fF3536415bB945e46828",
+    "chimi": "0xceF368d0509602704799bd80BcC33AeF352b9667",
+    "keeper": "0xE4f45f494B263C898FDbf7686f61c48ffF495b98",
+    "minHold": "10000"
+  }
 }
