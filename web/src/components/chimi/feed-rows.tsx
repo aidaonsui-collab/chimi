@@ -20,6 +20,8 @@ import { useChimi } from "@/components/chimi/provider";
 import { DojangMark } from "@/components/chimi/rewards-bits";
 import { toast } from "@/components/chimi/toast";
 import { TokenLogo } from "@/components/chimi/token-logo";
+import { LivePill } from "@/components/chimi/stream";
+import { useLiveTokens } from "@/lib/chimi/streams";
 import { Blockie, Change, Sparkline } from "@/components/chimi/ui";
 
 /*
@@ -508,12 +510,16 @@ function FeedLike({ item }: { item: Extract<FeedItem, { kind: "comment" }> }) {
  */
 function CoinCard({ ctx, coin }: { ctx: RowContext; coin: Coin }) {
   const stats = ctx.stats[coin.token.toLowerCase()];
+  const live = useLiveTokens().has(coin.token.toLowerCase());
   const price = stats && ctx.ethUsd ? tokenUsd(stats.priceEth * ctx.ethUsd) : stats ? `${stats.priceEth.toPrecision(3)} ETH` : "—";
   return (
     <Link to="/coin/$address" params={{ address: coin.token }} className="post-coin" aria-label={`${coin.name}, ${money(ctx, stats?.capEth)} market cap`}>
       <TokenLogo symbol={coin.symbol} image={ctx.images[coin.token.toLowerCase()]} size={40} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[15px] font-semibold text-fg">{coin.name}</span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-[15px] font-semibold text-fg">{coin.name}</span>
+          {live ? <LivePill small /> : null}
+        </span>
         <span className="num flex min-w-0 items-center gap-2 overflow-hidden text-[13px] whitespace-nowrap">
           <span className="text-muted">${coin.symbol}</span>
           <span className="font-semibold text-fg">{price}</span>

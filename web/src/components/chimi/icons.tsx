@@ -277,6 +277,19 @@ export const IconFlame = (p: IconProps) => (
     <path d="M12 3.5c.5 3-1.5 4.5-3 6.5a5.8 5.8 0 1 0 9.5 1.5c-.8 1.2-1.8 1.8-2.8 1.8.6-3.3-.7-7.3-3.7-9.8Z" />
   </Svg>
 );
+/** A broadcast: a dot with waves either side. */
+export const IconBroadcast = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="2" />
+    <path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8" />
+  </Svg>
+);
+export const IconEye = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" />
+    <circle cx="12" cy="12" r="2.75" />
+  </Svg>
+);
 export const IconClock = (p: IconProps) => (
   <Svg {...p}>
     <circle cx="12" cy="12" r="8.5" />
