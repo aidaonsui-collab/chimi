@@ -64,17 +64,44 @@ export function useLaunchTimes(factory: Address | undefined, coins: number) {
 
 type RecentComment = { id: string; wallet: string; text: string; time: number; token: string; likes?: number; liked?: boolean; replies?: number; replyTo?: string };
 
+/*
+ * Comments this browser just posted from the post box. The feed shows them at once and reads again right away, rather
+ * than waiting for its next round; each drops out of this list as soon as a read brings it back from the server.
+ */
+const postedListeners = new Set<(comment: FeedComment) => void>();
+
+/** Tells every feed on the page about a comment this browser just posted. */
+export function notePosted(comment: FeedComment) {
+  for (const listener of postedListeners) listener(comment);
+}
+
+const NO_COMMENTS: FeedComment[] = [];
+const commentKey = (c: FeedComment) => `${c.token.toLowerCase()}:${c.id}`;
+
 /** The newest comments across these coins, read again every 45 seconds while the page is in view. `me` is who is asking, so the answer can say which ones they like. */
 function useRecentComments(tokens: string[], me: string | undefined): FeedComment[] {
   const key = tokens.join(",") + (me ? `&wallet=${me}` : "");
   const [found, setFound] = useState<{ of: string; items: FeedComment[] }>({ of: "", items: [] });
+  const [posted, setPosted] = useState<FeedComment[]>(NO_COMMENTS);
+  // Bumped by a post from this browser: reads again at once, past the few seconds the server's answer is cached for.
+  const [bump, setBump] = useState(0);
+  useEffect(() => {
+    const listener = (comment: FeedComment) => {
+      setPosted((list) => [...list.filter((c) => commentKey(c) !== commentKey(comment)), comment]);
+      setBump(Date.now());
+    };
+    postedListeners.add(listener);
+    return () => {
+      postedListeners.delete(listener);
+    };
+  }, []);
   useEffect(() => {
     if (!key) return;
     let off = false;
     const read = async () => {
       if (document.visibilityState !== "visible") return;
       try {
-        const res = await fetch(`/api/comments?recent=20&tokens=${key}`);
+        const res = await fetch(`/api/comments?recent=20&tokens=${key}${bump ? `&v=${bump}` : ""}`);
         const body = (await res.json().catch(() => null)) as { items?: RecentComment[] } | null;
         if (off || !res.ok || !body?.items) return;
         // Comments carry the server's clock in milliseconds; the feed runs on seconds, like the chain.
@@ -92,8 +119,23 @@ function useRecentComments(tokens: string[], me: string | undefined): FeedCommen
       off = true;
       clearInterval(timer);
     };
-  }, [key]);
-  return found.of === key ? found.items : [];
+  }, [key, bump]);
+  const items = found.of === key ? found.items : NO_COMMENTS;
+  // A posted comment the server's answer now has is that answer's from here on.
+  useEffect(() => {
+    if (posted.length === 0) return;
+    const have = new Set(items.map(commentKey));
+    setPosted((list) => {
+      const rest = list.filter((c) => !have.has(commentKey(c)));
+      return rest.length === list.length ? list : rest;
+    });
+  }, [items, posted.length]);
+  return useMemo(() => {
+    const listed = new Set(tokens);
+    const have = new Set(items.map(commentKey));
+    const extra = posted.filter((c) => listed.has(c.token.toLowerCase()) && !have.has(commentKey(c)));
+    return extra.length > 0 ? [...items, ...extra] : items;
+  }, [items, posted, tokens]);
 }
 
 /*

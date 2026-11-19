@@ -14,6 +14,7 @@ import { defaultTraderSort, orderTraders, traderRows, type TraderRow, type Trade
 import { FeedRow, QuickAmount, RowSkeleton, holdersIn, walletsIn, type RowContext } from "@/components/chimi/feed-rows";
 import { FollowButton } from "@/components/chimi/follow";
 import { IconArrowUp, IconPlus } from "@/components/chimi/icons";
+import { PostBox } from "@/components/chimi/post-box";
 import { useChimi } from "@/components/chimi/provider";
 import { DojangMark, useNow } from "@/components/chimi/rewards-bits";
 import { Highlights, TopTraders } from "@/components/chimi/social";
@@ -274,6 +275,7 @@ function Feed({ feed, images }: { feed: HomeFeed; images: Record<string, string 
           </div>
         ) : (
           <>
+            {tab === "foryou" && !preview ? <PostBox coins={feed.live} images={images} stats={feed.stats} ethUsd={feed.ethUsd} /> : null}
             {!feed.tradesReady ? <TradesOnTheWay /> : tab === "foryou" && feed.quiet ? <QuietLead feed={feed} usd={usd} /> : null}
             {page.length === 0 ? (
               <Empty mark="조용함" title={tab === "following" ? "Nothing from the wallets you follow yet" : "Nothing here yet"}>
