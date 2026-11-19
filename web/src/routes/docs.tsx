@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 import type { Address } from "viem";
-import { giwaSepolia, launchDex } from "@/lib/chimi/chain";
+import bundledDeployment from "../../public/deployments.json";
+import { giwaSepolia, launchDex, type Deployment } from "@/lib/chimi/chain";
 import { bpsLabel, splitFor, type FeeSplit } from "@/lib/chimi/fee-split";
 import { DOJANG_URL } from "@/lib/chimi/identity";
 import { feeLabel, shortAddr } from "@/lib/chimi/market";
@@ -37,7 +38,9 @@ const SECTIONS: [id: string, title: string][] = [
 ];
 
 function Docs() {
-  const { deployment } = useChimi();
+  // The deployment the app fetches at runtime, or until it has come (and on the server, so the page is sent whole) the
+  // copy bundled with this build: the same file.
+  const deployment = useChimi().deployment ?? (bundledDeployment as Deployment);
   const active = useActiveSection();
   const now: FeeSplit | null = deployment ? splitFor(deployment) : null;
   const flywheel = !!deployment?.flywheel;
