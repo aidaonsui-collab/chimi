@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as BoardRouteImport } from './routes/board'
+import { Route as DocsRouteImport } from './routes/docs'
 import { Route as LaunchRouteImport } from './routes/launch'
 import { Route as PointsRouteImport } from './routes/points'
 import { Route as PoolsRouteImport } from './routes/pools'
@@ -47,6 +48,11 @@ const AnalyticsRoute = AnalyticsRouteImport.update({
 const BoardRoute = BoardRouteImport.update({
   id: '/board',
   path: '/board',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocsRoute = DocsRouteImport.update({
+  id: '/docs',
+  path: '/docs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LaunchRoute = LaunchRouteImport.update({
@@ -159,6 +165,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/board': typeof BoardRoute
+  '/docs': typeof DocsRoute
   '/launch': typeof LaunchRoute
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
@@ -185,6 +192,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/board': typeof BoardRoute
+  '/docs': typeof DocsRoute
   '/launch': typeof LaunchRoute
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
@@ -212,6 +220,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/board': typeof BoardRoute
+  '/docs': typeof DocsRoute
   '/launch': typeof LaunchRoute
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
@@ -240,6 +249,7 @@ export interface FileRouteTypes {
     | '/'
     | '/analytics'
     | '/board'
+    | '/docs'
     | '/launch'
     | '/points'
     | '/pools'
@@ -266,6 +276,7 @@ export interface FileRouteTypes {
     | '/'
     | '/analytics'
     | '/board'
+    | '/docs'
     | '/launch'
     | '/points'
     | '/pools'
@@ -292,6 +303,7 @@ export interface FileRouteTypes {
     | '/'
     | '/analytics'
     | '/board'
+    | '/docs'
     | '/launch'
     | '/points'
     | '/pools'
@@ -319,6 +331,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AnalyticsRoute: typeof AnalyticsRoute
   BoardRoute: typeof BoardRoute
+  DocsRoute: typeof DocsRoute
   LaunchRoute: typeof LaunchRoute
   PointsRoute: typeof PointsRoute
   PoolsRoute: typeof PoolsRoute
@@ -363,6 +376,13 @@ declare module '@tanstack/react-router' {
       path: '/board'
       fullPath: '/board'
       preLoaderRoute: typeof BoardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/docs': {
+      id: '/docs'
+      path: '/docs'
+      fullPath: '/docs'
+      preLoaderRoute: typeof DocsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/launch': {
@@ -519,6 +539,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnalyticsRoute: AnalyticsRoute,
   BoardRoute: BoardRoute,
+  DocsRoute: DocsRoute,
   LaunchRoute: LaunchRoute,
   PointsRoute: PointsRoute,
   PoolsRoute: PoolsRoute,

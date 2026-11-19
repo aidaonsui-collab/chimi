@@ -14,6 +14,7 @@ import { Ticker } from "@/components/chimi/feed-rows";
 import {
   ChimiMark,
   IconBoard,
+  IconBook,
   IconChart,
   IconChevronRight,
   IconExternal,
@@ -33,7 +34,7 @@ import { Modal } from "@/components/chimi/ui";
 import { WalletButton } from "@/components/chimi/wallet-menu";
 
 type NavItem = {
-  to: "/" | "/traders" | "/swap" | "/pools" | "/analytics" | "/points" | "/houses" | "/launch";
+  to: "/" | "/traders" | "/swap" | "/pools" | "/analytics" | "/points" | "/houses" | "/launch" | "/docs";
   label: string;
   icon: ComponentType<{ size?: number; className?: string }>;
   on: (path: string) => boolean;
@@ -51,6 +52,7 @@ const NAV: NavItem[] = [
   { to: "/points", label: "Points", icon: IconPoints, on: (p) => p === "/points" },
   { to: "/houses", label: "Houses", icon: IconHouse, on: (p) => p.startsWith("/houses") },
   { to: "/analytics", label: "Analytics", icon: IconChart, on: (p) => p === "/analytics" },
+  { to: "/docs", label: "Docs", icon: IconBook, on: (p) => p === "/docs" },
 ];
 
 /**
@@ -363,6 +365,9 @@ function Footer() {
         </div>
         <div className="grid content-start gap-2.5 text-sm">
           <p className="th uppercase">Chain</p>
+          <Link to="/docs" className={link}>
+            Docs
+          </Link>
           <a href={explorer} target="_blank" rel="noreferrer" className={link}>
             GIWA explorer
           </a>

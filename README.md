@@ -141,6 +141,10 @@ The app picks each coin's DEX by the factory that made its pool (`dexOf` in `web
 - The locker pays wrapped ETH, so a claim is two confirmations: the sweep, then unwrapping what arrived. Turning down the second leaves the wrapped ETH in the wallet; the trade panel offers to unwrap any the wallet holds.
 - The amount waiting is a dry run of the sweep (`web/src/lib/chimi/fees.ts`).
 
+### Docs
+
+`/docs` (in the rail, the phone bar's More, the footer and search) explains Chimi on one page: launching, trading, fees, the CHIMI flywheel, creator rewards, points and leagues, houses, following and posts, Dojang and up.id, liquidity, contracts and risks. Its numbers come from the same rules the app runs on, and the fee table and contract list are read from `deployments.json`, so the page can't drift from what is deployed (`web/src/routes/docs.tsx`).
+
 ### Look and feel
 
 The site is one dark theme, defined in `web/src/styles.css`: colour tokens under `@theme` (night-sky surfaces, the vermilion `seal` accent, `gold` for small highlights, `ok` and `down` for price moves) and a small set of component classes (`card`, `btn`, `field`, `seg`, `chip`, `skeleton`). Buttons, chips and tab controls are pills; the picked tab is a light pill. Shared pieces live in `web/src/components/chimi/`: `shell.tsx` (an icon-only side rail with names beside the icons under the pointer and Launch as its round light button; search opens with `/` or Cmd/Ctrl+K, and on a phone from the magnifier in the top bar, the top bar with the live strip, the status bar, and on a phone one floating bar of icons with Launch in the middle), `ui.tsx`, `charts.tsx`, `icons.tsx`, `command.tsx` (search, opened with `/` or Cmd/Ctrl+K), `wallet-menu.tsx` and `toast.tsx`.
