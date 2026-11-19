@@ -54,36 +54,79 @@ const NAV: NavItem[] = [
 ];
 
 /**
- * The side rail: icons only, each a rounded square, with its name beside it while the pointer is on it (.rail-item
- * in styles.css). Launch is the round button under the pages. Search opens with / or Cmd/Ctrl+K.
+ * The side rail is a drawer: closed it is a strip of icons, and it slides open over the page, with Chimi beside the
+ * logo and each page's name beside its icon, while the pointer is on it or the keyboard is in it (.rail in
+ * styles.css). It closes when the pointer leaves, on a click (so the page you picked isn't left under it), and on
+ * Escape.
+ * Search opens with / or Cmd/Ctrl+K.
  */
+/** The closed rail's width in px: .rail in styles.css and the page's lg:pl-[72px]. */
+const RAIL_W = 72;
+
 function Rail({ path }: { path: string }) {
   const explorer = giwaSepolia.blockExplorers.default.url;
+  // Shut after a click with the pointer (detail > 0; a key press has none) until the pointer goes past the closed
+  // rail, or out of the window. Not on the rail's own pointerleave: the page change after a click fires one while the
+  // pointer is still on the icon, and the next nudge of the mouse would throw the drawer open again.
+  const [shut, setShut] = useState(false);
+  useEffect(() => {
+    if (!shut) return;
+    const onMove = (e: PointerEvent) => {
+      if (e.clientX > RAIL_W) setShut(false);
+    };
+    const onOut = (e: PointerEvent) => {
+      if (!e.relatedTarget) setShut(false);
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    document.addEventListener("pointerout", onOut);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerout", onOut);
+    };
+  }, [shut]);
+  const closeOnClick = (e: React.MouseEvent<HTMLElement>) => {
+    if (e.detail === 0 || !(e.target as HTMLElement).closest("a")) return;
+    setShut(true);
+    (document.activeElement as HTMLElement | null)?.blur();
+  };
+  const closeOnEscape = (e: React.KeyboardEvent<HTMLElement>) => {
+    if (e.key === "Escape") (document.activeElement as HTMLElement | null)?.blur();
+  };
   return (
-    <aside className="vt-rail fixed inset-y-0 left-0 z-40 hidden w-[72px] flex-col items-center border-r border-line bg-bg lg:flex">
-      <Link to="/" className="grid h-16 w-full shrink-0 place-items-center" aria-label="Chimi home">
-        <ChimiMark size={36} />
+    <aside
+      className="rail vt-rail fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-line bg-bg lg:flex"
+      data-shut={shut ? "" : undefined}
+      onClick={closeOnClick}
+      onKeyDown={closeOnEscape}
+    >
+      <Link to="/" className="rail-brand" aria-label="Chimi home">
+        <ChimiMark size={36} className="shrink-0" />
+        <span className="rail-label rail-name">
+          Chimi <span className="font-serif text-[15px] font-normal text-gold">치미</span>
+        </span>
       </Link>
-      <nav className="mt-1 flex flex-1 flex-col items-center gap-1.5" aria-label="Main">
+      <nav className="rail-nav mt-1 flex flex-1 flex-col gap-1.5" aria-label="Main">
         {NAV.map((item) => {
           const Icon = item.icon;
           const on = item.on(path);
           return (
-            <Link key={item.to} to={item.to} aria-current={on ? "page" : undefined} className="rail-item" aria-label={item.label}>
-              <Icon size={21} />
-              <span className="rail-tip">{item.label}</span>
+            <Link key={item.to} to={item.to} aria-current={on ? "page" : undefined} className="rail-item">
+              <Icon size={21} className="shrink-0" />
+              <span className="rail-label">{item.label}</span>
             </Link>
           );
         })}
-        <Link to="/launch" aria-current={path === "/launch" ? "page" : undefined} className="rail-launch" aria-label="Launch a coin">
-          <IconPlus size={22} />
-          <span className="rail-tip">Launch a coin</span>
+        <Link to="/launch" aria-current={path === "/launch" ? "page" : undefined} className="rail-launch">
+          <IconPlus size={22} className="shrink-0" />
+          <span className="rail-label">Launch a coin</span>
         </Link>
       </nav>
-      <a href={explorer} target="_blank" rel="noreferrer" className="rail-item mb-12" aria-label="GIWA explorer">
-        <IconExternal size={19} />
-        <span className="rail-tip">GIWA explorer</span>
-      </a>
+      <div className="rail-nav mb-12">
+        <a href={explorer} target="_blank" rel="noreferrer" className="rail-item">
+          <IconExternal size={19} className="shrink-0" />
+          <span className="rail-label">GIWA explorer</span>
+        </a>
+      </div>
     </aside>
   );
 }
