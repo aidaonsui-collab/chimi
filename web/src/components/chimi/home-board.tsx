@@ -8,6 +8,8 @@ import { shortWallet, useProfiles } from "@/lib/chimi/rewards";
 import { QuickAmount, QuickBuy } from "@/components/chimi/feed-rows";
 import { IconPlus } from "@/components/chimi/icons";
 import { TokenLogo } from "@/components/chimi/token-logo";
+import { LivePill } from "@/components/chimi/stream";
+import { useLiveTokens } from "@/lib/chimi/streams";
 import { Change, Seg, Sparkline } from "@/components/chimi/ui";
 
 /*
@@ -76,6 +78,7 @@ export function PairsBoard({ coins, stats, images, reserves, ethUsd, launched, k
   const page = ranked.slice(0, shown);
   const creators = useMemo(() => [...new Set(page.map((r) => r.coin.creator.toLowerCase()))], [page]);
   const profiles = useProfiles(creators, known);
+  const live = useLiveTokens();
 
   const usd = (eth: number | undefined) => (eth === undefined ? "—" : ethUsd ? compactUsd(eth * ethUsd) : `${ethText(eth)} ETH`);
 
@@ -165,6 +168,7 @@ export function PairsBoard({ coins, stats, images, reserves, ethUsd, launched, k
                         <span className="flex items-center gap-1.5">
                           <span className="truncate text-[15px] font-semibold">{row.coin.name}</span>
                           {row.coin.preview ? <span className="chip h-[18px] shrink-0 px-1.5 text-[10.5px]">preview</span> : null}
+                          {live.has(row.coin.token.toLowerCase()) ? <LivePill small /> : null}
                         </span>
                         <span className="num flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted">
                           <span className="shrink-0">${row.coin.symbol}</span>

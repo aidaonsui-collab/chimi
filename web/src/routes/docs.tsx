@@ -28,6 +28,7 @@ const SECTIONS: [id: string, title: string][] = [
   ["fees", "Fees"],
   ["flywheel", "CHIMI flywheel"],
   ["creators", "Creator rewards"],
+  ["streams", "Live streams"],
   ["points", "Points and leagues"],
   ["houses", "Houses"],
   ["social", "Following and posts"],
@@ -223,6 +224,20 @@ function Docs() {
                   The creator sees a card on the coin's page with what is waiting and a Claim button. The fees arrive as wrapped ETH, so claiming is two
                   confirmations: the sweep, then turning it into ETH.
                 </>,
+              ]}
+            />
+          </Section>
+
+          <Section id="streams" title="Live streams">
+            <List
+              items={[
+                <>
+                  The creator can link a YouTube or SOOP channel to their coin with one signature, no gas. Whenever that channel is live, the stream plays at
+                  the top of the coin's page and the coin shows LIVE on the board.
+                </>,
+                <>The stream plays in YouTube's or SOOP's own player. Chimi doesn't record or host it.</>,
+                <>A stream marked 19+, behind a password, or closed to other sites shows a button to watch it on its own site instead.</>,
+                <>Chimi can take down a link that breaks the rules.</>,
               ]}
             />
           </Section>

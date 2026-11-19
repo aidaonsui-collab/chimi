@@ -25,6 +25,7 @@ import { Route as ApiFollowsRouteImport } from './routes/api/follows'
 import { Route as ApiHousesRouteImport } from './routes/api/houses'
 import { Route as ApiInboxRouteImport } from './routes/api/inbox'
 import { Route as ApiPointsRouteImport } from './routes/api/points'
+import { Route as ApiStreamsRouteImport } from './routes/api/streams'
 import { Route as ApiTokenMetaRouteImport } from './routes/api/token-meta'
 import { Route as ApiTraderRouteImport } from './routes/api/trader'
 import { Route as ApiUploadRouteImport } from './routes/api/upload'
@@ -115,6 +116,11 @@ const ApiPointsRoute = ApiPointsRouteImport.update({
   path: '/api/points',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiStreamsRoute = ApiStreamsRouteImport.update({
+  id: '/api/streams',
+  path: '/api/streams',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiTokenMetaRoute = ApiTokenMetaRouteImport.update({
   id: '/api/token-meta',
   path: '/api/token-meta',
@@ -178,6 +184,7 @@ export interface FileRoutesByFullPath {
   '/api/houses': typeof ApiHousesRoute
   '/api/inbox': typeof ApiInboxRoute
   '/api/points': typeof ApiPointsRoute
+  '/api/streams': typeof ApiStreamsRoute
   '/api/token-meta': typeof ApiTokenMetaRoute
   '/api/trader': typeof ApiTraderRoute
   '/api/upload': typeof ApiUploadRoute
@@ -205,6 +212,7 @@ export interface FileRoutesByTo {
   '/api/houses': typeof ApiHousesRoute
   '/api/inbox': typeof ApiInboxRoute
   '/api/points': typeof ApiPointsRoute
+  '/api/streams': typeof ApiStreamsRoute
   '/api/token-meta': typeof ApiTokenMetaRoute
   '/api/trader': typeof ApiTraderRoute
   '/api/upload': typeof ApiUploadRoute
@@ -233,6 +241,7 @@ export interface FileRoutesById {
   '/api/houses': typeof ApiHousesRoute
   '/api/inbox': typeof ApiInboxRoute
   '/api/points': typeof ApiPointsRoute
+  '/api/streams': typeof ApiStreamsRoute
   '/api/token-meta': typeof ApiTokenMetaRoute
   '/api/trader': typeof ApiTraderRoute
   '/api/upload': typeof ApiUploadRoute
@@ -262,6 +271,7 @@ export interface FileRouteTypes {
     | '/api/houses'
     | '/api/inbox'
     | '/api/points'
+    | '/api/streams'
     | '/api/token-meta'
     | '/api/trader'
     | '/api/upload'
@@ -289,6 +299,7 @@ export interface FileRouteTypes {
     | '/api/houses'
     | '/api/inbox'
     | '/api/points'
+    | '/api/streams'
     | '/api/token-meta'
     | '/api/trader'
     | '/api/upload'
@@ -316,6 +327,7 @@ export interface FileRouteTypes {
     | '/api/houses'
     | '/api/inbox'
     | '/api/points'
+    | '/api/streams'
     | '/api/token-meta'
     | '/api/trader'
     | '/api/upload'
@@ -344,6 +356,7 @@ export interface RootRouteChildren {
   ApiHousesRoute: typeof ApiHousesRoute
   ApiInboxRoute: typeof ApiInboxRoute
   ApiPointsRoute: typeof ApiPointsRoute
+  ApiStreamsRoute: typeof ApiStreamsRoute
   ApiTokenMetaRoute: typeof ApiTokenMetaRoute
   ApiTraderRoute: typeof ApiTraderRoute
   ApiUploadRoute: typeof ApiUploadRoute
@@ -469,6 +482,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPointsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/streams': {
+      id: '/api/streams'
+      path: '/api/streams'
+      fullPath: '/api/streams'
+      preLoaderRoute: typeof ApiStreamsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/token-meta': {
       id: '/api/token-meta'
       path: '/api/token-meta'
@@ -552,6 +572,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiHousesRoute: ApiHousesRoute,
   ApiInboxRoute: ApiInboxRoute,
   ApiPointsRoute: ApiPointsRoute,
+  ApiStreamsRoute: ApiStreamsRoute,
   ApiTokenMetaRoute: ApiTokenMetaRoute,
   ApiTraderRoute: ApiTraderRoute,
   ApiUploadRoute: ApiUploadRoute,

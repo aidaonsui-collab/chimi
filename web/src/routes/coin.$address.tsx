@@ -18,6 +18,7 @@ import { publishTokenProfile, refreshTokenProfiles, sharedStorageEnabled, useTok
 import { CandleChart, type ChartBubble } from "@/components/chimi/candle-chart";
 import {
   IconArrowDown,
+  IconBroadcast,
   IconCandles,
   IconChevronRight,
   IconExternal,
@@ -34,6 +35,9 @@ import { Comments } from "@/components/chimi/comments";
 import { useComments } from "@/lib/chimi/comments";
 import { CopyNotice, copySize } from "@/components/chimi/copy";
 import { CreatorFeesCard } from "@/components/chimi/creator-fees";
+import { StreamIdle, StreamSheet, StreamStage } from "@/components/chimi/stream";
+import { platformName } from "@/lib/chimi/stream-rules";
+import { useStream } from "@/lib/chimi/streams";
 import { FlywheelCard } from "@/components/chimi/flywheel-card";
 import { toast } from "@/components/chimi/toast";
 import { EthLogo, TokenLogo } from "@/components/chimi/token-logo";
@@ -91,6 +95,8 @@ function CoinPage() {
   const [busy, setBusy] = useState(false);
   const meta = useTokenProfile(address);
   const [editing, setEditing] = useState(false);
+  const [streaming, setStreaming] = useState(false);
+  const stream = useStream(address);
   const ethUsd = useEthUsd();
   const [payBal, setPayBal] = useState<bigint>();
   const [wethBal, setWethBal] = useState<bigint>();
@@ -471,7 +477,18 @@ function CoinPage() {
                   <IconGlobe size={16} />
                 </IconLink>
               ) : null}
+              {stream ? (
+                <IconLink href={stream.url} label={`${platformName(stream.link.platform)} channel`}>
+                  <IconBroadcast size={16} />
+                </IconLink>
+              ) : null}
               <CopyButton text={typeof window === "undefined" ? "" : window.location.href} label="Copy link to this coin" className="btn btn-icon btn-sm btn-secondary size-9 rounded-xl" size={16} />
+              {isCreator ? (
+                <button type="button" onClick={() => setStreaming(true)} className="btn btn-sm btn-secondary h-9 rounded-xl">
+                  <IconBroadcast size={15} />
+                  {stream ? "Stream" : "Go live"}
+                </button>
+              ) : null}
               {isCreator ? (
                 <button type="button" onClick={() => setEditing(true)} className="btn btn-sm h-9 rounded-xl border-gold/35 bg-gold/10 text-gold hover:bg-gold/15">
                   <IconImage size={15} />
@@ -495,7 +512,13 @@ function CoinPage() {
       </header>
 
       <div className="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
-        <section className="card min-w-0 p-4 sm:p-6 lg:col-start-1">
+        <div className="grid min-w-0 gap-5 lg:col-start-1">
+        {stream?.status.live ? (
+          <StreamStage view={stream} symbol={coin.symbol} />
+        ) : stream && isCreator ? (
+          <StreamIdle view={stream} symbol={coin.symbol} onManage={() => setStreaming(true)} />
+        ) : null}
+        <section className="card min-w-0 p-4 sm:p-6">
           <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
             <div>
               <p className="text-[13px] text-muted">Market cap</p>
@@ -556,6 +579,7 @@ function CoinPage() {
             )}
           </div>
         </section>
+        </div>
 
         <aside className="grid min-w-0 grid-cols-1 gap-5 lg:sticky lg:top-20 lg:col-start-2 lg:row-span-2 lg:row-start-1">
           <section className="card p-3 shadow-[0_30px_60px_-30px_rgba(0,0,0,.8)]">
@@ -848,6 +872,7 @@ function CoinPage() {
         </section>
       </div>
 
+      {isCreator && streaming ? <StreamSheet token={coin.token} symbol={coin.symbol} current={stream} onClose={() => setStreaming(false)} /> : null}
       {isCreator && editing ? <ProfileEditor token={coin.token} symbol={coin.symbol} initial={meta} sign={signMessage} onDone={() => setEditing(false)} /> : null}
     </main>
   );
