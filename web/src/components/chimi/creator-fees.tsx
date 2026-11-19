@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { giwaSepolia } from "@/lib/chimi/chain";
-import { loadCreatorFees, shareLabel, type CreatorFees } from "@/lib/chimi/fees";
+import { loadCreatorFees, shareLabel, type CreatorFees, type LockedPosition } from "@/lib/chimi/fees";
 import { amountText, money } from "@/lib/chimi/format";
 import { useEthUsd } from "@/lib/chimi/live";
-import { short, shortAddr, type Coin } from "@/lib/chimi/market";
+import { feeLabel, short, shortAddr, type Coin } from "@/lib/chimi/market";
 import { useChimi } from "@/components/chimi/provider";
 import { toast } from "@/components/chimi/toast";
 import { Note } from "@/components/chimi/ui";
@@ -58,12 +58,12 @@ function useClaim(onDone: () => void) {
   const [note, setNote] = useState("");
   const [kind, setKind] = useState<"" | "bad" | "good">("");
 
-  async function claim(positionIds: bigint[]) {
+  async function claim(positions: LockedPosition[]) {
     try {
       setBusy(true);
       setKind("");
       setNote("Confirm the claim in your wallet.");
-      const { hash, received } = await claimFees(positionIds);
+      const { hash, received } = await claimFees(positions);
       if (received === 0n) {
         setKind("good");
         setNote("Fees sent.");
@@ -128,7 +128,7 @@ export function CreatorFeesCard({ coin, bump = 0 }: { coin: Coin; bump?: number 
       ) : (
         <span className="skeleton mt-3 block h-[50px] w-40 rounded-lg" />
       )}
-      <button type="button" disabled={busy || nothing} onClick={() => mine && void claim([mine.positionId])} className="btn btn-primary mt-4 w-full disabled:opacity-40">
+      <button type="button" disabled={busy || nothing} onClick={() => mine && void claim([{ locker: mine.locker, positionId: mine.positionId }])} className="btn btn-primary mt-4 w-full disabled:opacity-40">
         {busy ? "Confirming…" : paidHere || !mine ? "Claim" : `Send to ${shortAddr(mine.wallet)}`}
       </button>
       <Note kind={kind} className="mt-2.5 text-center">
@@ -137,7 +137,7 @@ export function CreatorFeesCard({ coin, bump = 0 }: { coin: Coin; bump?: number 
       <p className="mt-2 text-xs leading-relaxed text-faint">
         {mine && !paidHere
           ? `This coin pays its creator fees to ${shortAddr(mine.wallet)}, the wallet chosen at launch.`
-          : "Every trade pays the pool 1%. You earn a share of the part paid in ETH on the locked launch liquidity; the part paid in the coin is burned when you claim. A claim is two confirmations: the claim, then turning it into ETH."}
+          : `Every trade pays the pool ${feeLabel(coin.fee)}. You earn a share of the part paid in ETH on the locked launch liquidity; the part paid in the coin is burned when you claim. A claim is two confirmations: the claim, then turning it into ETH.`}
       </p>
     </section>
   );
@@ -160,7 +160,7 @@ export function LaunchedFeesBar({ fees, onDone }: { fees: Record<string, Creator
             {amountText(total, 6)} ETH{ethUsd && total > 0n ? ` · ${money((Number(total) / 1e18) * ethUsd)}` : ""}
           </span>
         </span>
-        <button type="button" disabled={busy || total === 0n} onClick={() => void claim(due.map((f) => f.positionId))} className="btn btn-sm btn-primary shrink-0 disabled:opacity-40">
+        <button type="button" disabled={busy || total === 0n} onClick={() => void claim(due.map((f) => ({ locker: f.locker, positionId: f.positionId })))} className="btn btn-sm btn-primary shrink-0 disabled:opacity-40">
           {busy ? "Confirming…" : due.length > 1 ? "Claim all" : "Claim"}
         </button>
       </div>
@@ -197,7 +197,7 @@ export function CreatorFeesMini({ coins }: { coins: Coin[] }) {
       <p className="mt-1.5 text-sm text-muted">
         {total === 0n ? "Nothing to claim yet" : ethUsd ? `${money((Number(total) / 1e18) * ethUsd)} waiting` : "Waiting"} across the {mine.length === 1 ? "coin" : `${mine.length} coins`} you launched.
       </p>
-      <button type="button" disabled={busy || total === 0n} onClick={() => void claim(due.map((f) => f.positionId))} className="btn btn-primary mt-4 w-full disabled:opacity-40">
+      <button type="button" disabled={busy || total === 0n} onClick={() => void claim(due.map((f) => ({ locker: f.locker, positionId: f.positionId })))} className="btn btn-primary mt-4 w-full disabled:opacity-40">
         {busy ? "Confirming…" : due.length > 1 ? "Claim all" : "Claim"}
       </button>
       {note ? (

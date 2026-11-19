@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createWalletClient, custom, encodeFunctionData, type Address, type EIP1193Provider } from "viem";
-import { erc20Abi, giwaSepolia, positionManagerAbi } from "@/lib/chimi/chain";
+import { dexOf, dexesOf, erc20Abi, giwaSepolia, positionManagerAbi } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { feeLabel, loadSwapWindow, wethPerToken, type Coin } from "@/lib/chimi/market";
 import { compactUsd, pct } from "@/lib/chimi/format";
@@ -43,6 +43,8 @@ type Position = {
   owed1: bigint;
   token0: Address;
   token1: Address;
+  /** The position manager holding it: positions on each of Chimi's DEXes live in that DEX's own. */
+  npm: Address;
 };
 
 type SortKey = "tvl" | "vol1d" | "vol30d" | "ratio" | "apr";
@@ -130,40 +132,26 @@ function PoolsPage() {
     }
     let cancel = false;
     void (async () => {
-      const count = await publicClient.readContract({
-        address: deployment.positionManager,
-        abi: positionManagerAbi,
-        functionName: "balanceOf",
-        args: [account],
-      });
       const next: Position[] = [];
-      for (let i = 0n; i < count; i++) {
-        const id = await publicClient.readContract({
-          address: deployment.positionManager,
-          abi: positionManagerAbi,
-          functionName: "tokenOfOwnerByIndex",
-          args: [account, i],
-        });
-        const pos = await publicClient.readContract({
-          address: deployment.positionManager,
-          abi: positionManagerAbi,
-          functionName: "positions",
-          args: [id],
-        });
-        const token0 = pos[2];
-        const token1 = pos[3];
-        const coin = coins.find((item) => !item.preview && (item.token.toLowerCase() === token0.toLowerCase() || item.token.toLowerCase() === token1.toLowerCase()));
-        next.push({
-          id,
-          coin,
-          liquidity: pos[7],
-          tickLower: Number(pos[5]),
-          tickUpper: Number(pos[6]),
-          owed0: pos[10],
-          owed1: pos[11],
-          token0: pos[2],
-          token1: pos[3],
-        });
+      // Every DEX keeps its own positions, and their ids start from 1 on each, so each is read on its own.
+      for (const dex of dexesOf(deployment)) {
+        const npm = dex.positionManager;
+        const count = await publicClient.readContract({ address: npm, abi: positionManagerAbi, functionName: "balanceOf", args: [account] });
+        for (let i = 0n; i < count; i++) {
+          const id = await publicClient.readContract({ address: npm, abi: positionManagerAbi, functionName: "tokenOfOwnerByIndex", args: [account, i] });
+          const pos = await publicClient.readContract({ address: npm, abi: positionManagerAbi, functionName: "positions", args: [id] });
+          const token0 = pos[2];
+          const token1 = pos[3];
+          // A position counts for a coin only in that coin's own pool: its DEX and its fee.
+          const coin = coins.find(
+            (item) =>
+              !item.preview &&
+              (item.token.toLowerCase() === token0.toLowerCase() || item.token.toLowerCase() === token1.toLowerCase()) &&
+              dexOf(deployment, item).positionManager.toLowerCase() === npm.toLowerCase() &&
+              (item.fee === undefined || item.fee === Number(pos[4])),
+          );
+          next.push({ id, coin, liquidity: pos[7], tickLower: Number(pos[5]), tickUpper: Number(pos[6]), owed0: pos[10], owed1: pos[11], token0, token1, npm });
+        }
       }
       if (!cancel) setPositions(next);
     })().catch(() => undefined);
@@ -232,7 +220,7 @@ function PoolsPage() {
           encodeFunctionData({
             abi: positionManagerAbi,
             functionName: "collect",
-            args: [{ tokenId: position.id, recipient: deployment.positionManager, amount0Max: 2n ** 128n - 1n, amount1Max: 2n ** 128n - 1n }],
+            args: [{ tokenId: position.id, recipient: position.npm, amount0Max: 2n ** 128n - 1n, amount1Max: 2n ** 128n - 1n }],
           }),
           encodeFunctionData({ abi: positionManagerAbi, functionName: "unwrapWETH9", args: [0n, account] }),
           encodeFunctionData({ abi: positionManagerAbi, functionName: "sweepToken", args: [position.coin!.token, 0n, account] }),
@@ -240,12 +228,13 @@ function PoolsPage() {
         const hash = await wallet.writeContract({
           account,
           chain: giwaSepolia,
-          address: deployment.positionManager,
+          address: position.npm,
           abi: positionManagerAbi,
           functionName: "multicall",
           args: [calls],
         });
-        await publicClient.waitForTransactionReceipt({ hash });
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        if (receipt.status !== "success") throw new Error("Collecting fees failed on-chain, so nothing changed. Try again.");
       }
       setNote("Fees collected.");
       toast({ kind: "good", title: "Fees collected", body: "They’re in your wallet as ETH and tokens." });
@@ -275,7 +264,7 @@ function PoolsPage() {
           </>
         }
       >
-        Add a position on a Chimi pool and earn a share of the 1% swap fee. The launch liquidity itself stays locked.
+        Add a position on a Chimi pool and earn a share of its swap fee (1% on older coins, 2% on new ones). The launch liquidity itself stays locked.
       </PageHead>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
@@ -308,7 +297,7 @@ function PoolsPage() {
               )
             }
           >
-            {account ? "You don’t have any liquidity positions. Add one to a Chimi pool to start earning the 1% swap fee." : "Connect a wallet to see positions you can collect from."}
+            {account ? "You don’t have any liquidity positions. Add one to a Chimi pool to start earning its swap fee." : "Connect a wallet to see positions you can collect from."}
           </Empty>
         </div>
       ) : (

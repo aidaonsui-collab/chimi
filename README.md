@@ -32,6 +32,38 @@ forge script script/DeployChimiGiwa.s.sol \
 
 The script writes `web/public/deployments.json`. Quote is the canonical WETH `0x4200…0006`. Opening virtual quote defaults to 1 ETH. The liquidity lock lasts 100 years. Optional env: `TREASURY`, `LOCK_DURATION`, `CREATION_FEE_WEI`, `LAUNCH_VIRTUAL_QUOTE`.
 
+### The 2% DEX and the CHIMI flywheel
+
+Coins launched from here on go to a second copy of Uniswap v3, with 2% and 3% fee tiers switched on (launches use 2%) and its own position manager, router and locker. A locker only serves one position manager. Their ETH fees split **70% creator · 15% platform · 15% flywheel**, and the coin side still burns. Coins launched before keep their 1% pools and their 70/30 split.
+
+- **`ChimiFlywheel`** (`src/ChimiFlywheel.sol`) receives the 15% as the locker's staker share, which arrives as native ETH, and splits every arrival in half:
+  - **The burn half** buys CHIMI in its 1% pool and sends it to `0x…dEaD`.
+  - **The holder half** is paid in ETH to wallets holding 10,000+ CHIMI.
+- **What its roles can do:**
+  - The owner can only change the keeper.
+  - The keeper can only burn, at a minimum price it names, and pay holders, never more than the holder half holds, and each (day, batch) only once.
+  - CHIMI, the router, the pool fee and the split are fixed when it's deployed.
+- **`script/ChimiDexV2.sol`** deploys the second DEX, its locker and the flywheel. It then makes three settings on the existing pad and fee source, which reach new launches only. Last, it gives up the new DEX's owner once the tiers are checked.
+- **Tests:** `test/ChimiFlywheel.t.sol` covers the 2% launch in both currency orders, the opening price (fuzzed), the 70/15/15 split, the burn, the payouts, a wallet that refuses ETH, and who can do what.
+
+Deploy it, signed by the pad's owner. `KEEPER` is the address the daily keeper sends from; it only needs gas:
+
+```
+KEEPER=0x… PRIVATE_KEY=0x… forge script script/DeployChimiFlywheel.s.sol \
+  --rpc-url https://sepolia-rpc.giwa.io \
+  --broadcast --slow
+```
+
+The script checks that the signer owns the pad and that CHIMI is a 1% coin on the first DEX before it sends anything. It adds `dexes` and `flywheel` to `web/public/deployments.json` and leaves the first DEX's addresses at the top level.
+
+**The keeper** (`web/src/server/flywheel.ts`) runs once a day at 00:10 KST, from Vercel Cron (`vite.config.ts`) to `/api/keeper/flywheel`. Each step runs even if the one before it fails:
+
+1. It sweeps the fees of every coin on the 2% DEX, which also pays creators their 70% automatically.
+2. It burns with the burn half, up to 0.25 ETH a day, at no less than 98% of a dry run's price.
+3. It pays the KST day that just ended. A wallet's share is its average CHIMI balance over that day, worked out from CHIMI's transfers, so buying just before the payout earns little. The rules are in `web/src/lib/chimi/flywheel-rules.ts`, with tests in `web/test/flywheel.test.ts`. Pools, contracts, the burn address and Chimi's own wallets are left out.
+
+The day's plan is saved before anything is sent, so a stopped run finishes the same plan next time. Env: `KEEPER_PRIVATE_KEY` (the keeper wallet) and `CRON_SECRET` (Vercel sends it to the cron route; nothing else may call it). `?dry=1` plans a run without sending anything. `/api/flywheel` serves the last run's report to the rewards panel on the Points page and the CHIMI page.
+
 ## Site
 
 ```
@@ -100,7 +132,9 @@ Because the router receives the swap's output, the pool's `Swap` log names the r
 
 ### Creator fees
 
-Each coin's launch liquidity is held by the locker and earns the pool's 1% fee. Of the part paid in ETH, the creator's share (70% today, stamped on the lock at launch) goes to the creator and the rest to the platform; the part paid in the coin is burned. Nothing moves until the position is swept with `collectFees` on the locker, which anyone can call.
+Each coin's launch liquidity is held by its DEX's locker and earns the pool's fee: 1% for coins on the first DEX, 2% for coins on the second. Of the part paid in ETH, the creator's share goes to the creator. That share is 70% on both DEXes and is stamped on the lock at launch. The rest goes to the platform, or on the second DEX is split between the platform and the CHIMI flywheel. The part paid in the coin is burned. Nothing moves until the position is swept with `collectFees` on the locker. Anyone can call it, and the flywheel's keeper does daily for coins on the second DEX.
+
+The app picks each coin's DEX by the factory that made its pool (`dexOf` in `web/src/lib/chimi/chain.ts`). That choice covers trades, quotes, claims and liquidity positions. A claim covering coins on both DEXes is one sweep per locker, because position ids repeat across DEXes.
 
 - A coin's page shows its creator a **Your creator fees** card with the amount waiting and a Claim button (`web/src/components/chimi/creator-fees.tsx`).
 - A trader's own page lists the fees waiting on each coin they launched, with one button that sweeps them all (`collectFeesBatch`).
