@@ -95,7 +95,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         group: "Houses",
         title: h.name,
         sub: `[${h.tag}]${h.motto ? ` · ${h.motto}` : ""}`,
-        mark: <HouseSeal seal={h.seal} ink={h.ink} size={36} />,
+        mark: <HouseSeal seal={h.seal} ink={h.ink} image={h.image} size={36} />,
         go: close(() => void navigate({ to: "/houses/$tag", params: { tag: h.tag } })),
       });
     }

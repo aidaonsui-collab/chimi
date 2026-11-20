@@ -3,11 +3,27 @@ import { INKS, type Ink, type Seal } from "@/lib/chimi/house-rules";
 
 /**
  * A house's crest: its seal character stamped in its ink on a square of rice paper, grainy like Chimi's own seal.
- * The ink grain is drawn in the seal's own 100-unit box, so it looks the same at every size.
+ * The ink grain is drawn in the seal's own 100-unit box, so it looks the same at every size. A house with its own
+ * picture shows the picture on the same paper, framed in its ink.
  */
-export function HouseSeal({ seal, ink, size = 44, className = "", title }: { seal: Seal; ink: Ink; size?: number; className?: string; title?: string }) {
+export function HouseSeal({ seal, ink, image, size = 44, className = "", title }: { seal: Seal; ink: Ink; image?: string; size?: number; className?: string; title?: string }) {
   const id = useId().replace(/:/g, "");
   const color = INKS[ink] ?? INKS.seal;
+  if (image) {
+    const r = Math.max(3, size * 0.14);
+    const pad = Math.max(2, Math.round(size * 0.07));
+    return (
+      <span
+        className={`relative inline-block shrink-0 overflow-hidden ${className}`}
+        role={title ? "img" : undefined}
+        aria-label={title}
+        aria-hidden={title ? undefined : true}
+        style={{ width: size, height: size, borderRadius: r, padding: pad, background: "radial-gradient(circle at 35% 28%, #f3ead8, #ddd0b4)" }}
+      >
+        <img src={image} alt="" draggable={false} loading="lazy" decoding="async" className="block size-full object-cover" style={{ borderRadius: Math.max(2, r - pad), boxShadow: `0 0 0 ${Math.max(1, size * 0.035)}px ${color}` }} />
+      </span>
+    );
+  }
   return (
     <svg
       viewBox="0 0 100 100"

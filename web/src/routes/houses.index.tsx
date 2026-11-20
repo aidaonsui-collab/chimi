@@ -55,7 +55,7 @@ function HousesPage() {
             params={{ tag: myHouse.house.tag }}
             className="card card-lift group mt-7 flex items-center gap-4 border-gold/30 p-4 pr-5 sm:p-5"
           >
-            <HouseSeal seal={myHouse.house.seal} ink={myHouse.house.ink} size={56} />
+            <HouseSeal seal={myHouse.house.seal} ink={myHouse.house.ink} image={myHouse.house.image} size={56} />
             <div className="min-w-0 flex-1">
               <p className="eyebrow">Your house</p>
               <p className="mt-0.5 truncate text-lg font-semibold">
@@ -124,11 +124,16 @@ function HousesPage() {
                     >
                       <span className={`num text-sm ${s.rank <= 3 ? "font-semibold text-gold" : "text-faint"}`}>{s.rank}</span>
                       <span className="flex min-w-0 items-center gap-3.5">
-                        <HouseSeal seal={s.house.seal} ink={s.house.ink} size={46} />
+                        <HouseSeal seal={s.house.seal} ink={s.house.ink} image={s.house.image} size={46} />
                         <span className="min-w-0">
                           <span className="flex min-w-0 items-center gap-2">
                             <span className="truncate text-base font-medium">{s.house.name}</span>
                             <span className="shrink-0 rounded-md border border-edge bg-raise px-1.5 py-px text-[11px] font-semibold tracking-[0.08em] text-muted">{s.house.tag}</span>
+                            {s.house.approve ? (
+                              <span className="hidden shrink-0 rounded-md bg-gold/12 px-1.5 py-px text-[11px] font-medium text-gold sm:inline" title="The head approves new members">
+                                Ask to join
+                              </span>
+                            ) : null}
                           </span>
                           <span className="block truncate text-[13px] text-muted">
                             {s.house.motto || `${s.members.length} member${s.members.length === 1 ? "" : "s"}`}
@@ -162,7 +167,7 @@ function HousesPage() {
                 ["도장", "Dojang holders", "Founding and joining need a GIWA Dojang, so a house is people, not a pile of fresh wallets."],
                 ["칠일", `${LOCK_DAYS} days in`, `Joining keeps you in for ${LOCK_DAYS} days. You can leave any time, but can’t join another house until then. Going back is fine.`],
                 ["자정", "Midnight decides", "Each day’s points count for the house you’re in when the day ends in Seoul."],
-                ["가주", "The head", "The founder heads the house, sets its seal and motto, and can remove members. If the head leaves, the longest-standing member takes over."],
+                ["가주", "The head", "The founder heads the house: sets its seal (a stamp or a picture) and motto, chooses whether anyone can join or each one needs their yes, and can remove members. If the head leaves, the longest-standing member takes over."],
               ] as const
             ).map(([ko, title, body]) => (
               <div key={title} className="card p-5">

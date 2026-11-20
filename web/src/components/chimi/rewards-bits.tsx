@@ -31,7 +31,7 @@ export function WalletName({ wallet, profile, you }: { wallet: string; profile?:
 
 /** The stamp next to a name: its house's seal, or a blank paper tile. */
 export function WalletMark({ house, size = 34 }: { house?: House; size?: number }) {
-  if (house) return <HouseSeal seal={house.seal} ink={house.ink} size={size} title={`${house.name} [${house.tag}]`} />;
+  if (house) return <HouseSeal seal={house.seal} ink={house.ink} image={house.image} size={size} title={`${house.name} [${house.tag}]`} />;
   return (
     <span
       className="grid shrink-0 place-items-center rounded-[9px] border border-dashed border-edge bg-bg/40"

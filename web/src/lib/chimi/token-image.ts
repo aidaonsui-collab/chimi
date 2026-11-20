@@ -154,7 +154,7 @@ export async function uploadImage(file: File): Promise<string> {
   return body.url;
 }
 
-async function dataUrlToFile(dataUrl: string, name: string): Promise<File> {
+export async function dataUrlToFile(dataUrl: string, name: string): Promise<File> {
   const blob = await (await fetch(dataUrl)).blob();
   const ext = blob.type.split("/")[1]?.replace("jpeg", "jpg") || "jpg";
   return new File([blob], `${name}.${ext}`, { type: blob.type || "image/jpeg" });

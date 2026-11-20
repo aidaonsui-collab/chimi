@@ -12,7 +12,12 @@ import {
   houseMessage,
   LOCK_DAYS,
   MAX_MEMBERS,
+  REQUEST_DAYS,
+  checkImage,
+  lockedUntil,
   membersOf,
+  requestOf,
+  requestsFor,
   scoreHouses,
   suggestTag,
   type HouseAction,
@@ -145,4 +150,134 @@ test("the signed message names the action, wallet and time", async () => {
   assert.match(message, new RegExp(account.address.toLowerCase()));
   const signature = await account.signMessage({ message });
   assert.equal(await recoverMessageAddress({ message: houseMessage(action, account.address.toLowerCase(), T0), signature }), account.address);
+});
+
+// ─── requests, the join choice and seal pictures ─────────────────────────────────────────────────────────────
+
+const PIC = "https://3l7nlcmj1elkwe2g.public.blob.vercel-storage.com/chimi/house-ridge-AbC123.jpg";
+const approving = (tag: string): HouseAction => ({ type: "found", tag, name: `House ${tag}`, seal: "龍", ink: "seal", motto: "", approve: true });
+
+test("a house holds a hundred", () => {
+  assert.equal(MAX_MEMBERS, 100);
+});
+
+test("in a house that approves, joining is a request the head answers", () => {
+  let s = run(emptyHouses(), W(1), approving("APP"));
+  assert.equal(s.houses.APP!.approve, true);
+  s = run(s, W(2), { type: "join", tag: "APP" }, T0 + 1);
+  assert.equal(currentStint(s, W(2)), undefined, "not in yet");
+  assert.deepEqual(requestsFor(s, "APP", T0 + 2).map((r) => r.wallet), [W(2)]);
+  assert.match(refused(s, W(2), { type: "join", tag: "APP" }, T0 + 2), /already asked/);
+  // Only the head answers.
+  s = run(s, W(3), { type: "join", tag: "APP" }, T0 + 3);
+  assert.match(refused(s, W(3), { type: "accept", wallet: W(2) }, T0 + 4), /head/);
+  s = run(s, W(1), { type: "accept", wallet: W(2) }, T0 + 5);
+  assert.equal(currentStint(s, W(2))!.tag, "APP");
+  assert.ok(lockedUntil(s, W(2), T0 + 6) > 0, "the lock starts when they're let in");
+  s = run(s, W(1), { type: "reject", wallet: W(3) }, T0 + 7);
+  assert.equal(currentStint(s, W(3)), undefined);
+  assert.equal(requestsFor(s, "APP", T0 + 8).length, 0);
+  assert.match(refused(s, W(1), { type: "accept", wallet: W(3) }, T0 + 9), /no request/);
+});
+
+test("a request still needs a Dojang, a free lock and a seat", () => {
+  let s = run(emptyHouses(), W(1), approving("APP"));
+  s = run(s, W(2), found("OTH"));
+  assert.match(refused(s, W(3), { type: "join", tag: "APP" }, T0, false), /Dojang/);
+  s = run(s, W(3), { type: "join", tag: "OTH" }, T0 + 1);
+  assert.match(refused(s, W(3), { type: "join", tag: "APP" }, T0 + DAY), /switch houses from/);
+});
+
+test("one request at a time: asking another house replaces it, joining or founding drops it", () => {
+  let s = run(emptyHouses(), W(1), approving("AAA"));
+  s = run(s, W(2), approving("BBB"));
+  s = run(s, W(3), found("OPEN"));
+  s = run(s, W(9), { type: "join", tag: "AAA" }, T0 + 1);
+  s = run(s, W(9), { type: "join", tag: "BBB" }, T0 + 2);
+  assert.equal(requestOf(s, W(9), T0 + 3)!.tag, "BBB");
+  assert.equal(requestsFor(s, "AAA", T0 + 3).length, 0);
+  s = run(s, W(9), { type: "join", tag: "OPEN" }, T0 + 4);
+  assert.equal(requestOf(s, W(9), T0 + 5), undefined, "joining an open house drops the request");
+  s = run(s, W(8), { type: "join", tag: "AAA" }, T0 + 6);
+  s = run(s, W(8), found("MINE"), T0 + 7);
+  assert.equal(requestOf(s, W(8), T0 + 8), undefined, "founding drops it too");
+});
+
+test("a request can be withdrawn, and lapses on its own", () => {
+  let s = run(emptyHouses(), W(1), approving("APP"));
+  s = run(s, W(2), { type: "join", tag: "APP" }, T0 + 1);
+  s = run(s, W(2), { type: "withdraw" }, T0 + 2);
+  assert.equal(requestOf(s, W(2), T0 + 3), undefined);
+  assert.match(refused(s, W(2), { type: "withdraw" }, T0 + 3), /no request/);
+  s = run(s, W(2), { type: "join", tag: "APP" }, T0 + 4);
+  const later = T0 + 4 + REQUEST_DAYS * DAY;
+  assert.equal(requestOf(s, W(2), later), undefined, "lapsed");
+  assert.match(refused(s, W(1), { type: "accept", wallet: W(2) }, later), /no request/);
+});
+
+test("accepting moves a wallet out of its house, handing that house on", () => {
+  let s = run(emptyHouses(), W(1), approving("APP"));
+  s = run(s, W(2), found("OLD"));
+  s = run(s, W(3), { type: "join", tag: "OLD" }, T0 + 1);
+  // W(2) heads OLD and its lock has run out by the time it asks.
+  const t = T0 + LOCK_DAYS * DAY + 1;
+  s = run(s, W(2), { type: "join", tag: "APP" }, t);
+  s = run(s, W(1), { type: "accept", wallet: W(2) }, t + 1);
+  assert.equal(currentStint(s, W(2))!.tag, "APP");
+  assert.equal(s.houses.OLD!.head, W(3));
+});
+
+test("the head switches between anyone and approving; an open house lets wallets straight in", () => {
+  let s = run(emptyHouses(), W(1), found("SW"));
+  assert.equal(s.houses.SW!.approve, false);
+  s = run(s, W(1), { type: "approve", approve: true }, T0 + 1);
+  s = run(s, W(2), { type: "join", tag: "SW" }, T0 + 2);
+  assert.equal(currentStint(s, W(2)), undefined);
+  s = run(s, W(1), { type: "approve", approve: false }, T0 + 3);
+  s = run(s, W(3), { type: "join", tag: "SW" }, T0 + 4);
+  assert.equal(currentStint(s, W(3))!.tag, "SW");
+  assert.match(refused(s, W(3), { type: "approve", approve: true }, T0 + 5), /head/);
+  // A house from before the choice has no `approve`: anyone can join.
+  const old: HousesState = structuredClone(s);
+  delete old.houses.SW!.approve;
+  delete old.requests;
+  assert.equal(currentStint(run(old, W(4), { type: "join", tag: "SW" }, T0 + 6), W(4))!.tag, "SW");
+});
+
+test("a seal can be a picture from Chimi's image store, and back to a stamp", () => {
+  let s = run(emptyHouses(), W(1), { ...found("PIC"), image: PIC });
+  assert.equal(s.houses.PIC!.image, PIC);
+  s = run(s, W(1), { type: "seal", seal: "月", ink: "indigo", image: null }, T0 + 1);
+  assert.equal(s.houses.PIC!.image, undefined);
+  assert.equal(s.houses.PIC!.seal, "月");
+  s = run(s, W(1), { type: "seal", seal: "月", ink: "indigo", image: PIC }, T0 + 2);
+  assert.equal(s.houses.PIC!.image, PIC);
+  for (const bad of ["https://evil.example/x.jpg", "http://3l7nlcmj1elkwe2g.public.blob.vercel-storage.com/chimi/a.jpg", "https://x.public.blob.vercel-storage.com/other/a.jpg", "javascript:alert(1)"]) {
+    assert.match(refused(s, W(1), { type: "seal", seal: "月", ink: "indigo", image: bad }, T0 + 3), /Upload the picture/);
+    assert.equal(checkImage(bad) !== null, true);
+  }
+});
+
+test("the new actions sign what they do", async () => {
+  const key = generatePrivateKey();
+  const acct = privateKeyToAccount(key);
+  const actions: HouseAction[] = [
+    approving("SIGN"),
+    { type: "withdraw" },
+    { type: "accept", wallet: W(5) },
+    { type: "reject", wallet: W(5) },
+    { type: "approve", approve: true },
+    { type: "seal", seal: "龍", ink: "seal", image: PIC },
+  ];
+  const texts = actions.map((a) => houseMessage(a, acct.address, T0));
+  assert.match(texts[0]!, /New members: I approve each one/);
+  assert.match(texts[0]!, /Picture: none/);
+  assert.match(texts[2]!, new RegExp(`accept ${W(5)} into my house`));
+  assert.match(texts[3]!, /turn down .* request to join my house/);
+  assert.match(texts[4]!, /new members to: I approve each one/);
+  assert.match(texts[5]!, new RegExp(`Picture: ${PIC.replace(/[.]/g, "\\.")}`));
+  for (const message of texts) {
+    const signature = await acct.signMessage({ message });
+    assert.equal((await recoverMessageAddress({ message, signature })).toLowerCase(), acct.address.toLowerCase());
+  }
 });
