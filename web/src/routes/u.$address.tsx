@@ -13,7 +13,7 @@ import { useTokenImages } from "@/lib/chimi/token-image";
 import { useBalances, useTrader } from "@/lib/chimi/trader";
 import { followersOf, followingOf } from "@/lib/chimi/follow-rules";
 import { useFollows } from "@/lib/chimi/follows";
-import { LaunchedFeesBar, useCreatorFees } from "@/components/chimi/creator-fees";
+import { CreatorFeesSummary, useCreatorFees } from "@/components/chimi/creator-fees";
 import { FollowButton, WalletListModal } from "@/components/chimi/follow";
 import { HouseSeal } from "@/components/chimi/house-seal";
 import { IconChevronRight, IconExternal, IconPlus, IconSwap } from "@/components/chimi/icons";
@@ -57,7 +57,11 @@ function TraderPage() {
   const mine = !!wallet && account?.toLowerCase() === wallet;
   const launched = useMemo(() => live.filter((c) => c.creator.toLowerCase() === wallet), [live, wallet]);
   const [claimed, setClaimed] = useState(0);
-  const { fees } = useCreatorFees(launched, mine, claimed);
+  const { fees, ready: feesReady } = useCreatorFees(launched, mine, claimed);
+  // Your creator fees, on your own page when you have launched a coin: above the tabs on a phone, heading the side column
+  // on a wide screen.
+  const feesCard =
+    mine && launched.length > 0 ? <CreatorFeesSummary fees={fees} ready={feesReady} launched={launched.length} onDone={() => setClaimed((n) => n + 1)} /> : null;
 
   const profile = wallet ? profiles[wallet] : undefined;
   const name = profile?.name ?? undefined;
@@ -223,6 +227,7 @@ function TraderPage() {
       ) : null}
 
       <div className="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+        {feesCard ? <div className="lg:hidden">{feesCard}</div> : null}
         <section className="card min-w-0 overflow-hidden">
           <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-5">
             <Seg
@@ -380,7 +385,6 @@ function TraderPage() {
             />
           ) : (
             <>
-              {mine ? <LaunchedFeesBar fees={fees} onDone={() => setClaimed((n) => n + 1)} /> : null}
               {launched.map((coin) => {
                 const cap = (prices[coin.token.toLowerCase()] ?? 0) * SUPPLY;
                 const due = mine ? fees[coin.token.toLowerCase()] : undefined;
@@ -410,6 +414,7 @@ function TraderPage() {
         </section>
 
         <aside className="grid min-w-0 grid-cols-1 gap-5">
+          {feesCard ? <div className="hidden lg:block">{feesCard}</div> : null}
           <section className="card relative overflow-hidden p-5">
             <div className="pointer-events-none absolute -top-24 -right-20 size-64 rounded-full bg-[radial-gradient(closest-side,rgba(212,67,43,.16),transparent)]" />
             <div className="relative">
