@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { giwaSepolia } from "@/lib/chimi/chain";
+import { giwaChain } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { ethText, money } from "@/lib/chimi/format";
 import { useEthUsd } from "@/lib/chimi/live";
@@ -11,6 +11,7 @@ import { useChimi } from "@/components/chimi/provider";
 import { DojangMark } from "@/components/chimi/rewards-bits";
 import { toast } from "@/components/chimi/toast";
 import { Blockie, CopyButton } from "@/components/chimi/ui";
+import { NETWORK } from "@/lib/chimi/network";
 
 /** Connect, or the connected wallet with its menu: balance, shortcuts and disconnect. */
 export function WalletButton() {
@@ -108,7 +109,7 @@ function Menu({ account, onClose, onDisconnect }: { account: `0x${string}`; onCl
             <span className="truncate">{profile?.name ?? shortAddr(account)}</span>
             <DojangMark verified={profile?.verified} />
           </p>
-          <p className="num text-xs text-muted">{shortAddr(account)} · GIWA Sepolia</p>
+          <p className="num text-xs text-muted">{shortAddr(account)} · {NETWORK.name}</p>
         </div>
         <CopyButton text={account} label="Copy address" />
       </div>
@@ -129,7 +130,7 @@ function Menu({ account, onClose, onDisconnect }: { account: `0x${string}`; onCl
         <IconHouse size={17} className="text-muted" />
         Houses
       </Link>
-      <a href={`${giwaSepolia.blockExplorers.default.url}/address/${account}`} target="_blank" rel="noreferrer" role="menuitem" className={row}>
+      <a href={`${giwaChain.blockExplorers.default.url}/address/${account}`} target="_blank" rel="noreferrer" role="menuitem" className={row}>
         <IconExternal size={17} className="text-muted" />
         View on explorer
       </a>

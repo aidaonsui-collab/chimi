@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 import { type Address } from "viem";
-import { erc20Abi, giwaSepolia } from "@/lib/chimi/chain";
+import { erc20Abi, giwaChain } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { ago, compactCount, ethText } from "@/lib/chimi/format";
 import { fetchSwaps, useEthUsd } from "@/lib/chimi/live";
@@ -14,6 +14,7 @@ import { PairMark } from "@/components/chimi/pair-mark";
 import { PositionDesk } from "@/components/chimi/position-form";
 import { useChimi } from "@/components/chimi/provider";
 import { CopyButton, Empty, Seg, TraderLink } from "@/components/chimi/ui";
+import { NETWORK } from "@/lib/chimi/network";
 
 export const Route = createFileRoute("/pool/$address")({ component: PoolPage });
 
@@ -163,7 +164,7 @@ function PoolPage() {
     fees: money(fees),
     apr: `${apr.toFixed(2)}%`,
   };
-  const explorer = giwaSepolia.blockExplorers.default.url;
+  const explorer = giwaChain.blockExplorers.default.url;
 
   if (creating) {
     return (
@@ -202,7 +203,7 @@ function PoolPage() {
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
               <span className="chip border-ok/25 bg-ok/10 text-ok">
                 <span className="size-1.5 rounded-full bg-ok" />
-                GIWA Sepolia
+                {NETWORK.name}
               </span>
               <span className="chip">v3 · {feeLabel(coin.fee)}</span>
               <span className="chip gap-1 pr-0.5">

@@ -1,15 +1,23 @@
 import { defineChain, parseAbi, zeroAddress, type Address } from "viem";
+import bundledDeployment from "../../../public/deployments.json";
+import { NETWORK } from "@/lib/chimi/network";
 
-export const giwaSepolia = defineChain({
-  id: 91342,
-  name: "GIWA Sepolia",
+/** The chain this build runs on (lib/chimi/network.ts, picked by deployments.json's chainId). */
+export const giwaChain = defineChain({
+  id: NETWORK.id,
+  name: NETWORK.name,
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: ["https://sepolia-rpc.giwa.io"] } },
-  blockExplorers: { default: { name: "GIWA Sepolia", url: "https://sepolia-explorer.giwa.io" } },
-  contracts: { multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" } },
+  rpcUrls: { default: { http: [NETWORK.rpc] } },
+  blockExplorers: { default: NETWORK.explorer },
+  contracts: { multicall3: { address: NETWORK.multicall3 } },
+  testnet: NETWORK.testnet,
 });
 
-export const POOL_FEE = 10_000;
+/**
+ * The first DEX's fee: what a coin whose pool fee couldn't be read is taken to pay. 1% on GIWA Sepolia, where the
+ * first coins launched; a deployment with one DEX (mainnet) has only that DEX's fee.
+ */
+export const POOL_FEE: number = (bundledDeployment as { dexes?: { fee: number }[] }).dexes?.[0]?.fee ?? 10_000;
 
 export const factoryAbi = parseAbi([
   "function createTokenMemeInstantQuoteWithEth(string name, string symbol) payable returns (address token)",

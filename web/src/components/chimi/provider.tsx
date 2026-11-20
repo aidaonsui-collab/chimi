@@ -5,6 +5,7 @@ import {
   encodeFunctionData,
   formatEther,
   getAddress,
+  numberToHex,
   parseEther,
   parseEventLogs,
   type Address,
@@ -17,7 +18,7 @@ import {
   dexOf,
   erc20Abi,
   factoryAbi,
-  giwaSepolia,
+  giwaChain,
   isDeployed,
   lockerAbi,
   routerAbi,
@@ -28,6 +29,7 @@ import {
 import { publicClient } from "@/lib/chimi/client";
 import type { LockedPosition } from "@/lib/chimi/fees";
 import { ethText } from "@/lib/chimi/format";
+import { NETWORK } from "@/lib/chimi/network";
 import { loadCoins, short, type Coin } from "@/lib/chimi/market";
 import { previewCoins } from "@/lib/chimi/mocks";
 
@@ -43,7 +45,7 @@ type ChimiContext = {
   connect: () => Promise<{ who: Address; client: WalletClient } | undefined>;
   /** Forgets the wallet on this site until Connect is pressed again. */
   disconnect: () => void;
-  /** Asks the wallet to move to GIWA Sepolia if it is on another network. */
+  /** Asks the wallet to move to Chimi's network (lib/chimi/network.ts) if it is on another one. */
   ensureChain: () => Promise<void>;
   refresh: () => Promise<void>;
   /** `burnOwnCoin`: 10% of the coin's ETH fees buy it back and burn it. Only where the pad offers the choice. */
@@ -83,17 +85,17 @@ const SIGNED_OUT = "chimi.wallet.off";
 
 async function moveToGiwa(client: WalletClient, eth: EIP1193Provider) {
   try {
-    await client.switchChain({ id: giwaSepolia.id });
+    await client.switchChain({ id: giwaChain.id });
   } catch {
     await eth.request({
       method: "wallet_addEthereumChain",
       params: [
         {
-          chainId: "0x164ce",
-          chainName: "GIWA Sepolia",
+          chainId: numberToHex(NETWORK.id),
+          chainName: NETWORK.name,
           nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-          rpcUrls: ["https://sepolia-rpc.giwa.io"],
-          blockExplorerUrls: ["https://sepolia-explorer.giwa.io"],
+          rpcUrls: [NETWORK.rpc],
+          ...(NETWORK.explorer.url ? { blockExplorerUrls: [NETWORK.explorer.url] } : {}),
         },
       ],
     });
@@ -186,7 +188,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
         return;
       }
       const who = getAddress(first);
-      walletRef.current = createWalletClient({ chain: giwaSepolia, transport: custom(eth) });
+      walletRef.current = createWalletClient({ chain: giwaChain, transport: custom(eth) });
       accountRef.current = who;
       setAccount(who);
     };
@@ -221,7 +223,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
   const connect = useCallback(async () => {
     const eth = ethereum();
     if (!eth) throw new Error("No wallet in this browser.");
-    const next = createWalletClient({ chain: giwaSepolia, transport: custom(eth) });
+    const next = createWalletClient({ chain: giwaChain, transport: custom(eth) });
     const accounts = await next.requestAddresses();
     const who = accounts[0];
     if (!who) return;
@@ -253,7 +255,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
     const client = walletRef.current;
     if (!eth || !client) return;
     const id = await client.getChainId().catch(() => undefined);
-    if (id !== giwaSepolia.id) await moveToGiwa(client, eth);
+    if (id !== giwaChain.id) await moveToGiwa(client, eth);
   }, []);
 
   /** The connected wallet, connecting first if needed. Transactions also make sure it is on GIWA. */
@@ -278,7 +280,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
         args: [who],
       });
       const value = fee + parseEther(firstBuy.trim() || "0");
-      const base = { account: who, chain: giwaSepolia, address: deployment.factory, abi: factoryAbi, value } as const;
+      const base = { account: who, chain: giwaChain, address: deployment.factory, abi: factoryAbi, value } as const;
       const hash = deployment.burner
         ? await client.writeContract({ ...base, functionName: "createTokenWithEth", args: [name.trim(), symbol.trim(), burnOwnCoin] })
         : await client.writeContract({ ...base, functionName: "createTokenMemeInstantQuoteWithEth", args: [name.trim(), symbol.trim()] });
@@ -319,7 +321,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       if (side === "buy") {
         const hash = await client.writeContract({
           account: who,
-          chain: giwaSepolia,
+          chain: giwaChain,
           address: router,
           abi: routerAbi,
           functionName: "exactInputSingle",
@@ -352,7 +354,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       if (allowed < qty) {
         const approve = await client.writeContract({
           account: who,
-          chain: giwaSepolia,
+          chain: giwaChain,
           address: coin.token,
           abi: erc20Abi,
           functionName: "approve",
@@ -365,7 +367,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200);
       const hash = await client.writeContract({
         account: who,
-        chain: giwaSepolia,
+        chain: giwaChain,
         address: router,
         abi: routerAbi,
         functionName: "multicall",
@@ -446,7 +448,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       if (wad === 0n) throw new Error("No wrapped ETH to unwrap.");
       const hash = await client.writeContract({
         account: who,
-        chain: giwaSepolia,
+        chain: giwaChain,
         address: deployment.weth,
         abi: wethAbi,
         functionName: "withdraw",
@@ -472,8 +474,8 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       for (const [locker, ids] of byLocker) {
         hash =
           ids.length === 1
-            ? await client.writeContract({ account: who, chain: giwaSepolia, address: locker, abi: lockerAbi, functionName: "collectFees", args: [ids[0]!] })
-            : await client.writeContract({ account: who, chain: giwaSepolia, address: locker, abi: lockerAbi, functionName: "collectFeesBatch", args: [ids] });
+            ? await client.writeContract({ account: who, chain: giwaChain, address: locker, abi: lockerAbi, functionName: "collectFees", args: [ids[0]!] })
+            : await client.writeContract({ account: who, chain: giwaChain, address: locker, abi: lockerAbi, functionName: "collectFeesBatch", args: [ids] });
         const receipt = await publicClient.waitForTransactionReceipt({ hash });
         if (receipt.status !== "success") throw new Error("The claim didn’t go through.");
       }
@@ -488,7 +490,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       const tips = deployment?.tips?.address;
       if (!tips) throw new Error("Tips aren’t switched on yet.");
       const { who, client } = await ready();
-      const hash = await client.writeContract({ account: who, chain: giwaSepolia, address: tips, abi: tipsAbi, functionName: "tip", args: [token, message], value: wei });
+      const hash = await client.writeContract({ account: who, chain: giwaChain, address: tips, abi: tipsAbi, functionName: "tip", args: [token, message], value: wei });
       onSigned?.(hash);
       // GIWA makes a block a second; asking that often makes the tip feel instant.
       const receipt = await publicClient.waitForTransactionReceipt({ hash, pollingInterval: 1_000 });

@@ -19,7 +19,7 @@
 import { createPublicClient, createWalletClient, http, parseAbiItem, type Address, type Hex, type PublicClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import deploymentJson from "../../public/deployments.json";
-import { burnerAbi, coinBurnerAbi, dexesOf, erc20Abi, factoryAbi, flywheelAbi, giwaSepolia, lockerAbi, poolAbi, type Deployment } from "@/lib/chimi/chain";
+import { burnerAbi, coinBurnerAbi, dexesOf, erc20Abi, factoryAbi, flywheelAbi, giwaChain, lockerAbi, poolAbi, type Deployment } from "@/lib/chimi/chain";
 import { BATCH, MIN_HOLD, averageBalances, batches, eligible, isContractCode, periodBounds, periodDate, periodOf, shareOut, type ChimiTransfer } from "@/lib/chimi/flywheel-rules";
 import { env } from "@/server/env";
 import { docStore, takeLock } from "@/server/store";
@@ -61,7 +61,7 @@ export type FlywheelReport = {
 const book = () => docStore<Book>("chimi-flywheel-v1");
 
 function client(): PublicClient {
-  return createPublicClient({ chain: giwaSepolia, transport: http(env("GIWA_RPC") || undefined, { batch: true }) }) as PublicClient;
+  return createPublicClient({ chain: giwaChain, transport: http(env("GIWA_RPC") || undefined, { batch: true }) }) as PublicClient;
 }
 
 /** The run's last report, for the app's rewards panel. */
@@ -72,9 +72,11 @@ export async function lastFlywheelRun(): Promise<FlywheelReport | null> {
 export async function runFlywheel(opts: { dry?: boolean; nowMs?: number } = {}): Promise<FlywheelReport> {
   const dry = !!opts.dry;
   const report: FlywheelReport = { at: opts.nowMs ?? Date.now(), dry, errors: [] };
+  // A deployment since the fee choice may have only the burner (mainnet: holder payouts ended before it launched).
   const fw = deployment.flywheel;
-  if (!fw) {
-    report.skipped = "no flywheel in deployments.json yet";
+  const burner = deployment.burner;
+  if (!fw && !burner) {
+    report.skipped = "no flywheel or burner in deployments.json yet";
     return report;
   }
   const release = await takeLock("chimi:flywheel:run", 5 * 60_000);
@@ -87,10 +89,14 @@ export async function runFlywheel(opts: { dry?: boolean; nowMs?: number } = {}):
     const key = env("KEEPER_PRIVATE_KEY") as Hex | undefined;
     const account = key ? privateKeyToAccount(key) : undefined;
     if (!dry && !account) throw new Error("KEEPER_PRIVATE_KEY is not set");
-    const keeper = account?.address ?? ((await pub.readContract({ address: fw.address, abi: flywheelAbi, functionName: "keeper" })) as Address);
+    const keeper =
+      account?.address ??
+      ((fw
+        ? await pub.readContract({ address: fw.address, abi: flywheelAbi, functionName: "keeper" })
+        : await pub.readContract({ address: burner!.address, abi: burnerAbi, functionName: "keeper" })) as Address);
     report.keeper = keeper;
     report.keeperEth = (await pub.getBalance({ address: keeper })).toString();
-    const wallet = account ? createWalletClient({ account, chain: giwaSepolia, transport: http(env("GIWA_RPC") || undefined) }) : undefined;
+    const wallet = account ? createWalletClient({ account, chain: giwaChain, transport: http(env("GIWA_RPC") || undefined) }) : undefined;
     const send = async (req: Parameters<PublicClient["simulateContract"]>[0]) => {
       const { request } = await pub.simulateContract({ ...req, account: account ?? keeper } as Parameters<PublicClient["simulateContract"]>[0]);
       if (dry || !wallet) return undefined;
@@ -108,23 +114,24 @@ export async function runFlywheel(opts: { dry?: boolean; nowMs?: number } = {}):
       report.errors.push(`sweep: ${message(e)}`);
     }
 
-    // 2. Buy back and burn CHIMI.
-    try {
-      const [toBurn] = (await pub.readContract({ address: fw.address, abi: flywheelAbi, functionName: "pending" })) as readonly [bigint, bigint];
-      if (toBurn < MIN_BURN) report.burn = { skipped: `burn half ${toBurn} wei is under the minimum` };
-      else {
-        const amountIn = toBurn < MAX_BURN ? toBurn : MAX_BURN;
-        const { result } = await pub.simulateContract({ address: fw.address, abi: flywheelAbi, functionName: "buybackAndBurn", args: [amountIn, 0n], account: account ?? keeper });
-        const minOut = ((result as bigint) * 98n) / 100n;
-        const tx = await send({ address: fw.address, abi: flywheelAbi, functionName: "buybackAndBurn", args: [amountIn, minOut] });
-        report.burn = { ethIn: amountIn.toString(), chimiOut: (result as bigint).toString(), tx };
+    // 2. Buy back and burn CHIMI with the flywheel's burn half.
+    if (fw) {
+      try {
+        const [toBurn] = (await pub.readContract({ address: fw.address, abi: flywheelAbi, functionName: "pending" })) as readonly [bigint, bigint];
+        if (toBurn < MIN_BURN) report.burn = { skipped: `burn half ${toBurn} wei is under the minimum` };
+        else {
+          const amountIn = toBurn < MAX_BURN ? toBurn : MAX_BURN;
+          const { result } = await pub.simulateContract({ address: fw.address, abi: flywheelAbi, functionName: "buybackAndBurn", args: [amountIn, 0n], account: account ?? keeper });
+          const minOut = ((result as bigint) * 98n) / 100n;
+          const tx = await send({ address: fw.address, abi: flywheelAbi, functionName: "buybackAndBurn", args: [amountIn, minOut] });
+          report.burn = { ethIn: amountIn.toString(), chimiOut: (result as bigint).toString(), tx };
+        }
+      } catch (e) {
+        report.errors.push(`burn: ${message(e)}`);
       }
-    } catch (e) {
-      report.errors.push(`burn: ${message(e)}`);
     }
 
     // 2. (continued) The burner: CHIMI, then each coin that burns itself.
-    const burner = deployment.burner;
     if (burner) {
       try {
         const waiting = (await pub.readContract({ address: burner.address, abi: burnerAbi, functionName: "pendingChimi" })) as bigint;
@@ -146,12 +153,14 @@ export async function runFlywheel(opts: { dry?: boolean; nowMs?: number } = {}):
       }
     }
 
-    // 3. Pay the day that just ended, by the chain's clock.
-    try {
-      const head = await pub.getBlock();
-      report.payout = await payout(pub, send, Number(head.timestamp), dry);
-    } catch (e) {
-      report.errors.push(`payout: ${message(e)}`);
+    // 3. Pay the day that just ended, by the chain's clock. Only the flywheel pays holders.
+    if (fw) {
+      try {
+        const head = await pub.getBlock();
+        report.payout = await payout(pub, send, Number(head.timestamp), dry);
+      } catch (e) {
+        report.errors.push(`payout: ${message(e)}`);
+      }
     }
   } catch (e) {
     report.errors.push(message(e));
@@ -347,7 +356,7 @@ async function excludedWallets(pub: PublicClient): Promise<Set<string>> {
 
 /** Every CHIMI holder the explorer knows, all pages. Throws when the explorer can't be read. */
 async function explorerHolders(token: Address): Promise<string[]> {
-  const base = `${giwaSepolia.blockExplorers.default.url}/api/v2/tokens/${token}/holders`;
+  const base = `${giwaChain.blockExplorers.default.url}/api/v2/tokens/${token}/holders`;
   const out: string[] = [];
   let next = "";
   for (let page = 0; page < 50; page++) {

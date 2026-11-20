@@ -1,4 +1,5 @@
 import { numberToHex, parseAbi, type Address, type PublicClient } from "viem";
+import { NETWORK } from "@/lib/chimi/network";
 import type { Profile } from "@/lib/chimi/points-rules";
 
 /**
@@ -7,20 +8,14 @@ import type { Profile } from "@/lib/chimi/points-rules";
  *   person holds the wallet. DojangScroll answers whether a wallet has one from a given attester.
  * - up.id: Upbit's names on GIWA. A wallet with an active name shows as `name.up.id` instead of 0x….
  */
-export const DOJANG_SCROLL: Address = "0xd5077b67dcb56caC8b270C7788FC3E6ee03F17B9";
-export const UP_ID_REGISTRY: Address = "0x091D00004f21eb2Fc30964A8a4995692d9b49628";
+export const DOJANG_SCROLL: Address | undefined = NETWORK.dojang?.scroll;
+export const UP_ID_REGISTRY: Address | undefined = NETWORK.upId?.registry;
 
-/** Attesters whose Verified Address counts. On Sepolia the GIWA faucet issues test attestations too. */
-export const DOJANG_ATTESTERS: { id: `0x${string}`; name: string }[] = [
-  { id: "0xd99b42e778498aa3c9c1f6a012359130252780511687a35982e8e52735453034", name: "Upbit Korea" },
-  { id: "0xaa92f8c143657dde575de430aecaea6ca91f2e6072339b16932d426895d8d678", name: "GIWA testnet faucet" },
-];
+/** Attesters whose Verified Address counts (lib/chimi/network.ts). None where the chain has no Dojang. */
+export const DOJANG_ATTESTERS: { id: `0x${string}`; name: string }[] = NETWORK.dojang?.attesters ?? [];
 
-/**
- * Where a wallet gets a Dojang on Sepolia: Issue Dojang on the GIWA Sepolia Playground (0.001 ETH plus gas). It moved
- * here from playground.giwa.io, which no longer resolves.
- */
-export const DOJANG_URL = "https://sepolia-playground.giwa.io/";
+/** Where a wallet gets a Dojang; GIWA's docs where the chain has none yet. */
+export const DOJANG_URL = NETWORK.dojang?.issueUrl ?? "https://docs.giwa.io/";
 
 const dojangAbi = parseAbi(["function isVerified(address account, bytes32 attesterId) view returns (bool)"]);
 const upIdAbi = parseAbi([
@@ -33,31 +28,39 @@ const upIdAbi = parseAbi([
 export async function readProfiles(client: PublicClient, wallets: string[]): Promise<Record<string, Profile>> {
   const list = [...new Set(wallets.map((w) => w.toLowerCase() as Address))];
   if (list.length === 0) return {};
+  // A chain without Dojang or up.id (lib/chimi/network.ts) asks nothing of them: nobody is verified or named there.
+  const scroll = DOJANG_SCROLL;
+  const registry = UP_ID_REGISTRY;
+  const attesters = scroll ? DOJANG_ATTESTERS : [];
   const first = await client.multicall({
     allowFailure: true,
     contracts: list.flatMap((w) => [
-      ...DOJANG_ATTESTERS.map((a) => ({ address: DOJANG_SCROLL, abi: dojangAbi, functionName: "isVerified", args: [w, a.id] }) as const),
-      { address: UP_ID_REGISTRY, abi: upIdAbi, functionName: "hasActiveName", args: [w] } as const,
-      { address: UP_ID_REGISTRY, abi: upIdAbi, functionName: "ownedTokenId", args: [w] } as const,
+      ...attesters.map((a) => ({ address: scroll!, abi: dojangAbi, functionName: "isVerified", args: [w, a.id] }) as const),
+      ...(registry
+        ? ([
+            { address: registry, abi: upIdAbi, functionName: "hasActiveName", args: [w] },
+            { address: registry, abi: upIdAbi, functionName: "ownedTokenId", args: [w] },
+          ] as const)
+        : []),
     ]),
   });
-  const per = DOJANG_ATTESTERS.length + 2;
+  const per = attesters.length + (registry ? 2 : 0);
   const named: { wallet: string; token: bigint }[] = [];
   const out: Record<string, Profile> = {};
   const at = Date.now();
   list.forEach((wallet, i) => {
     const row = first.slice(i * per, (i + 1) * per);
-    const verified = row.slice(0, DOJANG_ATTESTERS.length).some((r) => r.status === "success" && r.result === true);
-    const [active, token] = row.slice(DOJANG_ATTESTERS.length);
+    const verified = row.slice(0, attesters.length).some((r) => r.status === "success" && r.result === true);
+    const [active, token] = registry ? row.slice(attesters.length) : [];
     if (active?.status === "success" && active.result === true && token?.status === "success" && (token.result as bigint) > 0n) {
       named.push({ wallet, token: token.result as bigint });
     }
     out[wallet] = { name: null, verified, at };
   });
-  if (named.length > 0) {
+  if (named.length > 0 && registry) {
     const labels = await client.multicall({
       allowFailure: true,
-      contracts: named.map((n) => ({ address: UP_ID_REGISTRY, abi: upIdAbi, functionName: "getLabel", args: [numberToHex(n.token, { size: 32 })] }) as const),
+      contracts: named.map((n) => ({ address: registry, abi: upIdAbi, functionName: "getLabel", args: [numberToHex(n.token, { size: 32 })] }) as const),
     });
     named.forEach((n, i) => {
       const label = labels[i];

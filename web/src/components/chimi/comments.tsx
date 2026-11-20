@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Address } from "viem";
 import { timelineOf, type ActivityTrade, type TradeRun } from "@/lib/chimi/activity-rules";
-import { erc20Abi, giwaSepolia } from "@/lib/chimi/chain";
+import { erc20Abi, giwaChain } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { MAX_LENGTH, NEED_DOJANG, NEED_DOJANG_TO_LIKE, checkText, cleanText, stance, threadsOf, type Comment } from "@/lib/chimi/comment-rules";
 import type { CommentThread } from "@/lib/chimi/comments";
@@ -17,7 +17,7 @@ import { useChimi } from "@/components/chimi/provider";
 import { toast } from "@/components/chimi/toast";
 import { Blockie, Empty, TraderLink } from "@/components/chimi/ui";
 
-const explorer = giwaSepolia.blockExplorers.default.url;
+const explorer = giwaChain.blockExplorers.default.url;
 
 /** Answers shown under a comment before "Show earlier replies" is pressed. */
 const REPLIES_SHOWN = 3;

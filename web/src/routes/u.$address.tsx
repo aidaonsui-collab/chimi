@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { isAddress } from "viem";
-import { giwaSepolia } from "@/lib/chimi/chain";
+import { giwaChain } from "@/lib/chimi/chain";
 import { ago, amountText, compactCount, compactUsd, ethText, money } from "@/lib/chimi/format";
 import { houseOfWallet } from "@/lib/chimi/house-rules";
 import { position, standing, type CoinTally, type Position } from "@/lib/chimi/ledger-rules";
@@ -113,7 +113,7 @@ function TraderPage() {
     );
   }
 
-  const explorer = giwaSepolia.blockExplorers.default.url;
+  const explorer = giwaChain.blockExplorers.default.url;
   const total = held ? standing(book, held, prices) : undefined;
   const season = points?.season.find((s) => s.wallet === wallet);
   const today = points?.live?.standings.find((s) => s.wallet === wallet);

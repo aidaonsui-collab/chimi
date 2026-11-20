@@ -14,7 +14,7 @@ import {
 import {
   dexOf,
   erc20Abi,
-  giwaSepolia,
+  giwaChain,
   positionManagerAbi,
   wethAbi,
   type Deployment,
@@ -71,7 +71,7 @@ const PRESETS: { id: RangePreset; title: string; blurb: string }[] = [
 function clientFor(account: Address): WalletClient {
   const ethereum = (window as Window & { ethereum?: EIP1193Provider }).ethereum;
   if (!ethereum) throw new Error("No wallet found in this browser.");
-  return createWalletClient({ account, chain: giwaSepolia, transport: custom(ethereum) });
+  return createWalletClient({ account, chain: giwaChain, transport: custom(ethereum) });
 }
 
 function readAmount(value: string): bigint | null {
@@ -355,7 +355,7 @@ export function PositionDesk({
       setNote("Wrapping ETH.");
       const wrap = await wallet.writeContract({
         account,
-        chain: giwaSepolia,
+        chain: giwaChain,
         address: weth,
         abi: wethAbi,
         functionName: "deposit",
@@ -375,7 +375,7 @@ export function PositionDesk({
         setNote("Approving the position manager.");
         const approve = await wallet.writeContract({
           account,
-          chain: giwaSepolia,
+          chain: giwaChain,
           address: asset,
           abi: erc20Abi,
           functionName: "approve",
@@ -389,7 +389,7 @@ export function PositionDesk({
       setNote("Increasing this position.");
       const hash = await wallet.writeContract({
         account,
-        chain: giwaSepolia,
+        chain: giwaChain,
         address: npm,
         abi: positionManagerAbi,
         functionName: "increaseLiquidity",
@@ -411,7 +411,7 @@ export function PositionDesk({
       setNote("Creating a position.");
       const hash = await wallet.writeContract({
         account,
-        chain: giwaSepolia,
+        chain: giwaChain,
         address: npm,
         abi: positionManagerAbi,
         functionName: "mint",
@@ -515,7 +515,7 @@ export function PositionDesk({
       }
       const hash = await wallet.writeContract({
         account,
-        chain: giwaSepolia,
+        chain: giwaChain,
         address: npm,
         abi: positionManagerAbi,
         functionName: "multicall",
@@ -571,7 +571,7 @@ export function PositionDesk({
       const wallet = clientFor(account);
       const hash = await wallet.writeContract({
         account,
-        chain: giwaSepolia,
+        chain: giwaChain,
         address: npm,
         abi: positionManagerAbi,
         functionName: "multicall",

@@ -9,7 +9,7 @@
  */
 import { formatEther, type Address } from "viem";
 import deployment from "../../public/deployments.json";
-import { dexesOf, factoryAbi, giwaSepolia, poolAbi, type Deployment } from "@/lib/chimi/chain";
+import { dexesOf, factoryAbi, giwaChain, poolAbi, type Deployment } from "@/lib/chimi/chain";
 import { LEDGER_VERSION, byChainOrder, emptyWallet, record, type LedgerCursor, type Trade, type WalletBook } from "@/lib/chimi/ledger-rules";
 import { env } from "@/server/env";
 import { kvMGetJson, kvReady } from "@/server/kv";
@@ -28,7 +28,7 @@ const WRITES_AT_ONCE = 16;
 
 const walletStore = (wallet: string) => docStore<WalletBook>(`${KEY}:w:${wallet.toLowerCase()}`);
 
-const mine = (c: LedgerCursor) => c.version === LEDGER_VERSION && c.chainId === giwaSepolia.id && c.factory === deployment.factory.toLowerCase();
+const mine = (c: LedgerCursor) => c.version === LEDGER_VERSION && c.chainId === giwaChain.id && c.factory === deployment.factory.toLowerCase();
 
 export type TraderRecord = {
   wallet: string;
@@ -135,7 +135,7 @@ async function walletBooks(wallets: string[]): Promise<(WalletBook | null)[]> {
 async function factoryBlock(): Promise<number> {
   const fixed = Number(env("CHIMI_LEDGER_START"));
   if (Number.isInteger(fixed) && fixed > 0) return fixed;
-  const url = `${giwaSepolia.blockExplorers.default.url}/api?module=contract&action=getcontractcreation&contractaddresses=${deployment.factory}`;
+  const url = `${giwaChain.blockExplorers.default.url}/api?module=contract&action=getcontractcreation&contractaddresses=${deployment.factory}`;
   const res = await fetch(url, { signal: AbortSignal.timeout(5_000) });
   const body = (await res.json().catch(() => null)) as { result?: { blockNumber?: string }[] } | null;
   const block = Number(body?.result?.[0]?.blockNumber);
@@ -155,7 +155,7 @@ async function advance(prev: LedgerCursor | null): Promise<LedgerCursor> {
     const start = Math.min(await factoryBlock(), headNum);
     cursor = {
       version: LEDGER_VERSION,
-      chainId: giwaSepolia.id,
+      chainId: giwaChain.id,
       factory: deployment.factory.toLowerCase(),
       start,
       through: start - 1,
