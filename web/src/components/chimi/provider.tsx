@@ -3,6 +3,7 @@ import {
   createWalletClient,
   custom,
   encodeFunctionData,
+  formatEther,
   getAddress,
   parseEther,
   parseEventLogs,
@@ -26,6 +27,7 @@ import {
 } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import type { LockedPosition } from "@/lib/chimi/fees";
+import { ethText } from "@/lib/chimi/format";
 import { loadCoins, short, type Coin } from "@/lib/chimi/market";
 import { previewCoins } from "@/lib/chimi/mocks";
 
@@ -407,6 +409,9 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       if (!deployment) throw new Error("Factory not loaded.");
       const { who } = await ready();
       const qty = parseEther(eth);
+      // A buy can't spend more than the wallet holds: say so plainly, with what it does hold, before pricing anything.
+      const held = await publicClient.getBalance({ address: who }).catch(() => undefined);
+      if (held !== undefined && held < qty) throw new Error(`Not enough ETH for a ${eth} ETH buy. You have ${ethText(Number(formatEther(held)))} ETH.`);
       const router = dexOf(deployment, coin).swapRouter;
       const fee = coin.fee ?? POOL_FEE;
       let expected: bigint;
@@ -421,7 +426,10 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
         });
         expected = run.result;
       } catch (err) {
-        throw new Error(/insufficient|exceeds|balance|funds/i.test(short(err)) ? `Not enough ETH for a ${eth} ETH buy.` : "Couldn’t price that buy. Try again in a moment.");
+        // viem sums a node's refusal up generically ("Transaction creation failed.") and keeps the node's own words
+        // ("EVM error: OutOfFunds" on GIWA) in `details`, so both are read.
+        const details = err && typeof err === "object" && "details" in err ? String((err as { details: unknown }).details) : "";
+        throw new Error(/insufficient|exceeds|balance|funds/i.test(`${short(err)} ${details}`) ? `Not enough ETH for a ${eth} ETH buy.` : "Couldn’t price that buy. Try again in a moment.");
       }
       return trade(coin, "buy", eth, (expected * BigInt(10_000 - slippageBps)) / 10_000n);
     },
