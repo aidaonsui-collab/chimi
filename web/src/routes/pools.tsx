@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { createWalletClient, custom, encodeFunctionData, type Address, type EIP1193Provider } from "viem";
+import { createWalletClient, custom, encodeFunctionData, type Address } from "viem";
 import { dexOf, dexesOf, erc20Abi, giwaChain, positionManagerAbi } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { feeLabel, loadSwapWindow, wethPerToken, type Coin } from "@/lib/chimi/market";
@@ -9,6 +9,7 @@ import { useEthUsd } from "@/lib/chimi/live";
 import { useTokenImages } from "@/lib/chimi/token-image";
 import { POOL_FEE } from "@/lib/chimi/chain";
 import { tickFromSqrtPriceX96 } from "@/lib/chimi/range";
+import { activeProvider } from "@/lib/chimi/wallets";
 import { IconArrowDown, IconChevronLeft, IconChevronRight, IconPlus, IconSearch } from "@/components/chimi/icons";
 import { PairMark } from "@/components/chimi/pair-mark";
 import { useChimi } from "@/components/chimi/provider";
@@ -206,7 +207,7 @@ function PoolsPage() {
     if (!account || !deployment) return;
     const due = held.filter((position) => position.owed0 > 0n || position.owed1 > 0n);
     if (due.length === 0) return;
-    const ethereum = (window as Window & { ethereum?: EIP1193Provider }).ethereum;
+    const ethereum = activeProvider();
     if (!ethereum) {
       setNote("No wallet found in this browser.");
       return;

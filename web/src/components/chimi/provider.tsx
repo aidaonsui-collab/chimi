@@ -32,6 +32,8 @@ import { ethText } from "@/lib/chimi/format";
 import { NETWORK } from "@/lib/chimi/network";
 import { loadCoins, short, type Coin } from "@/lib/chimi/market";
 import { previewCoins } from "@/lib/chimi/mocks";
+import { activeProvider, chooseAccounts, findWallets, forgetSite, lastWallet, setActiveWallet, type FoundWallet } from "@/lib/chimi/wallets";
+import { WalletPicker } from "@/components/chimi/wallet-picker";
 
 type ChimiContext = {
   deployment: Deployment | null;
@@ -42,8 +44,12 @@ type ChimiContext = {
   preview: boolean;
   note: string;
   account?: Address;
+  /**
+   * Connects a wallet: the user picks one when more than one is installed, then picks the account in the wallet's own
+   * chooser. Closing the picker throws "Connection cancelled."
+   */
   connect: () => Promise<{ who: Address; client: WalletClient } | undefined>;
-  /** Forgets the wallet on this site until Connect is pressed again. */
+  /** Forgets the wallet on this site until Connect is pressed again, and asks the wallet to forget the site. */
   disconnect: () => void;
   /** Asks the wallet to move to Chimi's network (lib/chimi/network.ts) if it is on another one. */
   ensureChain: () => Promise<void>;
@@ -75,9 +81,9 @@ type ChimiContext = {
 
 const Ctx = createContext<ChimiContext | null>(null);
 
+/** The wallet connected on this site (lib/chimi/wallets.ts), else the browser's default one. */
 function ethereum(): EIP1193Provider | undefined {
-  if (typeof window === "undefined") return undefined;
-  return (window as Window & { ethereum?: EIP1193Provider }).ethereum;
+  return activeProvider();
 }
 
 /** Set when the user disconnects, so the next visit doesn't quietly pick the wallet back up. */
@@ -174,12 +180,18 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // A wallet that already trusts this site is picked up again on load, without a prompt.
-  useEffect(() => {
-    const eth = ethereum();
-    if (!eth) return;
-    let cancel = false;
-    const adopt = (accounts: readonly string[]) => {
+  const [picker, setPicker] = useState<{ wallets: FoundWallet[]; pick: (wallet: FoundWallet | undefined) => void } | null>(null);
+  const unfollow = useRef<(() => void) | undefined>(undefined);
+
+  // Follow the connected wallet when the user switches account in it, or locks it.
+  const follow = useCallback((eth: EIP1193Provider) => {
+    unfollow.current?.();
+    const events = eth as EIP1193Provider & {
+      on?: (event: string, fn: (accounts: string[]) => void) => void;
+      removeListener?: (event: string, fn: (accounts: string[]) => void) => void;
+    };
+    const onAccounts = (accounts: string[]) => {
+      if (!accountRef.current) return;
       const first = accounts[0];
       if (!first) {
         walletRef.current = undefined;
@@ -192,42 +204,67 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       accountRef.current = who;
       setAccount(who);
     };
+    events.on?.("accountsChanged", onAccounts);
+    unfollow.current = () => events.removeListener?.("accountsChanged", onAccounts);
+  }, []);
+  useEffect(() => () => unfollow.current?.(), []);
+
+  // The wallet connected last is picked up again on load, without a prompt, if it still trusts this site.
+  useEffect(() => {
     let off = false;
     try {
       off = localStorage.getItem(SIGNED_OUT) === "1";
     } catch {
       /* private mode */
     }
-    if (!off) {
-      void (eth.request({ method: "eth_accounts" }) as Promise<string[]>)
-        .then((accounts) => {
-          if (!cancel && accounts.length > 0) adopt(accounts);
-        })
-        .catch(() => undefined);
-    }
-    // Follow the wallet when the user switches account in it, or locks it.
-    const onAccounts = (accounts: string[]) => {
-      if (accountRef.current) adopt(accounts);
-    };
-    const events = eth as EIP1193Provider & {
-      on?: (event: string, fn: (accounts: string[]) => void) => void;
-      removeListener?: (event: string, fn: (accounts: string[]) => void) => void;
-    };
-    events.on?.("accountsChanged", onAccounts);
+    if (off) return;
+    const wallet = lastWallet();
+    if (!wallet) return;
+    let cancel = false;
+    void (wallet.provider.request({ method: "eth_accounts" }) as Promise<string[]>)
+      .then((accounts) => {
+        const first = accounts[0];
+        if (cancel || !first) return;
+        setActiveWallet(wallet);
+        const who = getAddress(first);
+        walletRef.current = createWalletClient({ chain: giwaChain, transport: custom(wallet.provider) });
+        accountRef.current = who;
+        setAccount(who);
+        follow(wallet.provider);
+      })
+      .catch(() => undefined);
     return () => {
       cancel = true;
-      events.removeListener?.("accountsChanged", onAccounts);
     };
+  }, [follow]);
+
+  /** Which wallet to connect: straight to it when only one is installed, else the user picks from the list. */
+  const pickWallet = useCallback(() => {
+    const wallets = findWallets();
+    if (wallets.length === 0) return Promise.reject(new Error("No wallet in this browser."));
+    if (wallets.length === 1) return Promise.resolve(wallets[0]!);
+    return new Promise<FoundWallet>((resolve, reject) => {
+      setPicker({
+        wallets,
+        pick: (wallet) => {
+          setPicker(null);
+          if (wallet) resolve(wallet);
+          else reject(new Error("Connection cancelled."));
+        },
+      });
+    });
   }, []);
 
   const connect = useCallback(async () => {
-    const eth = ethereum();
-    if (!eth) throw new Error("No wallet in this browser.");
-    const next = createWalletClient({ chain: giwaChain, transport: custom(eth) });
-    const accounts = await next.requestAddresses();
-    const who = accounts[0];
-    if (!who) return;
-    await moveToGiwa(next, eth);
+    const wallet = await pickWallet();
+    // The wallet's own account chooser, even when it already trusts this site.
+    const accounts = await chooseAccounts(wallet.provider);
+    const first = accounts[0];
+    if (!first) return;
+    const who = getAddress(first);
+    const next = createWalletClient({ chain: giwaChain, transport: custom(wallet.provider) });
+    setActiveWallet(wallet);
+    await moveToGiwa(next, wallet.provider);
     try {
       localStorage.removeItem(SIGNED_OUT);
     } catch {
@@ -236,18 +273,25 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
     walletRef.current = next;
     accountRef.current = who;
     setAccount(who);
+    follow(wallet.provider);
     return { who, client: next };
-  }, []);
+  }, [pickWallet, follow]);
 
   const disconnect = useCallback(() => {
+    const eth = activeProvider();
+    unfollow.current?.();
+    unfollow.current = undefined;
     walletRef.current = undefined;
     accountRef.current = undefined;
     setAccount(undefined);
+    setActiveWallet(undefined);
     try {
       localStorage.setItem(SIGNED_OUT, "1");
     } catch {
       /* private mode */
     }
+    // So the next Connect asks again, in wallets that can forget a site.
+    void forgetSite(eth);
   }, []);
 
   const ensureChain = useCallback(async () => {
@@ -531,7 +575,12 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
     [deployment, live, coins, loading, preview, note, account, connect, disconnect, ensureChain, refresh, createCoin, trade, quickBuy, unwrap, claimFees, signMessage, tip],
   );
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={value}>
+      {children}
+      {picker ? <WalletPicker wallets={picker.wallets} onPick={picker.pick} /> : null}
+    </Ctx.Provider>
+  );
 }
 
 export function useChimi() {

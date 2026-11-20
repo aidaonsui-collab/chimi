@@ -8,7 +8,6 @@ import {
   maxUint256,
   parseEther,
   type Address,
-  type EIP1193Provider,
   type WalletClient,
 } from "viem";
 import {
@@ -22,6 +21,7 @@ import {
 import { publicClient } from "@/lib/chimi/client";
 import { feeLabel, fmt, short, type Coin, type PoolSwap } from "@/lib/chimi/market";
 import { useTokenProfile } from "@/lib/chimi/token-image";
+import { activeProvider } from "@/lib/chimi/wallets";
 import { IconArrowLeft, IconChevronRight } from "@/components/chimi/icons";
 import { EthLogo, TokenLogo } from "@/components/chimi/token-logo";
 import { PairMark } from "@/components/chimi/pair-mark";
@@ -69,7 +69,7 @@ const PRESETS: { id: RangePreset; title: string; blurb: string }[] = [
 ];
 
 function clientFor(account: Address): WalletClient {
-  const ethereum = (window as Window & { ethereum?: EIP1193Provider }).ethereum;
+  const ethereum = activeProvider();
   if (!ethereum) throw new Error("No wallet found in this browser.");
   return createWalletClient({ account, chain: giwaChain, transport: custom(ethereum) });
 }
