@@ -113,8 +113,19 @@ The same order is covered by `forge test --match-contract ChimiMainnetTest`.
    - a launch with and without the burn box;
    - a buy and a sell;
    - `/api/keeper/flywheel?dry=1` (with the cron secret) plans the burns;
-   - a tip.
+   - a tip;
+   - CHIMI carries the **Official** tag on the board (it is `burner.chimi` in `deployments.json`);
+   - once the keeper has burned, CHIMI's **Burned** column on the board is above 0%. The keeper burns on its daily run, or when called with the cron secret after some trading. The column reads the burn address with Multicall3, so a column stuck on "—" means Multicall3 is missing (step 1);
+   - from a wallet with a Dojang, found a house with a **picture seal**. The upload going through shows `BLOB_READ_WRITE_TOKEN` works on this deployment;
+   - **Connect, Disconnect, Connect again**: the wallet asks which account to share, and with two wallets installed Chimi first asks which wallet.
 
-To keep the testnet running alongside, deploy a second Vercel project (e.g. testnet.chimi.club) from a branch whose `deployments.json` is Sepolia's, with the old Redis.
+To keep the testnet running alongside, deploy a second Vercel project (e.g. testnet.chimi.club) from a branch whose `deployments.json` is Sepolia's. Before step 6 switches production's settings, copy today's to the new project:
+- the old Redis (`KV_REST_API_URL` / `KV_REST_API_TOKEN`);
+- the testnet keeper (`KEEPER_PRIVATE_KEY`);
+- the Sepolia RPCs (`GIWA_RPC` / `VITE_GIWA_RPC`);
+- `CHIMI_SEASON_START`;
+- `BLOB_READ_WRITE_TOKEN`, `CRON_SECRET`, `CHIMI_ADMIN_TOKEN` and `TWITTERAPI_IO_KEY`.
+
+Without the Blob token there, coin pictures and house picture seals can't be uploaded on the testnet.
 
 If testnet users should get something on mainnet, snapshot first: CHIMI holders, points, Houses. That data lives in the old Redis and on GIWA Sepolia.
