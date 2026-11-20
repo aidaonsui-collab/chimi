@@ -1,10 +1,11 @@
-import { createRootRoute, HeadContent, Link, Outlet, Scripts } from "@tanstack/react-router";
+import { createRootRoute, HeadContent, Link, Outlet, ScriptOnce, Scripts } from "@tanstack/react-router";
 import { ChimiProvider } from "@/components/chimi/provider";
 import { Shell } from "@/components/chimi/shell";
 import { Empty } from "@/components/chimi/ui";
 import { Analytics } from "@vercel/analytics/react";
 import appCss from "../styles.css?url";
 import { NETWORK } from "@/lib/chimi/network";
+import { INTRO_GATE } from "@/lib/chimi/intro";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -67,6 +68,8 @@ export const Route = createRootRoute({
     // The script above may have marked <html> before React woke up; that difference is expected.
     <html lang="en" suppressHydrationWarning>
       <head>
+        {/* Whether the home page's opening plays, settled before anything is drawn (lib/chimi/intro.ts). */}
+        <ScriptOnce>{INTRO_GATE}</ScriptOnce>
         <HeadContent />
       </head>
       <body>

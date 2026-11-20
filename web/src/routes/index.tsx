@@ -7,6 +7,7 @@ import { useBurned } from "@/lib/chimi/burned";
 import { useTokenProfiles } from "@/lib/chimi/token-image";
 import { LiveTrades, PairsBoard, type CoinLinks } from "@/components/chimi/home-board";
 import { HomeBanner, type HeroStat } from "@/components/chimi/home-hero";
+import { HomeIntro } from "@/components/chimi/home-intro";
 import { useChimi } from "@/components/chimi/provider";
 import { useNow } from "@/components/chimi/rewards-bits";
 import { Empty } from "@/components/chimi/ui";
@@ -56,6 +57,7 @@ function Home() {
 
   return (
     <main className="pb-16">
+      <HomeIntro />
       <HomeBanner stats={heroStats} live={!preview} />
       <div className="page mt-8 sm:mt-10">
         {failed ? (
