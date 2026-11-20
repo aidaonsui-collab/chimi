@@ -1,6 +1,7 @@
 /**
  * The inbox: what other wallets did that concerns yours. Someone answered or liked your comment, commented on a coin
- * you launched, followed you, bought a coin after you did, or tipped you. The server adds an item when the thing happens
+ * you launched, followed you, bought a coin after you did, tipped you, asked to join the house you head, or answered
+ * your request to join theirs. The server adds an item when the thing happens
  * (routes/api/comments.ts, follows.ts and server/points.ts); the page only reads the list. The server and the
  * browser share this one copy, and node can test it directly, so it imports nothing.
  *
@@ -32,7 +33,12 @@ export type InboxItem =
   /** `from` follows you and bought `token` after you did. `eth` is what counts toward your lead. */
   | (Base & { kind: "led"; token: string; eth: number })
   /** `from` tipped you `eth` on `token`, a coin you launched; `text` is their message (may be empty). */
-  | (Base & { kind: "tip"; token: string; eth: number; text: string });
+  | (Base & { kind: "tip"; token: string; eth: number; text: string })
+  /**
+   * Houses: `from` asked to join [tag], the house you head ("asked"); or `from`, its head, let you in ("accepted") or
+   * turned your request down ("declined").
+   */
+  | (Base & { kind: "house"; tag: string; what: "asked" | "accepted" | "declined" });
 
 export type InboxDoc = {
   version: 1;
@@ -86,6 +92,9 @@ export type InboxRow = {
   eth?: number;
   /** A reply to someone else, in a thread you started. */
   thread?: boolean;
+  /** A house item: which house, and what happened. */
+  tag?: string;
+  what?: "asked" | "accepted" | "declined";
 };
 
 /** The inbox as lines, newest first. */
@@ -115,6 +124,8 @@ export function rowsOf(items: readonly InboxItem[]): InboxRow[] {
       text: "text" in item ? item.text : undefined,
       eth: item.kind === "led" || item.kind === "tip" ? item.eth : undefined,
       thread: item.kind === "reply" ? item.thread : undefined,
+      tag: item.kind === "house" ? item.tag : undefined,
+      what: item.kind === "house" ? item.what : undefined,
     });
   }
   return rows;

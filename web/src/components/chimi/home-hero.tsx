@@ -99,7 +99,7 @@ export function HomeBanner({ stats, live }: { stats: HeroStat[]; live: boolean }
       key: "houses",
       kicker: "Houses · 가문",
       title: "Trade under one seal.",
-      body: "A house is up to 25 traders whose points add up together. Found one or join one.",
+      body: "A house is up to 100 traders whose points add up together. Found one or join one.",
       actions: (
         <Link to="/houses" className="btn btn-light">
           Find a house

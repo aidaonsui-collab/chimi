@@ -9,12 +9,20 @@
  *   free to join elsewhere at once.
  * - A house holds up to MAX_MEMBERS wallets. When the head leaves, the longest-standing member takes over; a house with
  *   nobody left closes.
+ * - The head chooses how new members come in: anyone can join, or the head approves each one. In a house that approves,
+ *   joining is a request the head accepts or turns down. A wallet has one request out at a time (asking another house
+ *   replaces it); a request lapses after REQUEST_DAYS, and is dropped when the wallet joins or founds a house.
+ * - A seal is a character stamped in an ink, or a picture the head uploads (it must be in Chimi's own image store).
  * - A day's points go to the house a wallet is in when that KST day ends (scoreHouses adds them up).
  * - Every change is a message the wallet signs (no transaction), good for SIGNATURE_TTL_MS and only once.
  */
 import { dayEndMs, type Points } from "./points-rules.ts";
 
-export const MAX_MEMBERS = 25;
+export const MAX_MEMBERS = 100;
+/** A join request waits this long for the head before it lapses. */
+export const REQUEST_DAYS = 14;
+/** How many requests one house can have waiting. */
+export const MAX_REQUESTS = 200;
 export const LOCK_DAYS = 7;
 export const SIGNATURE_TTL_MS = 5 * 60_000;
 const DAY_MS = 86_400_000;
@@ -58,7 +66,14 @@ export type House = {
   head: string; // lowercase
   createdAt: number;
   closedAt: number | null;
+  /** The head approves each new member. Absent in houses from before the choice: anyone can join. */
+  approve?: boolean;
+  /** A picture shown in place of the stamped character (a Chimi image-store URL). */
+  image?: string;
 };
+
+/** A wallet asking to join a house that approves its members. */
+export type JoinRequest = { wallet: string; tag: string; at: number };
 
 /** One wallet's time in one house. `to` is null while it's still there. */
 export type Stint = { wallet: string; tag: string; from: number; to: number | null };
@@ -69,20 +84,29 @@ export type HousesState = {
   stints: Stint[];
   locks: Record<string, number>; // wallet → can't join another house before this time
   lastAction: Record<string, number>; // wallet → time of its last signed action
+  requests?: JoinRequest[]; // absent in state from before requests
 };
 
 export type HouseAction =
-  | { type: "found"; tag: string; name: string; seal: Seal; ink: Ink; motto: string }
+  | { type: "found"; tag: string; name: string; seal: Seal; ink: Ink; motto: string; approve?: boolean; image?: string | null }
+  /** Straight in, or a request when the house approves its members. */
   | { type: "join"; tag: string }
+  /** Take back my request. */
+  | { type: "withdraw" }
+  /** The head lets a requester in, or turns them down. */
+  | { type: "accept"; wallet: string }
+  | { type: "reject"; wallet: string }
   | { type: "leave" }
   | { type: "remove"; wallet: string }
   | { type: "motto"; motto: string }
-  | { type: "seal"; seal: Seal; ink: Ink };
+  /** `image` null or absent: the stamped character, no picture. */
+  | { type: "seal"; seal: Seal; ink: Ink; image?: string | null }
+  | { type: "approve"; approve: boolean };
 
 /** What the API knows that the rules can't: whether the acting wallet holds a Dojang right now. */
 export type HouseContext = { verified: boolean };
 
-export const emptyHouses = (): HousesState => ({ version: 1, houses: {}, stints: [], locks: {}, lastAction: {} });
+export const emptyHouses = (): HousesState => ({ version: 1, houses: {}, stints: [], locks: {}, lastAction: {}, requests: [] });
 
 const LINK = /(https?:|www\.|\.(com|io|xyz|fun|net|org|gg|app|me|co|so|to|ly|kr|link)\b|@)/i;
 
@@ -104,6 +128,14 @@ export function checkMotto(motto: string): string | null {
   return null;
 }
 
+/** Pictures come only from Chimi's own image store (POST /api/upload), so a seal can't point anywhere else. */
+const IMAGE_RE = /^https:\/\/[a-z0-9]+\.public\.blob\.vercel-storage\.com\/chimi\/[A-Za-z0-9._-]{1,140}$/;
+
+export function checkImage(image: string | null | undefined): string | null {
+  if (image === null || image === undefined) return null;
+  return IMAGE_RE.test(image) ? null : "Upload the picture to Chimi first.";
+}
+
 /** A tag to start from: the initials of the name, or its first letters. */
 export function suggestTag(name: string) {
   const words = name.toUpperCase().replace(/[^A-Z0-9 ]/g, "").split(/\s+/).filter(Boolean);
@@ -112,19 +144,29 @@ export function suggestTag(name: string) {
 }
 
 /** What the wallet signs. The API rebuilds it from the request, so the two must stay in step. */
+const policy = (approve: boolean | undefined) => (approve ? "I approve each one" : "anyone can join");
+
 export function houseMessage(action: HouseAction, wallet: string, time: number) {
   const what =
     action.type === "found"
-      ? `found [${action.tag}] ${action.name}\nSeal: ${action.seal} in ${action.ink}\nMotto: ${action.motto}`
+      ? `found [${action.tag}] ${action.name}\nSeal: ${action.seal} in ${action.ink}\nPicture: ${action.image ?? "none"}\nMotto: ${action.motto}\nNew members: ${policy(action.approve)}`
       : action.type === "join"
         ? `join [${action.tag}]`
-        : action.type === "remove"
-          ? `remove ${action.wallet.toLowerCase()} from my house`
-          : action.type === "motto"
-            ? `set my house's motto to: ${action.motto}`
-            : action.type === "seal"
-              ? `change my house's seal to ${action.seal} in ${action.ink}`
-              : "leave my house";
+        : action.type === "withdraw"
+          ? "withdraw my request to join a house"
+          : action.type === "accept"
+            ? `accept ${action.wallet.toLowerCase()} into my house`
+            : action.type === "reject"
+              ? `turn down ${action.wallet.toLowerCase()}'s request to join my house`
+              : action.type === "remove"
+                ? `remove ${action.wallet.toLowerCase()} from my house`
+                : action.type === "motto"
+                  ? `set my house's motto to: ${action.motto}`
+                  : action.type === "seal"
+                    ? `change my house's seal to ${action.seal} in ${action.ink}\nPicture: ${action.image ?? "none"}`
+                    : action.type === "approve"
+                      ? `set my house's new members to: ${policy(action.approve)}`
+                      : "leave my house";
   return `Chimi houses: ${what}\n\nWallet: ${wallet.toLowerCase()}\nTime: ${new Date(time).toISOString()}`;
 }
 
@@ -132,6 +174,16 @@ export const currentStint = (state: HousesState, wallet: string) =>
   state.stints.find((s) => s.wallet === wallet.toLowerCase() && s.to === null);
 
 export const membersOf = (state: HousesState, tag: string) => state.stints.filter((s) => s.tag === tag && s.to === null);
+
+/** Requests still waiting on a house, oldest first. */
+export const requestsFor = (state: HousesState, tag: string, now: number) =>
+  (state.requests ?? []).filter((r) => r.tag === tag && live(state, r, now)).sort((a, b) => a.at - b.at);
+
+/** The wallet's request still waiting, if any. */
+export const requestOf = (state: HousesState, wallet: string, now: number) =>
+  (state.requests ?? []).find((r) => r.wallet === wallet.toLowerCase() && live(state, r, now));
+
+const live = (state: HousesState, r: JoinRequest, now: number) => now - r.at < REQUEST_DAYS * DAY_MS && !!state.houses[r.tag] && !state.houses[r.tag]!.closedAt;
 
 /** When the wallet may join a house, or 0 when it can now. */
 export function lockedUntil(state: HousesState, wallet: string, now: number) {
@@ -159,6 +211,11 @@ const NEED_DOJANG = "Get a Dojang on GIWA first: houses are for verified wallets
 export function applyAction(state: HousesState, walletIn: string, action: HouseAction, now: number, ctx: HouseContext): Result {
   const wallet = walletIn.toLowerCase();
   const s: HousesState = structuredClone(state);
+  // Lapsed requests, and requests to houses that have closed, go with every change.
+  s.requests = (s.requests ?? []).filter((r) => live(s, r, now));
+  const dropRequest = (w: string) => {
+    s.requests = s.requests!.filter((r) => r.wallet !== w);
+  };
   const mine = currentStint(s, wallet);
   const lock = lockedUntil(s, wallet, now);
   const lockError = () => fail(`You can switch houses from ${new Date(lock).toUTCString().slice(5, 22)} UTC.`, 409);
@@ -170,6 +227,8 @@ export function applyAction(state: HousesState, walletIn: string, action: HouseA
       const problem = checkName(action.name) ?? checkTag(tag) ?? checkMotto(action.motto.trim());
       if (problem) return fail(problem);
       if (!(action.seal in SEALS) || !(action.ink in INKS)) return fail("Pick a seal and an ink.");
+      const imageProblem = checkImage(action.image);
+      if (imageProblem) return fail(imageProblem);
       if (!ctx.verified) return fail(NEED_DOJANG, 403);
       if (s.houses[tag]) return fail(`[${tag}] is taken.`, 409);
       const name = action.name.trim().replace(/\s+/g, " ");
@@ -178,9 +237,11 @@ export function applyAction(state: HousesState, walletIn: string, action: HouseA
       }
       if (lock) return lockError();
       if (mine) depart(s, mine, now);
-      s.houses[tag] = { tag, name, seal: action.seal, ink: action.ink, motto: action.motto.trim(), head: wallet, createdAt: now, closedAt: null };
+      s.houses[tag] = { tag, name, seal: action.seal, ink: action.ink, motto: action.motto.trim(), head: wallet, createdAt: now, closedAt: null, approve: !!action.approve };
+      if (action.image) s.houses[tag]!.image = action.image;
       s.stints.push({ wallet, tag, from: now, to: null });
       s.locks[wallet] = now + LOCK_DAYS * DAY_MS;
+      dropRequest(wallet);
       return { state: s };
     }
     case "join": {
@@ -192,9 +253,47 @@ export function applyAction(state: HousesState, walletIn: string, action: HouseA
       const lastHouse = s.stints.filter((x) => x.wallet === wallet).sort((a, b) => b.from - a.from)[0]?.tag;
       if (lock && lastHouse !== house.tag) return lockError();
       if (membersOf(s, house.tag).length >= MAX_MEMBERS) return fail(`[${house.tag}] is full (${MAX_MEMBERS} members).`, 409);
+      if (house.approve) {
+        // A request: the head lets the wallet in (accept). One request at a time; asking here replaces any other.
+        if (requestOf(s, wallet, now)?.tag === house.tag) return fail(`You've already asked to join [${house.tag}].`, 409);
+        if (requestsFor(s, house.tag, now).length >= MAX_REQUESTS) return fail(`[${house.tag}] has too many requests waiting. Try again later.`, 409);
+        dropRequest(wallet);
+        s.requests!.push({ wallet, tag: house.tag, at: now });
+        return { state: s };
+      }
       if (mine) depart(s, mine, now);
       s.stints.push({ wallet, tag: house.tag, from: now, to: null });
       s.locks[wallet] = now + LOCK_DAYS * DAY_MS;
+      dropRequest(wallet);
+      return { state: s };
+    }
+    case "withdraw": {
+      if (!requestOf(s, wallet, now)) return fail("You have no request waiting.", 404);
+      dropRequest(wallet);
+      return { state: s };
+    }
+    case "accept":
+    case "reject": {
+      const target = action.wallet.toLowerCase();
+      if (!head) return fail("Only the head of the house can answer requests.", 403);
+      const request = requestOf(s, target, now);
+      if (!request || request.tag !== mine!.tag) return fail("That wallet has no request waiting for your house.", 404);
+      dropRequest(target);
+      if (action.type === "reject") return { state: s };
+      if (membersOf(s, mine!.tag).length >= MAX_MEMBERS) return fail(`Your house is full (${MAX_MEMBERS} members).`, 409);
+      // The same rules as joining, for the wallet that asked: it may have joined another house since.
+      const theirLock = lockedUntil(s, target, now);
+      const theirLast = s.stints.filter((x) => x.wallet === target).sort((a, b) => b.from - a.from)[0]?.tag;
+      if (theirLock && theirLast !== mine!.tag) return fail(`That wallet can't switch houses until ${new Date(theirLock).toUTCString().slice(5, 22)} UTC.`, 409);
+      const theirs = currentStint(s, target);
+      if (theirs) depart(s, theirs, now);
+      s.stints.push({ wallet: target, tag: mine!.tag, from: now, to: null });
+      s.locks[target] = now + LOCK_DAYS * DAY_MS;
+      return { state: s };
+    }
+    case "approve": {
+      if (!head) return fail("Only the head of the house can choose how members join.", 403);
+      s.houses[mine!.tag]!.approve = action.approve;
       return { state: s };
     }
     case "leave": {
@@ -222,7 +321,12 @@ export function applyAction(state: HousesState, walletIn: string, action: HouseA
     case "seal": {
       if (!head) return fail("Only the head of the house can change the seal.", 403);
       if (!(action.seal in SEALS) || !(action.ink in INKS)) return fail("Pick a seal and an ink.");
-      Object.assign(s.houses[mine!.tag]!, { seal: action.seal, ink: action.ink });
+      const imageProblem = checkImage(action.image);
+      if (imageProblem) return fail(imageProblem);
+      const house = s.houses[mine!.tag]!;
+      Object.assign(house, { seal: action.seal, ink: action.ink });
+      if (action.image) house.image = action.image;
+      else delete house.image;
       return { state: s };
     }
   }

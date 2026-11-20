@@ -7,7 +7,7 @@ import { bpsLabel, hasFeeChoice, splitFor, type FeeSplit } from "@/lib/chimi/fee
 import { DOJANG_URL } from "@/lib/chimi/identity";
 import { feeLabel, shortAddr } from "@/lib/chimi/market";
 import { DAILY_POOL, LEAD_SHARE, LEAGUES } from "@/lib/chimi/points-rules";
-import { MAX_MEMBERS } from "@/lib/chimi/house-rules";
+import { MAX_MEMBERS, REQUEST_DAYS } from "@/lib/chimi/house-rules";
 import { MAX_LENGTH } from "@/lib/chimi/comment-rules";
 import { IconExternal } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
@@ -362,6 +362,11 @@ function Docs() {
               items={[
                 <>A house is a team of up to {MAX_MEMBERS} traders whose points add up. Founding or joining one needs a Dojang.</>,
                 <>A wallet is in one house at a time. After joining, it can leave whenever it likes, but it has to wait a week before joining a different one.</>,
+                <>
+                  The head chooses how new members come in: anyone can join, or the head approves each one. In a house that approves, joining sends a request
+                  the head accepts or turns down; a wallet has one request out at a time, and it lapses after {REQUEST_DAYS} days.
+                </>,
+                <>A house's seal is a stamped character in the house's ink, or a picture the head uploads.</>,
                 <>A day's points go to the house a wallet is in when that day ends in Seoul.</>,
               ]}
             />

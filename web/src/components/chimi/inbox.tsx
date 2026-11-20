@@ -6,7 +6,7 @@ import type { InboxRow } from "@/lib/chimi/inbox-rules";
 import { shortAddr } from "@/lib/chimi/market";
 import type { Profile } from "@/lib/chimi/points-rules";
 import { shortWallet, usePoints, useProfiles } from "@/lib/chimi/rewards";
-import { IconBell, IconBolt, IconBroadcast, IconComment, IconHeart, IconReply, IconTraders } from "@/components/chimi/icons";
+import { IconBell, IconBolt, IconBroadcast, IconComment, IconHeart, IconHouse, IconReply, IconTraders } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
 import { Blockie } from "@/components/chimi/ui";
 
@@ -19,6 +19,7 @@ const MARK: Record<InboxRow["kind"], { icon: ReactNode; tone: string }> = {
   follow: { icon: <IconTraders size={11} />, tone: "bg-fg text-bg" },
   led: { icon: <IconBolt size={11} />, tone: "bg-ok text-bg" },
   tip: { icon: <IconBroadcast size={11} />, tone: "bg-seal text-onseal" },
+  house: { icon: <IconHouse size={11} />, tone: "bg-gold text-bg" },
 };
 
 /**
@@ -135,6 +136,20 @@ function Line({ row, fresh, profiles, symbol, onPick }: { row: InboxRow; fresh: 
       <>
         {name} tipped you {ethText(row.eth)} ETH on {coin}
       </>
+    ) : row.kind === "house" ? (
+      row.what === "asked" ? (
+        <>
+          {name} asked to join <span className="font-semibold text-fg">[{row.tag}]</span>
+        </>
+      ) : row.what === "accepted" ? (
+        <>
+          {name} let you into <span className="font-semibold text-fg">[{row.tag}]</span>
+        </>
+      ) : (
+        <>
+          {name} turned down your request to join <span className="font-semibold text-fg">[{row.tag}]</span>
+        </>
+      )
     ) : (
       <>
         {name} bought {coin} after you
@@ -143,6 +158,12 @@ function Line({ row, fresh, profiles, symbol, onPick }: { row: InboxRow; fresh: 
   const detail =
     row.kind === "led"
       ? `${ethText(row.eth)} ETH counts toward your points`
+      : row.kind === "house"
+        ? row.what === "asked"
+          ? "Accept or turn it down on the house’s page"
+          : row.what === "accepted"
+            ? "Your points count for the house from today"
+            : null
       : row.kind === "follow"
         ? "Their buys after yours earn you points"
         : row.text
@@ -169,6 +190,10 @@ function Line({ row, fresh, profiles, symbol, onPick }: { row: InboxRow; fresh: 
     <li className="border-b border-line/70 last:border-0">
       {row.kind === "follow" ? (
         <Link to="/u/$address" params={{ address: who }} onClick={onPick} className={cls}>
+          {body}
+        </Link>
+      ) : row.kind === "house" ? (
+        <Link to="/houses/$tag" params={{ tag: row.tag! }} onClick={onPick} className={cls}>
           {body}
         </Link>
       ) : row.kind === "led" || row.kind === "tip" ? (

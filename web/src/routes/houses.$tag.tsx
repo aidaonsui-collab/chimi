@@ -1,11 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { DOJANG_URL } from "@/lib/chimi/identity";
-import { MAX_MEMBERS, SEALS, checkMotto, currentStint, lockedUntil, scoreHouses } from "@/lib/chimi/house-rules";
+import { MAX_MEMBERS, REQUEST_DAYS, SEALS, checkMotto, currentStint, lockedUntil, requestOf, requestsFor, scoreHouses } from "@/lib/chimi/house-rules";
 import { dayLabel } from "@/lib/chimi/points-rules";
 import { fmtPoints, useHouseAction, useHouses, useMyProfile, usePoints, useProfiles } from "@/lib/chimi/rewards";
 import { useChimi } from "@/components/chimi/provider";
-import { EditSealDialog } from "@/components/chimi/found-house";
+import { EditSealDialog, NewMembersDialog } from "@/components/chimi/found-house";
 import { HouseSeal } from "@/components/chimi/house-seal";
 import { IconChevronRight } from "@/components/chimi/icons";
 import { Empty } from "@/components/chimi/ui";
@@ -25,13 +25,15 @@ function HousePage() {
   const { data: points } = usePoints();
   const { profile: myProfile } = useMyProfile();
   const action = useHouseAction();
-  const [editing, setEditing] = useState<"seal" | "motto" | null>(null);
+  const [editing, setEditing] = useState<"seal" | "motto" | "members" | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null); // "leave" or a wallet to remove
   const [motto, setMotto] = useState("");
 
   const scores = useMemo(() => (houses ? scoreHouses(houses.state, points) : []), [houses, points]);
   const score = scores.find((s) => s.house.tag === tag);
-  const profiles = useProfiles(score?.members.map((m) => m.wallet) ?? [], points?.file.profiles);
+  const requests = useMemo(() => (houses ? requestsFor(houses.state, tag, Date.now()) : []), [houses, tag]);
+  const profiles = useProfiles([...(score?.members.map((m) => m.wallet) ?? []), ...requests.map((r) => r.wallet)], points?.file.profiles);
+  const seasonOf = useMemo(() => new Map((points?.season ?? []).map((s) => [s.wallet.toLowerCase(), s.points])), [points]);
 
   if (loading && !houses) {
     return (
@@ -69,6 +71,10 @@ function HousePage() {
   const lockedOut = !member && lock > 0 && lastHouse !== tag;
   const noDojang = myProfile?.verified === false;
   const headProfile = profiles[house.head];
+  const myRequest = me ? requestOf(houses.state, me, Date.now()) : undefined;
+  const asked = myRequest?.tag === tag;
+  const elsewhere = myRequest && !asked ? myRequest.tag : null;
+  const lapses = myRequest ? Math.max(1, Math.ceil((myRequest.at + REQUEST_DAYS * 86_400_000 - Date.now()) / 86_400_000)) : 0;
   const today = points?.live?.day;
 
   async function act(a: Parameters<typeof action.run>[0]) {
@@ -94,7 +100,7 @@ function HousePage() {
           <img src="/banner-960.webp" alt="" decoding="async" className="pointer-events-none absolute inset-0 size-full object-cover object-[center_30%] opacity-25 [mask-image:linear-gradient(to_bottom,black,transparent_70%)]" />
           <div className="pointer-events-none absolute -top-24 -right-16 size-72 rounded-full bg-[radial-gradient(closest-side,rgba(212,67,43,.18),transparent)]" />
           <div className="relative flex flex-col gap-6 sm:flex-row sm:items-start">
-            <HouseSeal seal={house.seal} ink={house.ink} size={128} className="-rotate-3 drop-shadow-[0_14px_30px_rgba(0,0,0,.45)]" title={`${SEALS[house.seal]} seal`} />
+            <HouseSeal seal={house.seal} ink={house.ink} image={house.image} size={128} className="-rotate-3 drop-shadow-[0_14px_30px_rgba(0,0,0,.45)]" title={`${SEALS[house.seal]} seal`} />
             <div className="min-w-0 flex-1">
               <SectionLabel>
                 HOUSE #{score.rank} · {SEALS[house.seal].toUpperCase()}
@@ -127,7 +133,7 @@ function HousePage() {
                 <span className="inline-flex items-center gap-1 text-fg">
                   <WalletName wallet={house.head} profile={headProfile} you={head} />
                 </span>
-                · founded {when(house.createdAt)}
+                · founded {when(house.createdAt)} · {house.approve ? "the head approves new members" : "anyone can join"}
               </p>
             </div>
 
@@ -156,6 +162,9 @@ function HousePage() {
                         <button type="button" onClick={() => setEditing("seal")} className="btn btn-secondary">
                           Change seal
                         </button>
+                        <button type="button" onClick={() => setEditing("members")} className="btn btn-secondary">
+                          New members: {house.approve ? "you approve" : "anyone"}
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -175,30 +184,48 @@ function HousePage() {
                 )
               ) : (
                 <div className="sm:w-56">
-                  <button
-                    type="button"
-                    disabled={!!action.pending || full || lockedOut || noDojang}
-                    onClick={() => void act({ type: "join", tag })}
-                    className="btn btn-lg btn-primary w-full"
-                  >
-                    {action.pending ? "Sign in your wallet…" : full ? "House is full" : myStint ? `Move to [${tag}]` : `Join [${tag}]`}
-                  </button>
-                  <p className="mt-2 text-xs text-muted">
-                    {lockedOut ? (
-                      `You can switch houses from ${when(lock)}.`
-                    ) : noDojang ? (
-                      <>
-                        Houses are for wallets with a Dojang.{" "}
-                        <a href={DOJANG_URL} target="_blank" rel="noreferrer" className="text-fg underline underline-offset-2">
-                          Get one ↗
-                        </a>
-                      </>
-                    ) : myStint ? (
-                      `You’ll leave [${myStint.tag}]. A signature, not a transaction.`
-                    ) : (
-                      "A signature, not a transaction. You stay at least 7 days."
-                    )}
-                  </p>
+                  {asked ? (
+                    <>
+                      <div className="btn btn-lg w-full cursor-default border border-gold/40 bg-gold/10 text-gold" aria-live="polite">
+                        Request sent
+                      </div>
+                      <p className="mt-2 text-xs text-muted">
+                        The head of [{tag}] lets you in or turns the request down. It lapses in {lapses} day{lapses === 1 ? "" : "s"}.{" "}
+                        <button type="button" disabled={!!action.pending} onClick={() => void act({ type: "withdraw" })} className="text-fg underline underline-offset-2">
+                          {action.pending === "withdraw" ? "Withdrawing…" : "Withdraw"}
+                        </button>
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        disabled={!!action.pending || full || lockedOut || noDojang}
+                        onClick={() => void act({ type: "join", tag })}
+                        className="btn btn-lg btn-primary w-full"
+                      >
+                        {action.pending ? "Sign in your wallet…" : full ? "House is full" : house.approve ? (myStint ? `Ask to move to [${tag}]` : `Ask to join [${tag}]`) : myStint ? `Move to [${tag}]` : `Join [${tag}]`}
+                      </button>
+                      <p className="mt-2 text-xs text-muted">
+                        {lockedOut ? (
+                          `You can switch houses from ${when(lock)}.`
+                        ) : noDojang ? (
+                          <>
+                            Houses are for wallets with a Dojang.{" "}
+                            <a href={DOJANG_URL} target="_blank" rel="noreferrer" className="text-fg underline underline-offset-2">
+                              Get one ↗
+                            </a>
+                          </>
+                        ) : house.approve ? (
+                          `The head approves new members.${elsewhere ? ` This replaces your request to join [${elsewhere}].` : ""}${myStint ? ` If they let you in, you leave [${myStint.tag}].` : ""} A signature, not a transaction.`
+                        ) : myStint ? (
+                          `You’ll leave [${myStint.tag}]. A signature, not a transaction.`
+                        ) : (
+                          "A signature, not a transaction. You stay at least 7 days."
+                        )}
+                      </p>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -212,6 +239,47 @@ function HousePage() {
             <Stat label="Members" value={`${score.members.length}/${MAX_MEMBERS}`} sub={full ? "full" : `${MAX_MEMBERS - score.members.length} seats open`} />
           </div>
         </div>
+
+        {head && (requests.length > 0 || house.approve) ? (
+          <div className="card mt-5 min-w-0 overflow-hidden">
+            <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-5">
+              <SectionLabel>REQUESTS · {requests.length}</SectionLabel>
+              <span className="text-xs text-muted">{full ? "Your house is full: make room to let anyone in." : `Requests lapse after ${REQUEST_DAYS} days.`}</span>
+            </div>
+            {requests.length === 0 ? (
+              <p className="px-4 py-4 text-sm text-muted sm:px-5">No one is waiting. When a wallet asks to join, it shows up here and in your inbox.</p>
+            ) : (
+              <ol>
+                {requests.map((r) => {
+                  const p = profiles[r.wallet];
+                  const pts = seasonOf.get(r.wallet) ?? 0;
+                  const busy = !!action.pending;
+                  return (
+                    <li key={r.wallet} className="row-hover flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line/70 px-4 py-3 last:border-0 sm:px-5">
+                      <span className="min-w-0 flex-1">
+                        <span className="flex min-w-0 items-center gap-1.5 text-[15px]">
+                          <WalletName wallet={r.wallet} profile={p} />
+                          <DojangMark verified={p?.verified} />
+                        </span>
+                        <span className="block text-xs text-muted">
+                          asked {when(r.at)} · {fmtPoints(pts)} season points
+                        </span>
+                      </span>
+                      <span className="flex shrink-0 gap-2">
+                        <button type="button" disabled={busy || full} onClick={() => void act({ type: "accept", wallet: r.wallet })} className="btn btn-sm btn-primary">
+                          {action.pending === "accept" ? "Signing…" : "Accept"}
+                        </button>
+                        <button type="button" disabled={busy} onClick={() => void act({ type: "reject", wallet: r.wallet })} className="btn btn-sm btn-ghost">
+                          {action.pending === "reject" ? "Signing…" : "Turn down"}
+                        </button>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </div>
+        ) : null}
 
         <div className="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="card min-w-0 overflow-hidden">
@@ -272,6 +340,7 @@ function HousePage() {
         </div>
       </section>
       {editing === "seal" ? <EditSealDialog house={house} onClose={() => setEditing(null)} /> : null}
+      {editing === "members" ? <NewMembersDialog house={house} onClose={() => setEditing(null)} /> : null}
     </main>
   );
 }

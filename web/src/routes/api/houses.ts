@@ -1,6 +1,7 @@
 /**
- * GET /api/houses: every house, membership and lock (public; the pages add up points themselves).
- * POST /api/houses: one signed change, { wallet, action, time, signature } (rules in lib/chimi/house-rules.ts).
+ * GET /api/houses: every house, membership, lock and waiting request (public; the pages add up points themselves).
+ * POST /api/houses: one signed change, { wallet, action, time, signature } (rules in lib/chimi/house-rules.ts). A request
+ * to join tells the head in their inbox; accepting or turning it down tells the wallet that asked.
  *
  * Needs the project's Upstash Redis (KV_REST_API_URL / KV_REST_API_TOKEN) to change anything. CHIMI_ADMIN_TOKEN lets
  * the operator close a house with that bearer token: POST { admin: "close", tag }.
@@ -10,14 +11,17 @@ import { isAddress, isHex, recoverMessageAddress } from "viem";
 import { readProfiles } from "@/lib/chimi/identity";
 import {
   applyAction,
+  currentStint,
   emptyHouses,
   houseMessage,
   INKS,
+  requestOf,
   SEALS,
   SIGNATURE_TTL_MS,
   type HouseAction,
   type HousesState,
 } from "@/lib/chimi/house-rules";
+import { tell } from "@/server/inbox";
 import { giwa } from "@/server/points";
 import { docStore, json, rateLimited } from "@/server/store";
 
@@ -50,19 +54,31 @@ function asAction(a: unknown): HouseAction | null {
   const seal = str("seal");
   const ink = str("ink");
   const look = seal !== null && seal in SEALS && ink !== null && ink in INKS ? { seal: seal as keyof typeof SEALS, ink: ink as keyof typeof INKS } : null;
+  // A picture is a URL or null for none; anything else is refused rather than read as none.
+  if (o.image !== undefined && o.image !== null && typeof o.image !== "string") return null;
+  const image = (o.image ?? null) as string | null;
+  const target = str("wallet") && isAddress(str("wallet")!) ? str("wallet")! : null;
   switch (o.type) {
     case "found": {
       const [tag, name, motto] = [str("tag"), str("name"), str("motto") ?? ""];
-      return tag === null || name === null || !look ? null : { type: "found", tag, name, motto, ...look };
+      if (o.approve !== undefined && typeof o.approve !== "boolean") return null;
+      return tag === null || name === null || !look ? null : { type: "found", tag, name, motto, ...look, approve: o.approve === true, image };
     }
     case "seal":
-      return look ? { type: "seal", ...look } : null;
+      return look ? { type: "seal", ...look, image } : null;
     case "join":
       return str("tag") === null ? null : { type: "join", tag: str("tag")! };
+    case "withdraw":
+      return { type: "withdraw" };
+    case "accept":
+    case "reject":
+      return target ? { type: o.type, wallet: target } : null;
+    case "approve":
+      return typeof o.approve === "boolean" ? { type: "approve", approve: o.approve } : null;
     case "leave":
       return { type: "leave" };
     case "remove":
-      return str("wallet") && isAddress(str("wallet")!) ? { type: "remove", wallet: str("wallet")! } : null;
+      return target ? { type: "remove", wallet: target } : null;
     case "motto":
       return str("motto") === null ? null : { type: "motto", motto: str("motto")! };
     default:
@@ -83,7 +99,7 @@ async function post(request: Request) {
     if (!token || request.headers.get("authorization") !== `Bearer ${token}`) return json({ error: "forbidden" }, 403);
     if (body.admin !== "close" || typeof body.tag !== "string") return json({ error: "invalid request" }, 400);
     const tag = body.tag;
-    return commit(s, (state) => {
+    const closed = await commit(s, (state) => {
       if (!state.houses[tag] || state.houses[tag]!.closedAt) return { error: "no such house", status: 404 };
       const next = structuredClone(state);
       const now = Date.now();
@@ -91,6 +107,7 @@ async function post(request: Request) {
       for (const st of next.stints) if (st.tag === tag && st.to === null) st.to = now;
       return { state: next };
     });
+    return closed.response;
   }
 
   const action = asAction(body.action);
@@ -113,22 +130,48 @@ async function post(request: Request) {
       return json({ error: "Couldn't reach GIWA to check your Dojang. Try again." }, 503);
     }
   }
-  return commit(s, (state) => {
+  let before: HousesState | null = null;
+  const res = await commit(s, (state) => {
     // A wallet's changes must come in time order, so a signature can't be replayed.
     if ((state.lastAction[wallet] ?? 0) >= time) return { error: "That signature was already used.", status: 409 };
     const out = applyAction(state, wallet, action, Date.now(), { verified });
-    if ("state" in out) out.state.lastAction[wallet] = time;
+    if ("state" in out) {
+      out.state.lastAction[wallet] = time;
+      before = state;
+    }
     return out;
   });
+  if (res.ok && before) await tellAbout(action, wallet, before, res.state).catch((e) => console.error("[houses] inbox", e instanceof Error ? e.message : e));
+  return res.response;
 }
 
+/** Inbox notes for requests: the head hears of a new one; the wallet that asked hears the answer. */
+async function tellAbout(action: HouseAction, wallet: string, before: HousesState, after: HousesState) {
+  const now = Date.now();
+  if (action.type === "join") {
+    const asked = requestOf(after, wallet, now);
+    const house = asked ? after.houses[asked.tag] : undefined;
+    if (asked && house) await tell([{ wallet: house.head, item: { kind: "house", key: `house:ask:${asked.tag}:${wallet}:${asked.at}`, time: now, from: wallet, tag: asked.tag, what: "asked" } }]);
+    return;
+  }
+  if (action.type === "accept" || action.type === "reject") {
+    const tag = currentStint(before, wallet)?.tag;
+    const target = action.wallet.toLowerCase();
+    if (!tag) return;
+    const what = action.type === "accept" ? "accepted" : "declined";
+    await tell([{ wallet: target, item: { kind: "house", key: `house:${what}:${tag}:${target}:${now}`, time: now, from: wallet, tag, what } }]);
+  }
+}
+
+type Committed = { ok: true; state: HousesState; response: Response } | { ok: false; response: Response };
+
 /** Reads, applies and writes back, again if another change landed in between. */
-async function commit(s: ReturnType<typeof store>, change: (state: HousesState) => { state: HousesState } | { error: string; status: number }) {
+async function commit(s: ReturnType<typeof store>, change: (state: HousesState) => { state: HousesState } | { error: string; status: number }): Promise<Committed> {
   for (let attempt = 0; attempt < 4; attempt++) {
     const { doc, rev } = await s.load();
     const out = change(doc ?? emptyHouses());
-    if ("error" in out) return json({ error: out.error }, out.status);
-    if (await s.save(out.state, rev)) return json({ state: out.state, writable: true });
+    if ("error" in out) return { ok: false, response: json({ error: out.error }, out.status) };
+    if (await s.save(out.state, rev)) return { ok: true, state: out.state, response: json({ state: out.state, writable: true }) };
   }
-  return json({ error: "Busy. Try again." }, 503);
+  return { ok: false, response: json({ error: "Busy. Try again." }, 503) };
 }

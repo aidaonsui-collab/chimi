@@ -161,7 +161,7 @@ function TraderPage() {
                   {league ? <LeagueChip league={league} /> : null}
                   {house ? (
                     <Link to="/houses/$tag" params={{ tag: house.tag }} className="chip hover:text-fg">
-                      <HouseSeal seal={house.seal} ink={house.ink} size={14} />
+                      <HouseSeal seal={house.seal} ink={house.ink} image={house.image} size={14} />
                       {house.name}
                     </Link>
                   ) : null}
@@ -440,7 +440,7 @@ function TraderPage() {
 
           {house ? (
             <Link to="/houses/$tag" params={{ tag: house.tag }} className="card card-lift group flex items-center gap-4 p-5">
-              <HouseSeal seal={house.seal} ink={house.ink} size={52} />
+              <HouseSeal seal={house.seal} ink={house.ink} image={house.image} size={52} />
               <span className="min-w-0 flex-1">
                 <span className="eyebrow block">House</span>
                 <span className="mt-0.5 block truncate text-[17px] font-semibold">{house.name}</span>
