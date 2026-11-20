@@ -5,7 +5,7 @@
  */
 import { createPublicClient, formatEther, http, parseAbiItem, type Address } from "viem";
 import deployment from "../../public/deployments.json";
-import { dexesOf, factoryAbi, giwaSepolia, poolAbi, type Deployment } from "@/lib/chimi/chain";
+import { dexesOf, factoryAbi, giwaChain, poolAbi, type Deployment } from "@/lib/chimi/chain";
 import { followingOf, type FollowsState } from "@/lib/chimi/follow-rules";
 import { readProfiles } from "@/lib/chimi/identity";
 import {
@@ -38,10 +38,10 @@ export const swapEvent = parseAbiItem(
 
 export const giwa = () =>
   // GIWA_RPC points the server at another node, such as a local fork.
-  createPublicClient({ chain: giwaSepolia, transport: http(process.env.GIWA_RPC || undefined, { batch: true }) });
+  createPublicClient({ chain: giwaChain, transport: http(process.env.GIWA_RPC || undefined, { batch: true }) });
 
 export const pointsSettings = (): PointsSettings => ({
-  chainId: giwaSepolia.id,
+  chainId: giwaChain.id,
   factory: deployment.factory.toLowerCase(),
   dailyPool: DAILY_POOL,
   creatorShare: CREATOR_SHARE,

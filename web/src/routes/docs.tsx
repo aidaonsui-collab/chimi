@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 import type { Address } from "viem";
 import bundledDeployment from "../../public/deployments.json";
-import { giwaSepolia, launchDex, type Deployment } from "@/lib/chimi/chain";
+import { giwaChain, launchDex, type Deployment } from "@/lib/chimi/chain";
 import { bpsLabel, hasFeeChoice, splitFor, type FeeSplit } from "@/lib/chimi/fee-split";
 import { DOJANG_URL } from "@/lib/chimi/identity";
 import { feeLabel, shortAddr } from "@/lib/chimi/market";
@@ -12,6 +12,7 @@ import { MAX_LENGTH } from "@/lib/chimi/comment-rules";
 import { IconExternal } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
 import { CopyButton, PageHead } from "@/components/chimi/ui";
+import { NETWORK } from "@/lib/chimi/network";
 
 /**
  * How Chimi works, on one page: a short section per part of the app, with the numbers read from the same rules and
@@ -19,7 +20,7 @@ import { CopyButton, PageHead } from "@/components/chimi/ui";
  */
 export const Route = createFileRoute("/docs")({ component: Docs });
 
-const explorer = giwaSepolia.blockExplorers.default.url;
+const explorer = giwaChain.blockExplorers.default.url;
 
 const SECTIONS: [id: string, title: string][] = [
   ["start", "What Chimi is"],
@@ -96,16 +97,18 @@ function Docs() {
             </P>
             <Facts
               rows={[
-                ["Network", "GIWA Sepolia (testnet, chain 91342)"],
+                ["Network", `${NETWORK.name} (${NETWORK.testnet ? "testnet, " : ""}chain ${NETWORK.id})`],
                 ["Quote", "Wrapped ETH"],
                 ["Supply", "1,000,000,000 per coin"],
                 ["Trading fee", now ? `${fee} on every buy and sell, paid to the pool` : "Paid to the pool on every trade"],
                 ["Transfer tax", "None. Sending coins between wallets is free"],
               ]}
             />
-            <P>
-              Test ETH for GIWA Sepolia comes from GIWA's faucets. Everything here runs on the testnet, so nothing on it has real-money value.
-            </P>
+            {NETWORK.testnet ? (
+              <P>
+                Test ETH for {NETWORK.name} comes from GIWA's faucets. Everything here runs on the testnet, so nothing on it has real-money value.
+              </P>
+            ) : null}
           </Section>
 
           <Section id="launch" title="Launching a coin">
@@ -384,8 +387,10 @@ function Docs() {
 
           <Section id="dojang" title="Dojang and up.id">
             <P>
-              A Dojang is GIWA's proof that a wallet belongs to a verified person, written on the chain. On the testnet, anyone can get one from the GIWA Sepolia
-              Playground: connect, then Issue Dojang, for 0.001 test ETH plus gas.
+              A Dojang is GIWA's proof that a wallet belongs to a verified person, written on the chain.{" "}
+              {NETWORK.testnet
+                ? "On the testnet, anyone can get one from the GIWA Sepolia Playground: connect, then Issue Dojang, for 0.001 test ETH plus gas."
+                : "Issuers such as Upbit give one to their verified users."}
             </P>
             <List
               items={[
@@ -468,7 +473,7 @@ function Docs() {
           <Section id="risks" title="Risks">
             <List
               items={[
-                <>This is a testnet. Coins, ETH and points here have no real-money value.</>,
+                ...(NETWORK.testnet ? [<>This is a testnet. Coins, ETH and points here have no real-money value.</>] : []),
                 <>Anyone can launch a coin, and a coin can go to zero. Trade what you can lose.</>,
                 <>
                   The liquidity locker is an upgradeable contract. Its admin, the platform, could replace it; the lock is only as strong as that key.

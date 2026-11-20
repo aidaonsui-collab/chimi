@@ -1,5 +1,5 @@
 import { createPublicClient, getAddress, http, isAddress, type Address } from "viem";
-import { factoryAbi, giwaSepolia } from "@/lib/chimi/chain";
+import { factoryAbi, giwaChain } from "@/lib/chimi/chain";
 import {
   AUTH_NONCE_RE,
   PROFILE_LIMITS,
@@ -33,9 +33,9 @@ type TokenMetaRecord = {
 
 const KEY = (token: string) => `chimi:token:meta:${token.toLowerCase()}`;
 const NONCE_KEY = (nonce: string) => `chimi:auth:nonce:${nonce.toLowerCase()}`;
-const client = createPublicClient({ chain: giwaSepolia, transport: http() });
+const client = createPublicClient({ chain: giwaChain, transport: http() });
 const factory = deployment.factory as Address;
-const explorer = giwaSepolia.blockExplorers.default.url;
+const explorer = giwaChain.blockExplorers.default.url;
 const MAX_TOKENS = 50;
 
 /** Last good record per warm instance, so a KV blip doesn't blank a picture (same idea as eve.fun). */

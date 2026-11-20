@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { formatEther, parseEther } from "viem";
-import { POOL_FEE, erc20Abi, giwaSepolia } from "@/lib/chimi/chain";
+import { POOL_FEE, erc20Abi, giwaChain } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { amountText, compactUsd, ethText } from "@/lib/chimi/format";
 import { SUPPLY, useEthUsd } from "@/lib/chimi/live";
@@ -12,6 +12,7 @@ import { useChimi } from "@/components/chimi/provider";
 import { toast } from "@/components/chimi/toast";
 import { EthLogo, TokenLogo } from "@/components/chimi/token-logo";
 import { Modal, Note } from "@/components/chimi/ui";
+import { NETWORK } from "@/lib/chimi/network";
 
 export const Route = createFileRoute("/swap")({
   head: () => ({ meta: [{ title: "Swap · Chimi" }] }),
@@ -105,7 +106,7 @@ function SwapPage() {
         kind: "good",
         title: payEth ? `Bought ${coin.symbol}` : `Sold ${coin.symbol}`,
         body: payEth ? undefined : `${amount.trim()} ${coin.symbol} sold for ETH.`,
-        href: `${giwaSepolia.blockExplorers.default.url}/tx/${hash}`,
+        href: `${giwaChain.blockExplorers.default.url}/tx/${hash}`,
       });
       setAmount("");
       setReload((n) => n + 1);
@@ -135,7 +136,7 @@ function SwapPage() {
       <div className="w-full max-w-[480px]">
         <div className="flex items-end justify-between gap-3 px-1">
           <div>
-            <p className="eyebrow">{loading ? "GIWA Sepolia" : live ? "GIWA Sepolia" : "Preview"}</p>
+            <p className="eyebrow">{loading || live ? NETWORK.name : "Preview"}</p>
             <h1 className="mt-2 text-[34px] leading-none font-semibold tracking-[-0.03em] sm:text-[40px]">Swap</h1>
           </div>
           <button type="button" aria-expanded={settings} onClick={() => setSettings((v) => !v)} className={`btn btn-secondary gap-1.5 px-3 ${settings ? "border-edge bg-raise2" : ""}`}>

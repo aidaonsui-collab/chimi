@@ -4,6 +4,7 @@ import { Shell } from "@/components/chimi/shell";
 import { Empty } from "@/components/chimi/ui";
 import { Analytics } from "@vercel/analytics/react";
 import appCss from "../styles.css?url";
+import { NETWORK } from "@/lib/chimi/network";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -11,13 +12,13 @@ export const Route = createRootRoute({
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Chimi" },
-      { name: "description", content: "Launch a coin into a locked pool on GIWA Sepolia. No bonding curve." },
+      { name: "description", content: `Launch a coin into a locked pool on ${NETWORK.name}. No bonding curve.` },
       { name: "theme-color", content: "#090a0e" },
       { name: "color-scheme", content: "dark" },
       { property: "og:type", content: "website" },
       { property: "og:site_name", content: "Chimi" },
       { property: "og:title", content: "The pool is the market." },
-      { property: "og:description", content: "Launch a coin into a locked pool on GIWA Sepolia. No bonding curve." },
+      { property: "og:description", content: `Launch a coin into a locked pool on ${NETWORK.name}. No bonding curve.` },
       { property: "og:url", content: "https://chimi-sage.vercel.app/" },
       { property: "og:image", content: "https://chimi-sage.vercel.app/og.jpg" },
       { property: "og:image:type", content: "image/jpeg" },
@@ -26,7 +27,7 @@ export const Route = createRootRoute({
       { property: "og:image:alt", content: "Chimi seal" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: "The pool is the market." },
-      { name: "twitter:description", content: "Launch a coin into a locked pool on GIWA Sepolia. No bonding curve." },
+      { name: "twitter:description", content: `Launch a coin into a locked pool on ${NETWORK.name}. No bonding curve.` },
       { name: "twitter:image", content: "https://chimi-sage.vercel.app/og.jpg" },
     ],
     links: [

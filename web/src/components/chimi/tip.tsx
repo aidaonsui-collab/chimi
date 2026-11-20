@@ -4,7 +4,7 @@ import { IconCheck, IconCoinTip, IconExternal } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
 import { LivePill } from "@/components/chimi/live-pill";
 import { Blockie, Modal } from "@/components/chimi/ui";
-import { giwaSepolia } from "@/lib/chimi/chain";
+import { giwaChain } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { ethText, money } from "@/lib/chimi/format";
 import { useEthUsd } from "@/lib/chimi/live";
@@ -28,7 +28,7 @@ export const tipperName = (profiles: Record<string, Profile>, wallet: string) =>
 
 const cancelled = (e: unknown) => /reject|denied|cancel/i.test(e instanceof Error ? `${e.name} ${e.message}` : String(e));
 const usdOf = (wei: bigint, ethUsd: number | undefined) => (ethUsd ? money((Number(wei) / 1e18) * ethUsd) : undefined);
-const explorerTx = (tx: string) => `${giwaSepolia.blockExplorers.default.url}/tx/${tx}`;
+const explorerTx = (tx: string) => `${giwaChain.blockExplorers.default.url}/tx/${tx}`;
 
 /** Who a tip goes to, as the tip form shows them. */
 export type TipTo = { name: string; wallet: string; symbol: string; token: string; live?: boolean };

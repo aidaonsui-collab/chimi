@@ -6,6 +6,7 @@ import { HowItWorks } from "@/components/chimi/how-it-works";
 import { IconArrowRight, IconInfo, IconPlus } from "@/components/chimi/icons";
 import { LoopVideo, ROOF } from "@/components/chimi/loop-video";
 import { duration, useNow } from "@/components/chimi/rewards-bits";
+import { NETWORK } from "@/lib/chimi/network";
 
 /*
  * The banner at the top of the home page. The roof is always the picture; what turns over is the message on it: what
@@ -46,7 +47,7 @@ export function HomeBanner({ stats, live }: { stats: HeroStat[]; live: boolean }
       kicker: (
         <>
           <span className={`live-dot ${live ? "text-ok" : "text-gold"}`} />
-          {live ? "Live on GIWA Sepolia" : "Preview"}
+          {live ? `Live on ${NETWORK.name}` : "Preview"}
           <span className="font-serif text-[15px] text-gold">치미</span>
         </>
       ),

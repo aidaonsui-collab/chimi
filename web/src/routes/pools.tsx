@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createWalletClient, custom, encodeFunctionData, type Address, type EIP1193Provider } from "viem";
-import { dexOf, dexesOf, erc20Abi, giwaSepolia, positionManagerAbi } from "@/lib/chimi/chain";
+import { dexOf, dexesOf, erc20Abi, giwaChain, positionManagerAbi } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { feeLabel, loadSwapWindow, wethPerToken, type Coin } from "@/lib/chimi/market";
 import { compactUsd, pct } from "@/lib/chimi/format";
@@ -211,7 +211,7 @@ function PoolsPage() {
       setNote("No wallet found in this browser.");
       return;
     }
-    const wallet = createWalletClient({ account, chain: giwaSepolia, transport: custom(ethereum) });
+    const wallet = createWalletClient({ account, chain: giwaChain, transport: custom(ethereum) });
     try {
       setBusy(true);
       await ensureChain();
@@ -227,7 +227,7 @@ function PoolsPage() {
         ];
         const hash = await wallet.writeContract({
           account,
-          chain: giwaSepolia,
+          chain: giwaChain,
           address: position.npm,
           abi: positionManagerAbi,
           functionName: "multicall",

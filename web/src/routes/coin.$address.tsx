@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { formatEther, parseEther, type Address } from "viem";
-import { POOL_FEE, erc20Abi, giwaSepolia } from "@/lib/chimi/chain";
+import { POOL_FEE, erc20Abi, giwaChain } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { buildCandles, INTERVALS, intervalSeconds, pickBubbles, pickInterval, type BubbleMode, type IntervalKey, type Tick } from "@/lib/chimi/chart-rules";
 import { followingOf } from "@/lib/chimi/follow-rules";
@@ -242,7 +242,7 @@ function CoinPage() {
     // Reads again when the pool or its price changes, and after each trade made here.
   }, [coin?.pool, coin?.sqrtPriceX96, deployment, reload]);
 
-  const explorer = giwaSepolia.blockExplorers.default.url;
+  const explorer = giwaChain.blockExplorers.default.url;
   const price = coin ? wethPerToken(coin.sqrtPriceX96, coin.tokenIs0) : 0n;
   const priceEth = Number(price) / 1e18;
   const capEth = priceEth * SUPPLY;

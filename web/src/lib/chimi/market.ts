@@ -1,5 +1,5 @@
 import { decodeEventLog, formatEther, pad, parseAbiItem, toEventSelector, zeroAddress, type Address } from "viem";
-import { POOL_FEE, erc20Abi, factoryAbi, giwaSepolia, isDeployed, poolAbi, type Deployment } from "@/lib/chimi/chain";
+import { POOL_FEE, erc20Abi, factoryAbi, giwaChain, isDeployed, poolAbi, type Deployment } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { blocksOf, nameSellers, routerKept, sellersFromRawTransfers, sellersFromTransfers, type Unnamed as UnnamedSale } from "@/lib/chimi/sale-rules";
 
@@ -420,7 +420,7 @@ async function explorerLogs(address: Address, topic0: `0x${string}`, fromBlock: 
   const pageSize = 1000;
   const narrowed = topic2 ? `&topic2=${topic2}&topic0_2_opr=and` : "";
   for (let page = 1; page <= 30; page++) {
-    const url = `${giwaSepolia.blockExplorers.default.url}/api?module=logs&action=getLogs&address=${address}&topic0=${topic0}${narrowed}&fromBlock=${fromBlock}&toBlock=${toBlock}&page=${page}&offset=${pageSize}`;
+    const url = `${giwaChain.blockExplorers.default.url}/api?module=logs&action=getLogs&address=${address}&topic0=${topic0}${narrowed}&fromBlock=${fromBlock}&toBlock=${toBlock}&page=${page}&offset=${pageSize}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`explorer ${res.status}`);
     const body = (await res.json()) as { status?: string; message?: string; result?: ExplorerLog[] | string };

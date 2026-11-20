@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 import { formatEther, parseEther } from "viem";
-import { POOL_FEE, factoryAbi, giwaSepolia } from "@/lib/chimi/chain";
+import { POOL_FEE, factoryAbi, giwaChain } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { ethText, money } from "@/lib/chimi/format";
 import { useEthUsd } from "@/lib/chimi/live";
@@ -14,6 +14,7 @@ import { useChimi } from "@/components/chimi/provider";
 import { toast } from "@/components/chimi/toast";
 import { TokenArt } from "@/components/chimi/token-logo";
 import { Note, PageHead } from "@/components/chimi/ui";
+import { NETWORK } from "@/lib/chimi/network";
 
 export const Route = createFileRoute("/launch")({
   head: () => ({ meta: [{ title: "Launch a coin · Chimi" }] }),
@@ -166,7 +167,7 @@ function LaunchPage() {
       }
       setKind("good");
       setNote(`${symbol.trim()} is in its pool.`);
-      toast({ kind: "good", title: `${symbol.trim()} is live`, body: "Its pool is open and locked. Trading starts now.", href: `${giwaSepolia.blockExplorers.default.url}/address/${token}`, linkLabel: "View contract" });
+      toast({ kind: "good", title: `${symbol.trim()} is live`, body: "Its pool is open and locked. Trading starts now.", href: `${giwaChain.blockExplorers.default.url}/address/${token}`, linkLabel: "View contract" });
       await navigate({ to: "/coin/$address", params: { address: token } });
     } catch (err) {
       setKind("bad");
@@ -203,7 +204,7 @@ function LaunchPage() {
 
   return (
     <main className="page pt-4 pb-16">
-      <PageHead eyebrow="GIWA Sepolia" title="Launch a coin">
+      <PageHead eyebrow={NETWORK.name} title="Launch a coin">
         One transaction mints a billion tokens straight into a locked pool against ETH. No bonding curve, nothing to graduate, tradable from the first block.
       </PageHead>
 

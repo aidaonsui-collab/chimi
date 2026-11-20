@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { giwaSepolia } from "@/lib/chimi/chain";
+import { giwaChain } from "@/lib/chimi/chain";
 import { NEED_DOJANG_TO_LIKE, stance } from "@/lib/chimi/comment-rules";
 import { useLike } from "@/lib/chimi/comments";
 import { knownTime, type TickItem } from "@/lib/chimi/feed";
@@ -32,7 +32,7 @@ import { XPostCard } from "@/components/chimi/x-post";
  * two lines; a lone trade by a stranger gets one.
  */
 
-const explorer = giwaSepolia.blockExplorers.default.url;
+const explorer = giwaChain.blockExplorers.default.url;
 
 /** What every row needs to know about the coins and wallets it names. */
 export type RowContext = {

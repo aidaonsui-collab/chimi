@@ -1,6 +1,6 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
-import { giwaSepolia } from "@/lib/chimi/chain";
+import { giwaChain } from "@/lib/chimi/chain";
 import { useTicker } from "@/lib/chimi/feed";
 import { useBlockNumber, useEthUsd } from "@/lib/chimi/live";
 import { shortAddr } from "@/lib/chimi/market";
@@ -32,6 +32,7 @@ import { useNow } from "@/components/chimi/rewards-bits";
 import { Toaster } from "@/components/chimi/toast";
 import { Modal } from "@/components/chimi/ui";
 import { WalletButton } from "@/components/chimi/wallet-menu";
+import { NETWORK } from "@/lib/chimi/network";
 
 type NavItem = {
   to: "/" | "/clubhouse" | "/swap" | "/pools" | "/analytics" | "/points" | "/houses" | "/launch" | "/docs";
@@ -66,7 +67,7 @@ const NAV: NavItem[] = [
 const RAIL_W = 72;
 
 function Rail({ path }: { path: string }) {
-  const explorer = giwaSepolia.blockExplorers.default.url;
+  const explorer = giwaChain.blockExplorers.default.url;
   // Shut after a click with the pointer (detail > 0; a key press has none) until the pointer goes past the closed
   // rail, or out of the window. Not on the rail's own pointerleave: the page change after a click fires one while the
   // pointer is still on the icon, and the next nudge of the mouse would throw the drawer open again.
@@ -176,7 +177,7 @@ function TabBar({ path }: { path: string }) {
                 </Link>
               );
             })}
-            <a href={giwaSepolia.blockExplorers.default.url} target="_blank" rel="noreferrer" className="flex items-center gap-3.5 rounded-2xl bg-raise px-4 py-3.5 text-[15px] font-medium">
+            <a href={giwaChain.blockExplorers.default.url} target="_blank" rel="noreferrer" className="flex items-center gap-3.5 rounded-2xl bg-raise px-4 py-3.5 text-[15px] font-medium">
               <IconExternal size={20} className="text-muted" />
               GIWA explorer
             </a>
@@ -201,7 +202,7 @@ function StatusBar() {
   const { deployment, note, loading, coins } = useChimi();
   const block = useBlockNumber();
   const ethUsd = useEthUsd();
-  const explorer = giwaSepolia.blockExplorers.default.url;
+  const explorer = giwaChain.blockExplorers.default.url;
   const down = !loading && !!note && coins.length === 0;
   return (
     <div className="vt-status fixed right-0 bottom-0 left-[72px] z-30 hidden h-9 items-center justify-between gap-4 border-t border-line bg-bg/92 px-5 text-xs text-muted backdrop-blur-xl lg:flex">
@@ -211,7 +212,7 @@ function StatusBar() {
           {down ? "Offline" : "Live"}
         </span>
         <span className="h-3.5 w-px bg-line" />
-        <span>GIWA Sepolia</span>
+        <span>{NETWORK.name}</span>
         {block !== undefined ? (
           <a href={`${explorer}/block/${block}`} target="_blank" rel="noreferrer" className="num hover:text-fg">
             Block {block.toLocaleString("en-US")}
@@ -225,7 +226,9 @@ function StatusBar() {
             Factory {shortAddr(deployment.factory)}
           </a>
         ) : null}
-        <span className="rounded-md border border-line px-1.5 py-0.5 text-[11px] font-medium tracking-wide text-faint uppercase">Testnet</span>
+        {NETWORK.testnet ? (
+          <span className="rounded-md border border-line px-1.5 py-0.5 text-[11px] font-medium tracking-wide text-faint uppercase">Testnet</span>
+        ) : null}
       </div>
     </div>
   );
@@ -319,7 +322,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
 function Footer() {
   const { deployment } = useChimi();
-  const explorer = giwaSepolia.blockExplorers.default.url;
+  const explorer = giwaChain.blockExplorers.default.url;
   const link = "text-muted transition-colors hover:text-fg";
   return (
     <footer className="mt-10 border-t border-line pb-[96px] lg:pb-9">
@@ -381,7 +384,7 @@ function Footer() {
           ) : (
             <span className="text-faint">Factory not deployed</span>
           )}
-          <span className="text-faint">GIWA Sepolia testnet</span>
+          <span className="text-faint">{NETWORK.testnet ? `${NETWORK.name} testnet` : NETWORK.name}</span>
         </div>
       </div>
     </footer>

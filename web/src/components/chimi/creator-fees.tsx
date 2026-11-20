@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { giwaSepolia } from "@/lib/chimi/chain";
+import { giwaChain } from "@/lib/chimi/chain";
 import { loadCreatorFees, shareLabel, type CreatorFees, type LockedPosition } from "@/lib/chimi/fees";
 import { amountText, money } from "@/lib/chimi/format";
 import { useEthUsd } from "@/lib/chimi/live";
@@ -8,7 +8,7 @@ import { useChimi } from "@/components/chimi/provider";
 import { toast } from "@/components/chimi/toast";
 import { Note } from "@/components/chimi/ui";
 
-const explorer = giwaSepolia.blockExplorers.default.url;
+const explorer = giwaChain.blockExplorers.default.url;
 const same = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
 /** Fees waiting on each of these coins' launch positions, keyed by lowercase token. Read again when `bump` changes. */

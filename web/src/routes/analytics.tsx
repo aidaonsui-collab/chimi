@@ -8,6 +8,7 @@ import { BarChart } from "@/components/chimi/charts";
 import { useChimi } from "@/components/chimi/provider";
 import { TokenLogo } from "@/components/chimi/token-logo";
 import { Empty, PageHead } from "@/components/chimi/ui";
+import { NETWORK } from "@/lib/chimi/network";
 
 export const Route = createFileRoute("/analytics")({
   head: () => ({ meta: [{ title: "Analytics · Chimi" }] }),
@@ -126,7 +127,7 @@ function AnalyticsPage() {
 
   return (
     <main className="page pt-4 pb-16">
-      <PageHead eyebrow="GIWA Sepolia" title="Analytics">
+      <PageHead eyebrow={NETWORK.name} title="Analytics">
         Volume, trades and launches across every Chimi pool over the last {DAYS} days, read from the chain.
       </PageHead>
 

@@ -1,8 +1,8 @@
 import { createPublicClient, http } from "viem";
-import { giwaSepolia } from "@/lib/chimi/chain";
+import { giwaChain } from "@/lib/chimi/chain";
 
 export const publicClient = createPublicClient({
-  chain: giwaSepolia,
+  chain: giwaChain,
   // Contract reads made in the same moment travel as one call through Multicall3, so a board of
   // many coins costs a handful of requests instead of several per coin.
   batch: { multicall: { wait: 16 } },
