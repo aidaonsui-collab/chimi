@@ -28,9 +28,9 @@ import { Blockie, Empty, Seg, TraderLink } from "@/components/chimi/ui";
  */
 type View = "feed" | "leaderboard";
 
-export const Route = createFileRoute("/traders")({
+export const Route = createFileRoute("/clubhouse")({
   validateSearch: (search: Record<string, unknown>): { view?: "leaderboard" } => ({ view: search.view === "leaderboard" ? "leaderboard" : undefined }),
-  component: Traders,
+  component: Clubhouse,
 });
 
 type Tab = "foryou" | "following";
@@ -39,7 +39,7 @@ const TAB_KEY = "chimi.feed.tab";
 /** Rows are small, so a page of the feed is a few screens of them. */
 const PAGE = 30;
 
-function Traders() {
+function Clubhouse() {
   const search = Route.useSearch();
   const navigate = useNavigate();
   const view: View = search.view === "leaderboard" ? "leaderboard" : "feed";
@@ -50,7 +50,7 @@ function Traders() {
 
   useEffect(() => {
     const before = document.title;
-    document.title = view === "leaderboard" ? "Leaderboard · Chimi" : "Traders · Chimi";
+    document.title = view === "leaderboard" ? "Leaderboard · Chimi" : "Clubhouse · Chimi";
     return () => {
       document.title = before;
     };
@@ -60,14 +60,14 @@ function Traders() {
   const tileWallets = useMemo(() => [...new Set(feed.trades.map((t) => t.wallet))].slice(0, 80), [feed.trades]);
   const tileProfiles = useProfiles(tileWallets, feed.points?.file.profiles);
 
-  const pick = (next: View) => void navigate({ to: "/traders", search: next === "leaderboard" ? { view: "leaderboard" } : {}, replace: true });
+  const pick = (next: View) => void navigate({ to: "/clubhouse", search: next === "leaderboard" ? { view: "leaderboard" } : {}, replace: true });
 
   return (
     <main className="page pt-3 pb-16 sm:pt-5">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
         <h1 className="flex items-baseline gap-3 px-1 text-[28px] leading-none font-semibold tracking-[-0.03em]">
-          Traders
-          <span className="font-serif text-[15px] font-normal tracking-normal text-gold">상인</span>
+          Clubhouse
+          <span className="font-serif text-[15px] font-normal tracking-normal text-gold">사랑방</span>
         </h1>
         <Seg
           label="Feed or leaderboard"

@@ -236,6 +236,15 @@ function Docs() {
                   the top of the coin's page and the coin shows LIVE on the board.
                 </>,
                 <>The stream plays in YouTube's or SOOP's own player. Chimi doesn't record or host it.</>,
+                ...(deployment?.tips
+                  ? [
+                      <>
+                        Viewers can tip the creator in ETH from the stream, with a short message. 90% goes to the creator and 10% to Chimi, in the same
+                        transaction. A tip can't be undone, and its message stays on the chain.
+                      </>,
+                      <>The creator can add a tip-alerts link to OBS, so each tip pops up on their broadcast with the name, amount and message.</>,
+                    ]
+                  : []),
                 <>A SOOP stream marked 19+ or behind a password shows a button to watch it on SOOP instead.</>,
                 <>Chimi can take down a link that breaks the rules.</>,
               ]}
@@ -289,7 +298,7 @@ function Docs() {
               items={[
                 <>Follow a wallet and its buys, sales, launches and posts show up in your Following feed. Following is a signature, not a transaction.</>,
                 <>
-                  Posts are comments on a coin. Write one on the coin's page or in the box at the top of the Traders feed: up to {MAX_LENGTH} characters, text
+                  Posts are comments on a coin. Write one on the coin's page or in the box at the top of the Clubhouse feed: up to {MAX_LENGTH} characters, text
                   only, no links, one every 15 seconds per coin, signed with your wallet and no gas.
                 </>,
                 <>Following, liking and posting need a Dojang, so a follower count or a like is a count of people.</>,
@@ -353,6 +362,12 @@ function Docs() {
                     <p className="th uppercase">CHIMI</p>
                     <AddressRow label="CHIMI" address={deployment.flywheel.chimi} />
                     <AddressRow label="Flywheel" address={deployment.flywheel.address} />
+                  </div>
+                ) : null}
+                {deployment.tips ? (
+                  <div className="mt-2 grid gap-1.5">
+                    <p className="th uppercase">Streams</p>
+                    <AddressRow label="Tips" address={deployment.tips.address} />
                   </div>
                 ) : null}
                 <div className="mt-2 grid gap-1.5">

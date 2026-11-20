@@ -20,8 +20,8 @@ import { useChimi } from "@/components/chimi/provider";
 import { DojangMark } from "@/components/chimi/rewards-bits";
 import { toast } from "@/components/chimi/toast";
 import { TokenLogo } from "@/components/chimi/token-logo";
-import { LivePill } from "@/components/chimi/stream";
-import { useLiveTokens } from "@/lib/chimi/streams";
+import { LivePill } from "@/components/chimi/live-pill";
+import { useLiveTokens, useStream } from "@/lib/chimi/streams";
 import { Blockie, Change, Sparkline } from "@/components/chimi/ui";
 
 /*
@@ -632,6 +632,52 @@ function CopiedRow({ item, ctx, coin, fresh }: { item: Extract<FeedItem, { kind:
 }
 
 /**
+ * A tip to a creator while they streamed: who tipped whom how much, and what they said. Gold, like the alert on the
+ * broadcast; while the coin is still live, the row's button goes to the stream instead of buying.
+ */
+function TipRow({ item, ctx, coin, fresh }: { item: Extract<FeedItem, { kind: "tip" }>; ctx: RowContext; coin: Coin; fresh?: boolean }) {
+  const stream = useStream(coin.token);
+  const live = !!stream?.status.live;
+  // The streamer's channel name is who people know; the wallet's name stands in without one.
+  const to = stream?.status.name ?? (item.creator === ctx.me ? "you" : nameOf(ctx, item.creator));
+  return (
+    <Row
+      ctx={ctx}
+      coin={coin}
+      time={item.time}
+      fresh={fresh}
+      tone="gold"
+      followed={item.followed}
+      lead={<Avatar ctx={ctx} wallet={item.wallet} />}
+      end={
+        live ? (
+          <Link to="/coin/$address" params={{ address: coin.token }} className="btn btn-sm tip-btn shrink-0">
+            Watch
+          </Link>
+        ) : undefined
+      }
+    >
+      <p className="feed-line">
+        <Who ctx={ctx} wallet={item.wallet} /> <span className="text-muted">tipped</span> <span className="font-semibold text-fg">{to}</span>{" "}
+        <span className="num font-semibold text-gold">{ethText(item.eth)} ETH</span>
+      </p>
+      <div className="feed-meta">
+        <MetaTime ctx={ctx} time={item.time} />
+        {live ? (
+          <LivePill small />
+        ) : (
+          <Tag tone="gold">Tip</Tag>
+        )}
+        <span className="shrink-0">
+          on <CoinName coin={coin} />
+        </span>
+        {item.text ? <span className="min-w-0 truncate text-fg/80">“{item.text}”</span> : null}
+      </div>
+    </Row>
+  );
+}
+
+/**
  * One feed item as its row. An item about a coin the board doesn't list (it was just launched, say) is skipped.
  * `fresh` marks a row that arrived while the page was open.
  */
@@ -643,6 +689,7 @@ export function FeedRow({ item, ctx, fresh }: { item: FeedItem; ctx: RowContext;
   if (item.kind === "launch") return <LaunchRow item={item} ctx={ctx} coin={coin} fresh={fresh} />;
   if (item.kind === "comment") return <CommentPost item={item} ctx={ctx} coin={coin} fresh={fresh} />;
   if (item.kind === "milestone") return <MilestoneRow item={item} ctx={ctx} coin={coin} fresh={fresh} />;
+  if (item.kind === "tip") return <TipRow item={item} ctx={ctx} coin={coin} fresh={fresh} />;
   return <CopiedRow item={item} ctx={ctx} coin={coin} fresh={fresh} />;
 }
 
@@ -669,6 +716,10 @@ export function walletsIn(items: FeedItem[]): string[] {
     if (item.kind === "trade" || item.kind === "comment") out.add(item.wallet);
     else if (item.kind === "launch") out.add(item.creator);
     else if (item.kind === "copied") for (const w of item.by) out.add(w);
+    else if (item.kind === "tip") {
+      out.add(item.wallet);
+      out.add(item.creator);
+    }
     else if (item.kind === "burst") for (const w of item.wallets.slice(0, BURST_ROWS)) out.add(w);
   }
   return [...out];

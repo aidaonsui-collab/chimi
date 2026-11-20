@@ -83,7 +83,7 @@ The home page is the board: every coin on Chimi. The feed is on the Traders page
 
 ### Traders: the feed and the leaderboard
 
-`/traders` is the social side, laid out like a trading floor's social tab. Three tiles say what the last day was about: the coin with the most comments, the coin that took the most ETH in buys, and the wallet that traded the most (`web/src/lib/chimi/social-rules.ts`, tests in `web/test/social.test.ts`). Under them the feed runs beside the Top traders card (season points, or the day's trading before a season has points; Follow takes the number's place under the pointer; See all opens the leaderboard). `?view=leaderboard` is the whole list of traders, by season points, followers or the day's trading. A phone switches between Feed and Leaderboard with the control under the title, and the tiles scroll sideways.
+`/clubhouse` (the Clubhouse tab) is the social side, laid out like a trading floor's social tab. Three tiles say what the last day was about: the coin with the most comments, the coin that took the most ETH in buys, and the wallet that traded the most (`web/src/lib/chimi/social-rules.ts`, tests in `web/test/social.test.ts`). Under them the feed runs beside the Top traders card (season points, or the day's trading before a season has points; Follow takes the number's place under the pointer; See all opens the leaderboard). `?view=leaderboard` is the whole list of traders, by season points, followers or the day's trading. A phone switches between Feed and Leaderboard with the control under the title, and the tiles scroll sideways.
 
 The feed shows what is happening, newest first: buys and sales, launches, comments, a coin crossing a round market cap, and the times someone who follows you bought a coin after you did.
 

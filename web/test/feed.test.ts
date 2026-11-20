@@ -345,3 +345,37 @@ test("the day's busiest wallets are ranked by what they traded", () => {
   assert.ok(Math.abs(top[0]!.eth - 0.6) < 1e-9);
   assert.equal(topTraders([trade({ wallet: A }), trade({ wallet: B }), trade({ wallet: C })], NOW - 86_400, 2).length, 2);
 });
+
+test("tips join the feed in time order, and the Following tab keeps tips by or to wallets you follow", () => {
+  const items = buildFeed({
+    trades: [trade({ time: NOW - 300 })],
+    launches: [],
+    comments: [],
+    tips: [
+      { key: "0xt1:0", time: NOW - 100, token: COIN.toUpperCase(), wallet: B.toUpperCase(), creator: C, eth: 0.05, text: "화이팅" },
+      { key: "0xt2:0", time: NOW - 500, token: COIN, wallet: ME, creator: A, eth: 0.001, text: "" },
+      { key: "0xt3:0", time: NOW - 50, token: OTHER, wallet: C, creator: OTHER, eth: 0.002, text: "" },
+    ],
+    me: ME,
+    following: [B, A],
+    now: NOW,
+  });
+  const tips = items.filter((i) => i.kind === "tip");
+  assert.deepEqual(
+    tips.map((t) => t.key),
+    ["tip:0xt3:0", "tip:0xt1:0", "tip:0xt2:0"],
+  );
+  const first = tips.find((t) => t.key === "tip:0xt1:0")!;
+  assert.equal(first.kind === "tip" && first.wallet, B);
+  assert.equal(first.kind === "tip" && first.token, COIN);
+  assert.equal(items[0]!.key, "tip:0xt3:0", "newest first, across trades and tips");
+  const mine = tips.find((t) => t.key === "tip:0xt2:0")!;
+  assert.ok(mine.kind === "tip" && mine.mine && mine.followed, "your tip to a creator you follow");
+  assert.deepEqual(
+    fromFollowed(items)
+      .filter((i) => i.kind === "tip")
+      .map((i) => i.key),
+    ["tip:0xt1:0", "tip:0xt2:0"],
+  );
+  assert.ok(forYou(items).some((i) => i.key === "tip:0xt1:0"), "For you shows tips");
+});

@@ -1,20 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
-import { IconBroadcast, IconChevronDown, IconExternal, IconEye } from "@/components/chimi/icons";
+import { IconBroadcast, IconCheck, IconChevronDown, IconCoinTip, IconCopy, IconExternal, IconEye } from "@/components/chimi/icons";
+import { useChimi } from "@/components/chimi/provider";
+import { LivePill } from "@/components/chimi/live-pill";
+import { TipSheet, TipsBar, tipperName } from "@/components/chimi/tip";
 import { toast } from "@/components/chimi/toast";
-import { Modal, Note } from "@/components/chimi/ui";
-import { compactCount } from "@/lib/chimi/format";
+import { TipAlertCard } from "@/components/chimi/tip-alert";
+import { Modal, Note, Seg } from "@/components/chimi/ui";
+import { useProfiles } from "@/lib/chimi/rewards";
+import { useTips } from "@/lib/chimi/tips";
+import { compactCount, money } from "@/lib/chimi/format";
+import { useEthUsd } from "@/lib/chimi/live";
 import { describeLink, embedUrl, parseStreamLink, platformName, thumbnailUrl, watchUrl, type StreamLink, type StreamView } from "@/lib/chimi/stream-rules";
 import { checkStreamLink, useStreamSend, type LinkCheck } from "@/lib/chimi/streams";
 
-/** The red LIVE tag, on the board and over a stream. */
-export function LivePill({ small, className = "" }: { small?: boolean; className?: string }) {
-  return (
-    <span className={`live-pill ${small ? "live-pill-sm" : ""} ${className}`}>
-      <span className="live-pill-dot" aria-hidden />
-      LIVE
-    </span>
-  );
-}
+export { LivePill } from "@/components/chimi/live-pill";
 
 const hiddenKey = (token: string) => `chimi.stream.hidden.${token.toLowerCase()}`;
 
@@ -30,8 +29,16 @@ function readHidden(token: string) {
  * A coin's live stream at the top of its page: the stream's own player (YouTube's or SOOP's), or a card that opens it
  * there when it won't play on another site. It can be folded away for the rest of the visit.
  */
-export function StreamStage({ view, symbol }: { view: StreamView; symbol: string }) {
+export function StreamStage({ view, symbol, creator }: { view: StreamView; symbol: string; creator: string }) {
   const [hidden, setHidden] = useState(() => (typeof window === "undefined" ? false : readHidden(view.token)));
+  const { deployment, account } = useChimi();
+  const tipsOn = !!deployment?.tips;
+  const own = !!account && account.toLowerCase() === creator.toLowerCase();
+  const { tips, refresh } = useTips(deployment, tipsOn ? view.token : undefined);
+  const profiles = useProfiles([creator, ...(tips ?? []).map((t) => t.from)]);
+  const [tipping, setTipping] = useState(false);
+  // The streamer's channel name is who viewers know; the wallet's up.id name or address stands in without one.
+  const creatorName = view.status.name ?? tipperName(profiles, creator.toLowerCase());
   const { link, status } = view;
   const src = embedUrl(link, status);
   const site = platformName(link.platform);
@@ -54,15 +61,22 @@ export function StreamStage({ view, symbol }: { view: StreamView; symbol: string
           <p className="truncate text-[14.5px] leading-snug font-semibold">{status.adult ? `19+ stream on ${site}` : (status.title ?? `${who} is live`)}</p>
           <p className="truncate text-[12.5px] text-muted">
             {who} · on {site}
+            {status.viewers !== undefined ? <span className="stream-viewers-inline"> · {compactCount(status.viewers)} watching</span> : null}
           </p>
         </div>
         {status.viewers !== undefined ? (
-          <span className="chip num shrink-0 gap-1 text-[12.5px]" title={`${status.viewers.toLocaleString("en-US")} watching on ${site}`}>
+          <span className="chip num stream-viewers shrink-0 gap-1 text-[12.5px]" title={`${status.viewers.toLocaleString("en-US")} watching on ${site}`}>
             <IconEye size={13} />
             {compactCount(status.viewers)}
           </span>
         ) : null}
-        <a href={watchUrl(link, status)} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-ghost hidden shrink-0 sm:inline-flex">
+        {tipsOn && !own ? (
+          <button type="button" onClick={() => setTipping(true)} className="btn btn-sm tip-btn shrink-0">
+            <IconCoinTip size={15} />
+            Tip
+          </button>
+        ) : null}
+        <a href={watchUrl(link, status)} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-ghost stream-site shrink-0">
           {site}
           <IconExternal size={14} />
         </a>
@@ -70,20 +84,61 @@ export function StreamStage({ view, symbol }: { view: StreamView; symbol: string
           <IconChevronDown size={16} className={`transition-transform ${hidden ? "" : "rotate-180"}`} />
         </button>
       </div>
-      {hidden ? null : src ? (
-        <div className="stream-frame">
-          <iframe
-            key={src}
-            src={src}
-            title={`${who} live on ${site}`}
-            allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-            allowFullScreen
-            referrerPolicy="strict-origin-when-cross-origin"
-          />
+      {hidden ? null : (
+        // On a wide card the player takes the left half and the tips (or the stream's details) the right; on a
+        // narrow one they stack. Decided by the card's own width (a container query in styles.css).
+        <div className="stream-body">
+          <div className="stream-screen">
+            {src ? (
+              <div className="stream-frame">
+                <iframe
+                  key={src}
+                  src={src}
+                  title={`${who} live on ${site}`}
+                  allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+                  allowFullScreen
+                  referrerPolicy="strict-origin-when-cross-origin"
+                />
+              </div>
+            ) : (
+              <Offsite view={view} />
+            )}
+          </div>
+          <div className="stream-side">
+            {tipsOn ? (
+              tips ? (
+                <TipsBar tips={tips} profiles={profiles} me={account} creatorName={creatorName} own={own} onTip={() => setTipping(true)} />
+              ) : (
+                <div className="stream-side-wait" aria-hidden>
+                  <span className="skeleton h-8 w-full rounded-xl" />
+                  <span className="skeleton h-8 w-4/5 rounded-xl" />
+                  <span className="skeleton h-8 w-3/5 rounded-xl" />
+                </div>
+              )
+            ) : (
+              <div className="stream-info">
+                <p className="eyebrow">{site}</p>
+                <p className="stream-info-title">{status.adult ? `19+ stream on ${site}` : (status.title ?? `${who} is live`)}</p>
+                <p className="text-[13px] text-muted">
+                  {who}
+                  {status.viewers !== undefined ? ` · ${compactCount(status.viewers)} watching` : ""}
+                </p>
+                <a href={watchUrl(link, status)} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-secondary mt-auto self-start">
+                  Watch on {site}
+                  <IconExternal size={13} />
+                </a>
+              </div>
+            )}
+          </div>
         </div>
-      ) : (
-        <Offsite view={view} />
       )}
+      {tipping ? (
+        <TipSheet
+          to={{ name: creatorName, wallet: creator, symbol, token: view.token, live: status.live }}
+          onClose={() => setTipping(false)}
+          onSent={() => void refresh()}
+        />
+      ) : null}
     </section>
   );
 }
@@ -242,6 +297,7 @@ export function StreamSheet({ token, symbol, current, onClose }: { token: string
           </div>
         ) : null}
       </div>
+      <AlertsLink token={token} />
       <ul className="mt-3 space-y-1.5 text-[12.5px] leading-relaxed text-faint">
         <li>The stream plays in YouTube&rsquo;s or SOOP&rsquo;s own player. Chimi doesn&rsquo;t record or host it.</li>
         <li>19+ and password streams show a button to watch them on SOOP instead.</li>
@@ -263,5 +319,77 @@ export function StreamSheet({ token, symbol, current, onClose }: { token: string
         </div>
       </div>
     </Modal>
+  );
+}
+
+/** A small on/off switch for the alert options. */
+function Switch({ label, on, onChange }: { label: string; on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)} className="alerts-switch">
+      <span className={`switch-track ${on ? "switch-on" : ""}`} aria-hidden>
+        <span className="switch-knob" />
+      </span>
+      {label}
+    </button>
+  );
+}
+
+const MIN_OPTIONS = [
+  ["", "Any"],
+  ["0.001", "0.001+"],
+  ["0.01", "0.01+"],
+  ["0.05", "0.05+"],
+] as const;
+
+/**
+ * The creator's tip alerts: a page to add to OBS as a Browser source, so tips pop up on their broadcast. The options
+ * (sound, messages, a minimum) are written into the link, and the preview shows what an alert looks like.
+ */
+function AlertsLink({ token }: { token: string }) {
+  const { deployment } = useChimi();
+  const ethUsd = useEthUsd();
+  const [sound, setSound] = useState(true);
+  const [messages, setMessages] = useState(true);
+  const [min, setMin] = useState<(typeof MIN_OPTIONS)[number][0]>("");
+  const [copied, setCopied] = useState(false);
+  if (!deployment?.tips) return null;
+  const base = `${typeof window === "undefined" ? "https://www.chimi.club" : window.location.origin}/alerts/${token.toLowerCase()}`;
+  const params = new URLSearchParams();
+  if (!sound) params.set("sound", "0");
+  if (!messages) params.set("messages", "0");
+  if (min) params.set("min", min);
+  const url = params.size ? `${base}?${params}` : base;
+  const test = new URLSearchParams(params);
+  test.set("test", "1");
+  const copy = () => {
+    void navigator.clipboard?.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1_600);
+    });
+  };
+  return (
+    <section className="alerts-box" aria-label="Tip alerts on your stream">
+      <p className="text-[14px] font-semibold">Tip alerts on your stream</p>
+      <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">Add the link to OBS as a Browser source, 800 × 400. Every tip pops up on your broadcast, like this:</p>
+      <div className="alerts-preview">
+        <TipAlertCard preview usd={ethUsd ? money(0.01 * ethUsd) : undefined} alert={{ key: "preview", name: "chimi fan", amount: "0.01", eth: 0.01, message: messages ? "화이팅!" : "", big: false }} />
+      </div>
+      <div className="alerts-options">
+        <Switch label="Sound" on={sound} onChange={setSound} />
+        <Switch label="Messages" on={messages} onChange={setMessages} />
+        <Seg label="Smallest tip shown" value={min} onChange={setMin} options={MIN_OPTIONS} className="ml-auto" />
+      </div>
+      <div className="mt-3 flex items-center gap-1.5">
+        <code className="num min-w-0 flex-1 truncate rounded-lg bg-raise px-2.5 py-2 text-[12px] text-muted">{url}</code>
+        <button type="button" onClick={copy} className="btn btn-sm btn-secondary shrink-0" aria-live="polite">
+          {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+        <a href={`${base}?${test}`} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-ghost shrink-0">
+          Test
+          <IconExternal size={13} />
+        </a>
+      </div>
+    </section>
   );
 }

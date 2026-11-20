@@ -58,6 +58,14 @@ export const lockerAbi = parseAbi([
 ]);
 
 /** The CHIMI buyback-burn and holder rewards (contracts/src/ChimiFlywheel.sol). */
+export const tipsAbi = parseAbi([
+  "function tip(address token, string message) payable",
+  "function withdraw()",
+  "function owed(address) view returns (uint256)",
+  "function MIN_TIP() view returns (uint256)",
+  "event Tipped(address indexed token, address indexed from, address indexed creator, uint256 amount, uint256 fee, string message)",
+]);
+
 export const flywheelAbi = parseAbi([
   "function pending() view returns (uint256 toBurn, uint256 toHolders)",
   "function burnBucket() view returns (uint256)",
@@ -123,6 +131,8 @@ export type Deployment = {
   dexes?: Dex[];
   /** The CHIMI buyback-burn and holder rewards, fed by coins on the DEXes after the first. */
   flywheel?: { address: Address; chimi: Address; keeper: Address; minHold: string };
+  /** Tips to creators while they stream (90% creator / 10% platform). Absent until it's deployed. */
+  tips?: { address: Address; block: number };
 };
 
 /** The DEXes, oldest first. A deployment from before the second one has just its first. */

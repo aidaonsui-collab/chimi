@@ -514,7 +514,7 @@ function CoinPage() {
       <div className="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
         <div className="grid min-w-0 gap-5 lg:col-start-1">
         {stream?.status.live ? (
-          <StreamStage view={stream} symbol={coin.symbol} />
+          <StreamStage view={stream} symbol={coin.symbol} creator={coin.creator} />
         ) : stream && isCreator ? (
           <StreamIdle view={stream} symbol={coin.symbol} onManage={() => setStreaming(true)} />
         ) : null}

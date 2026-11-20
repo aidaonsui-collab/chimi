@@ -277,6 +277,14 @@ export const IconFlame = (p: IconProps) => (
     <path d="M12 3.5c.5 3-1.5 4.5-3 6.5a5.8 5.8 0 1 0 9.5 1.5c-.8 1.2-1.8 1.8-2.8 1.8.6-3.3-.7-7.3-3.7-9.8Z" />
   </Svg>
 );
+/** A coin with a spark: a tip. */
+export const IconCoinTip = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="10.5" cy="13.5" r="6.5" />
+    <path d="M10.5 10.5v6M8.5 12.2c0-.9.9-1.4 2-1.4s2 .5 2 1.3-1 1.1-2 1.3-2 .5-2 1.3.9 1.4 2 1.4 2-.5 2-1.4" />
+    <path d="M18.5 3v3M17 4.5h3M20.5 8.5v1.6M19.7 9.3h1.6" />
+  </Svg>
+);
 /** A broadcast: a dot with waves either side. */
 export const IconBroadcast = (p: IconProps) => (
   <Svg {...p}>

@@ -67,12 +67,12 @@ export function HomeBanner({ stats, live }: { stats: HeroStat[]; live: boolean }
     },
     {
       key: "traders",
-      kicker: "Traders",
+      kicker: "Clubhouse",
       title: "Follow the traders.",
       body: "See who is buying, what they say about it and how they rank. Follow a wallet and its trades land in your feed.",
       actions: (
-        <Link to="/traders" className="btn btn-light">
-          Open the feed
+        <Link to="/clubhouse" className="btn btn-light">
+          Open the Clubhouse
           <IconArrowRight size={16} />
         </Link>
       ),

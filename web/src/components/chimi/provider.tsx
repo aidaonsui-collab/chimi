@@ -22,6 +22,7 @@ import {
   routerAbi,
   wethAbi,
   type Deployment,
+  tipsAbi,
 } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import type { LockedPosition } from "@/lib/chimi/fees";
@@ -60,6 +61,11 @@ type ChimiContext = {
   claimFees: (positions: LockedPosition[]) => Promise<{ hash: string; received: bigint }>;
   /** Personal-sign with the connected wallet (used to publish token pictures). */
   signMessage: (message: string) => Promise<`0x${string}`>;
+  /**
+   * Tips the creator of `token` `wei` of ETH with a message (90% to them, 10% to the platform). `onSigned` hears the
+   * transaction as soon as the wallet sends it; the promise settles once it's confirmed.
+   */
+  tip: (token: Address, wei: bigint, message: string, onSigned?: (hash: `0x${string}`) => void) => Promise<`0x${string}`>;
 };
 
 const Ctx = createContext<ChimiContext | null>(null);
@@ -473,6 +479,22 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
     [deployment],
   );
 
+  const tip = useCallback(
+    async (token: Address, wei: bigint, message: string, onSigned?: (hash: `0x${string}`) => void) => {
+      const tips = deployment?.tips?.address;
+      if (!tips) throw new Error("Tips aren’t switched on yet.");
+      const { who, client } = await ready();
+      const hash = await client.writeContract({ account: who, chain: giwaSepolia, address: tips, abi: tipsAbi, functionName: "tip", args: [token, message], value: wei });
+      onSigned?.(hash);
+      // GIWA makes a block a second; asking that often makes the tip feel instant.
+      const receipt = await publicClient.waitForTransactionReceipt({ hash, pollingInterval: 1_000 });
+      if (receipt.status !== "success") throw new Error("The tip didn’t go through.");
+      return hash;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [deployment],
+  );
+
   const signMessage = useCallback(async (message: string) => {
     const { who, client } = await ready(false);
     return client.signMessage({ account: who, message });
@@ -498,8 +520,9 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       unwrap,
       claimFees,
       signMessage,
+      tip,
     }),
-    [deployment, live, coins, loading, preview, note, account, connect, disconnect, ensureChain, refresh, createCoin, trade, quickBuy, unwrap, claimFees, signMessage],
+    [deployment, live, coins, loading, preview, note, account, connect, disconnect, ensureChain, refresh, createCoin, trade, quickBuy, unwrap, claimFees, signMessage, tip],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

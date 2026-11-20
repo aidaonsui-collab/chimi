@@ -1,6 +1,6 @@
 /**
  * The inbox: what other wallets did that concerns yours. Someone answered or liked your comment, commented on a coin
- * you launched, followed you, or bought a coin after you did. The server adds an item when the thing happens
+ * you launched, followed you, bought a coin after you did, or tipped you. The server adds an item when the thing happens
  * (routes/api/comments.ts, follows.ts and server/points.ts); the page only reads the list. The server and the
  * browser share this one copy, and node can test it directly, so it imports nothing.
  *
@@ -30,7 +30,9 @@ export type InboxItem =
   /** `from` follows you now. */
   | (Base & { kind: "follow" })
   /** `from` follows you and bought `token` after you did. `eth` is what counts toward your lead. */
-  | (Base & { kind: "led"; token: string; eth: number });
+  | (Base & { kind: "led"; token: string; eth: number })
+  /** `from` tipped you `eth` on `token`, a coin you launched; `text` is their message (may be empty). */
+  | (Base & { kind: "tip"; token: string; eth: number; text: string });
 
 export type InboxDoc = {
   version: 1;
@@ -111,7 +113,7 @@ export function rowsOf(items: readonly InboxItem[]): InboxRow[] {
       token: "token" in item ? item.token : undefined,
       comment: "comment" in item ? item.comment : undefined,
       text: "text" in item ? item.text : undefined,
-      eth: item.kind === "led" ? item.eth : undefined,
+      eth: item.kind === "led" || item.kind === "tip" ? item.eth : undefined,
       thread: item.kind === "reply" ? item.thread : undefined,
     });
   }
