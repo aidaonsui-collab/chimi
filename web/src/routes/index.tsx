@@ -5,7 +5,6 @@ import { useHomeFeed } from "@/lib/chimi/feed";
 import { usePoolEth } from "@/lib/chimi/live";
 import { useBurned } from "@/lib/chimi/burned";
 import { useTokenProfiles } from "@/lib/chimi/token-image";
-import { CreatorFeesMini } from "@/components/chimi/creator-fees";
 import { LiveTrades, PairsBoard, type CoinLinks } from "@/components/chimi/home-board";
 import { HomeBanner, type HeroStat } from "@/components/chimi/home-hero";
 import { useChimi } from "@/components/chimi/provider";
@@ -91,9 +90,6 @@ function Home() {
             side={preview ? undefined : <LiveTrades coins={feed.live} byPool={feed.byPool} images={images} ethUsd={feed.ethUsd} now={feed.now} ready={!feed.waiting && feed.tradesReady} />}
           />
         )}
-        <div className="mt-6 max-w-xl empty:hidden">
-          <CreatorFeesMini coins={feed.live} />
-        </div>
       </div>
     </main>
   );

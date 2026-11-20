@@ -143,49 +143,31 @@ export function CreatorFeesCard({ coin, bump = 0 }: { coin: Coin; bump?: number 
   );
 }
 
-/** On a trader's own page: the fees waiting across every coin they launched, with one button for all of them. */
-export function LaunchedFeesBar({ fees, onDone }: { fees: Record<string, CreatorFees>; onDone: () => void }) {
+/**
+ * On your own trader page ("Your trades and profit"): the fees waiting across the coins you launched, from the page's
+ * own reading, and one button to claim them all. Claiming calls `onDone` so the page reads them again.
+ */
+export function CreatorFeesSummary({
+  fees,
+  ready,
+  launched,
+  onDone,
+  className = "",
+}: {
+  fees: Record<string, CreatorFees>;
+  ready: boolean;
+  /** How many coins this wallet launched. */
+  launched: number;
+  onDone: () => void;
+  className?: string;
+}) {
   const { account } = useChimi();
   const ethUsd = useEthUsd();
   const { claim, busy, note, kind } = useClaim(onDone);
   const due = Object.values(fees).filter((f) => f.creator > 0n && same(account, f.wallet));
   const total = due.reduce((sum, f) => sum + f.creator, 0n);
-
   return (
-    <div className="border-b border-line bg-raise/50 px-4 py-3 sm:px-5">
-      <div className="flex items-center justify-between gap-3">
-        <span className="min-w-0 text-sm text-muted">
-          Creator fees to claim{" "}
-          <span className="num font-semibold text-fg">
-            {amountText(total, 6)} ETH{ethUsd && total > 0n ? ` · ${money((Number(total) / 1e18) * ethUsd)}` : ""}
-          </span>
-        </span>
-        <button type="button" disabled={busy || total === 0n} onClick={() => void claim(due.map((f) => ({ locker: f.locker, positionId: f.positionId })))} className="btn btn-sm btn-primary shrink-0 disabled:opacity-40">
-          {busy ? "Confirming…" : due.length > 1 ? "Claim all" : "Claim"}
-        </button>
-      </div>
-      {note ? (
-        <Note kind={kind} className="mt-2">
-          {note}
-        </Note>
-      ) : null}
-    </div>
-  );
-}
-
-/** Beside the home feed: the fees waiting across the coins this wallet launched. Nothing for a wallet that launched none. */
-export function CreatorFeesMini({ coins }: { coins: Coin[] }) {
-  const { account } = useChimi();
-  const ethUsd = useEthUsd();
-  const [again, setAgain] = useState(0);
-  const mine = useMemo(() => coins.filter((c) => same(account, c.creator)), [coins, account]);
-  const { fees, ready } = useCreatorFees(mine, !!account && mine.length > 0, again);
-  const { claim, busy, note, kind } = useClaim(() => setAgain((n) => n + 1));
-  if (!account || mine.length === 0) return null;
-  const due = Object.values(fees).filter((f) => f.creator > 0n && same(account, f.wallet));
-  const total = due.reduce((sum, f) => sum + f.creator, 0n);
-  return (
-    <section className="card p-5">
+    <section className={`card p-5 ${className}`}>
       <h3 className="text-[15px] font-semibold">Your creator fees</h3>
       {ready ? (
         <p className="num mt-3 text-[26px] leading-none font-semibold tracking-[-0.03em]">
@@ -195,7 +177,7 @@ export function CreatorFeesMini({ coins }: { coins: Coin[] }) {
         <span className="skeleton mt-3 block h-7 w-32 rounded-lg" />
       )}
       <p className="mt-1.5 text-sm text-muted">
-        {total === 0n ? "Nothing to claim yet" : ethUsd ? `${money((Number(total) / 1e18) * ethUsd)} waiting` : "Waiting"} across the {mine.length === 1 ? "coin" : `${mine.length} coins`} you launched.
+        {total === 0n ? "Nothing to claim yet" : ethUsd ? `${money((Number(total) / 1e18) * ethUsd)} waiting` : "Waiting"} across the {launched === 1 ? "coin" : `${launched} coins`} you launched.
       </p>
       <button type="button" disabled={busy || total === 0n} onClick={() => void claim(due.map((f) => ({ locker: f.locker, positionId: f.positionId })))} className="btn btn-primary mt-4 w-full disabled:opacity-40">
         {busy ? "Confirming…" : due.length > 1 ? "Claim all" : "Claim"}
