@@ -17,5 +17,9 @@
     "chimi": "0xceF368d0509602704799bd80BcC33AeF352b9667",
     "keeper": "0xE4f45f494B263C898FDbf7686f61c48ffF495b98",
     "minHold": "10000"
+  },
+  "tips": {
+    "address": "0x5C3bec28e876bC41a36f5fb2CEB4bf18703E0bAC",
+    "block": 41794146
   }
 }
