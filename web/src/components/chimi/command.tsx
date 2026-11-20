@@ -23,7 +23,7 @@ type Item = {
 
 const PAGES = [
   { to: "/", title: "Board", sub: "Every coin on Chimi", icon: IconBoard },
-  { to: "/traders", title: "Traders", sub: "The feed and who to follow", icon: IconTraders },
+  { to: "/clubhouse", title: "Clubhouse", sub: "The feed and who to follow", icon: IconTraders },
   { to: "/launch", title: "Launch a coin", sub: "One transaction, straight into a locked pool", icon: IconPlus },
   { to: "/swap", title: "Swap", sub: "Buy or sell any coin", icon: IconSwap },
   { to: "/pools", title: "Pools", sub: "Add liquidity and collect fees", icon: IconPools },

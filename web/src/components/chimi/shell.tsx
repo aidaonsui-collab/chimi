@@ -34,19 +34,19 @@ import { Modal } from "@/components/chimi/ui";
 import { WalletButton } from "@/components/chimi/wallet-menu";
 
 type NavItem = {
-  to: "/" | "/traders" | "/swap" | "/pools" | "/analytics" | "/points" | "/houses" | "/launch" | "/docs";
+  to: "/" | "/clubhouse" | "/swap" | "/pools" | "/analytics" | "/points" | "/houses" | "/launch" | "/docs";
   label: string;
   icon: ComponentType<{ size?: number; className?: string }>;
   on: (path: string) => boolean;
 };
 
 const HOME: NavItem = { to: "/", label: "Board", icon: IconBoard, on: (p) => p === "/" || p === "/board" || p.startsWith("/coin/") };
-const TRADERS: NavItem = { to: "/traders", label: "Traders", icon: IconTraders, on: (p) => p === "/traders" || p.startsWith("/u/") };
+const CLUBHOUSE: NavItem = { to: "/clubhouse", label: "Clubhouse", icon: IconTraders, on: (p) => p === "/clubhouse" || p.startsWith("/u/") };
 const SWAP: NavItem = { to: "/swap", label: "Swap", icon: IconSwap, on: (p) => p === "/swap" };
 
 const NAV: NavItem[] = [
   HOME,
-  TRADERS,
+  CLUBHOUSE,
   SWAP,
   { to: "/pools", label: "Pools", icon: IconPools, on: (p) => p === "/pools" || p.startsWith("/pool/") },
   { to: "/points", label: "Points", icon: IconPoints, on: (p) => p === "/points" },
@@ -140,7 +140,7 @@ function Rail({ path }: { path: string }) {
 function TabBar({ path }: { path: string }) {
   const [more, setMore] = useState(false);
   useEffect(() => setMore(false), [path]);
-  const hidden = NAV.filter((item) => item !== HOME && item !== TRADERS && item !== SWAP);
+  const hidden = NAV.filter((item) => item !== HOME && item !== CLUBHOUSE && item !== SWAP);
   const moreOn = hidden.some((h) => h.on(path));
   const tab = (item: NavItem) => {
     const Icon = item.icon;
@@ -155,7 +155,7 @@ function TabBar({ path }: { path: string }) {
     <>
       <nav className="dock vt-tabs lg:hidden" aria-label="Main">
         {tab(HOME)}
-        {tab(TRADERS)}
+        {tab(CLUBHOUSE)}
         <Link to="/launch" aria-label="Launch a coin" className="dock-launch">
           <IconPlus size={24} />
         </Link>
@@ -281,6 +281,9 @@ export function Shell({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // The stream alerts are a bare page that OBS lays over a broadcast: no rail, header or backdrop.
+  if (path.startsWith("/alerts/")) return <>{children}</>;
+
   return (
     <div className="relative isolate flex min-h-dvh flex-col lg:pl-[72px]">
       <PageBackdrop path={path} />
@@ -338,8 +341,8 @@ function Footer() {
           <Link to="/" className={link}>
             Board
           </Link>
-          <Link to="/traders" className={link}>
-            Traders
+          <Link to="/clubhouse" className={link}>
+            Clubhouse
           </Link>
           <Link to="/swap" className={link}>
             Swap

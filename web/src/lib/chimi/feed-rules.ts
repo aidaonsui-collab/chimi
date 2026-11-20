@@ -29,7 +29,12 @@ export type FeedItem =
   | { kind: "launch"; key: string; time: number; token: string; creator: string; followed: boolean; earlier: number }
   | { kind: "comment"; key: string; time: number; token: string; wallet: string; text: string; followed: boolean; mine: boolean; id: string; likes: number; liked: boolean; replies: number; replyTo?: string }
   | { kind: "milestone"; key: string; time: number; token: string; cap: number }
-  | { kind: "copied"; key: string; time: number; token: string; by: string[]; eth: number };
+  | { kind: "copied"; key: string; time: number; token: string; by: string[]; eth: number }
+  /** `wallet` tipped `creator`, who launched `token`, `eth` while they streamed. `text` is the message, already made safe to show. */
+  | { kind: "tip"; key: string; time: number; token: string; wallet: string; creator: string; eth: number; text: string; followed: boolean; mine: boolean };
+
+/** A tip as the feed takes it in. */
+export type FeedTip = { key: string; time: number; token: string; wallet: string; creator: string; eth: number; text: string };
 
 export const DAY_S = 24 * 60 * 60;
 
@@ -125,6 +130,8 @@ export type FeedInput = {
   trades: FeedTrade[];
   launches: FeedLaunch[];
   comments: FeedComment[];
+  /** Tips to creators while they streamed. */
+  tips?: FeedTip[];
   /** Per coin (lowercase token): its market cap around each trade, and what it is now. */
   caps?: Record<string, { points: CapPoint[]; now: number }>;
   me?: string;
@@ -176,6 +183,12 @@ export function buildFeed(input: FeedInput): FeedItem[] {
       replies: c.replies ?? 0,
       replyTo: c.replyTo,
     });
+  }
+
+  for (const t of input.tips ?? []) {
+    const wallet = lower(t.wallet);
+    const creator = lower(t.creator);
+    items.push({ kind: "tip", key: `tip:${t.key}`, time: t.time, token: lower(t.token), wallet, creator, eth: t.eth, text: t.text, followed: followed.has(wallet) || followed.has(creator), mine: wallet === me });
   }
 
   for (const [token, cap] of Object.entries(input.caps ?? {})) {
@@ -257,9 +270,9 @@ export function forYou(all: FeedItem[]): FeedItem[] {
 /** What tells one showing of an item from the next: a burst counts as new again each time a trade joins it. */
 export const freshnessKey = (item: FeedItem) => (item.kind === "burst" ? `${item.key}#${item.trades.length}` : item.key);
 
-/** The Following tab: what the wallets you follow bought, sold, launched and said. */
+/** The Following tab: what the wallets you follow bought, sold, launched, said and tipped (or were tipped). */
 export function fromFollowed(items: FeedItem[]): FeedItem[] {
-  return items.filter((i) => (i.kind === "trade" || i.kind === "launch" || i.kind === "comment") && i.followed);
+  return items.filter((i) => (i.kind === "trade" || i.kind === "launch" || i.kind === "comment" || i.kind === "tip") && i.followed);
 }
 
 /** The New tab: launches, newest first. */

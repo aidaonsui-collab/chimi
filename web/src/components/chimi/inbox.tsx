@@ -6,7 +6,7 @@ import type { InboxRow } from "@/lib/chimi/inbox-rules";
 import { shortAddr } from "@/lib/chimi/market";
 import type { Profile } from "@/lib/chimi/points-rules";
 import { shortWallet, usePoints, useProfiles } from "@/lib/chimi/rewards";
-import { IconBell, IconBolt, IconComment, IconHeart, IconReply, IconTraders } from "@/components/chimi/icons";
+import { IconBell, IconBolt, IconBroadcast, IconComment, IconHeart, IconReply, IconTraders } from "@/components/chimi/icons";
 import { useChimi } from "@/components/chimi/provider";
 import { Blockie } from "@/components/chimi/ui";
 
@@ -18,6 +18,7 @@ const MARK: Record<InboxRow["kind"], { icon: ReactNode; tone: string }> = {
   like: { icon: <IconHeart size={11} fill="currentColor" />, tone: "bg-seal text-onseal" },
   follow: { icon: <IconTraders size={11} />, tone: "bg-fg text-bg" },
   led: { icon: <IconBolt size={11} />, tone: "bg-ok text-bg" },
+  tip: { icon: <IconBroadcast size={11} />, tone: "bg-seal text-onseal" },
 };
 
 /**
@@ -94,7 +95,7 @@ export function InboxButton() {
             <div className="px-6 py-10 text-center">
               <p className="font-serif text-[15px] text-gold">조용함</p>
               <p className="mt-2 text-[15px] font-semibold">Nothing yet</p>
-              <p className="mx-auto mt-1 max-w-[17rem] text-sm leading-relaxed text-muted">When someone answers or likes your comment, follows you, or buys a coin after you, it shows up here.</p>
+              <p className="mx-auto mt-1 max-w-[17rem] text-sm leading-relaxed text-muted">When someone answers or likes your comment, follows you, buys a coin after you or tips you, it shows up here.</p>
             </div>
           ) : (
             <ul className="max-h-[min(30rem,calc(100dvh-10rem))] overflow-y-auto overscroll-contain">
@@ -130,12 +131,23 @@ function Line({ row, fresh, profiles, symbol, onPick }: { row: InboxRow; fresh: 
       </>
     ) : row.kind === "follow" ? (
       <>{name} started following you</>
+    ) : row.kind === "tip" ? (
+      <>
+        {name} tipped you {ethText(row.eth)} ETH on {coin}
+      </>
     ) : (
       <>
         {name} bought {coin} after you
       </>
     );
-  const detail = row.kind === "led" ? `${ethText(row.eth)} ETH counts toward your points` : row.kind === "follow" ? "Their buys after yours earn you points" : row.text ? `“${row.text}”` : null;
+  const detail =
+    row.kind === "led"
+      ? `${ethText(row.eth)} ETH counts toward your points`
+      : row.kind === "follow"
+        ? "Their buys after yours earn you points"
+        : row.text
+          ? `“${row.text}”`
+          : null;
   const body = (
     <>
       <span className="relative shrink-0">
@@ -159,7 +171,7 @@ function Line({ row, fresh, profiles, symbol, onPick }: { row: InboxRow; fresh: 
         <Link to="/u/$address" params={{ address: who }} onClick={onPick} className={cls}>
           {body}
         </Link>
-      ) : row.kind === "led" ? (
+      ) : row.kind === "led" || row.kind === "tip" ? (
         <Link to="/coin/$address" params={{ address: row.token! }} onClick={onPick} className={cls}>
           {body}
         </Link>

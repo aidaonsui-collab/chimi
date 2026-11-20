@@ -12,12 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as BoardRouteImport } from './routes/board'
+import { Route as ClubhouseRouteImport } from './routes/clubhouse'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as LaunchRouteImport } from './routes/launch'
 import { Route as PointsRouteImport } from './routes/points'
 import { Route as PoolsRouteImport } from './routes/pools'
 import { Route as SwapRouteImport } from './routes/swap'
-import { Route as TradersRouteImport } from './routes/traders'
+import { Route as AlertsAddressRouteImport } from './routes/alerts.$address'
 import { Route as ApiCommentsRouteImport } from './routes/api/comments'
 import { Route as ApiFeedRouteImport } from './routes/api/feed'
 import { Route as ApiFlywheelRouteImport } from './routes/api/flywheel'
@@ -26,6 +27,7 @@ import { Route as ApiHousesRouteImport } from './routes/api/houses'
 import { Route as ApiInboxRouteImport } from './routes/api/inbox'
 import { Route as ApiPointsRouteImport } from './routes/api/points'
 import { Route as ApiStreamsRouteImport } from './routes/api/streams'
+import { Route as ApiTipsRouteImport } from './routes/api/tips'
 import { Route as ApiTokenMetaRouteImport } from './routes/api/token-meta'
 import { Route as ApiTraderRouteImport } from './routes/api/trader'
 import { Route as ApiUploadRouteImport } from './routes/api/upload'
@@ -49,6 +51,11 @@ const AnalyticsRoute = AnalyticsRouteImport.update({
 const BoardRoute = BoardRouteImport.update({
   id: '/board',
   path: '/board',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClubhouseRoute = ClubhouseRouteImport.update({
+  id: '/clubhouse',
+  path: '/clubhouse',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DocsRoute = DocsRouteImport.update({
@@ -76,9 +83,9 @@ const SwapRoute = SwapRouteImport.update({
   path: '/swap',
   getParentRoute: () => rootRouteImport,
 } as any)
-const TradersRoute = TradersRouteImport.update({
-  id: '/traders',
-  path: '/traders',
+const AlertsAddressRoute = AlertsAddressRouteImport.update({
+  id: '/alerts/$address',
+  path: '/alerts/$address',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiCommentsRoute = ApiCommentsRouteImport.update({
@@ -119,6 +126,11 @@ const ApiPointsRoute = ApiPointsRouteImport.update({
 const ApiStreamsRoute = ApiStreamsRouteImport.update({
   id: '/api/streams',
   path: '/api/streams',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTipsRoute = ApiTipsRouteImport.update({
+  id: '/api/tips',
+  path: '/api/tips',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiTokenMetaRoute = ApiTokenMetaRouteImport.update({
@@ -171,12 +183,13 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/board': typeof BoardRoute
+  '/clubhouse': typeof ClubhouseRoute
   '/docs': typeof DocsRoute
   '/launch': typeof LaunchRoute
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
-  '/traders': typeof TradersRoute
+  '/alerts/$address': typeof AlertsAddressRoute
   '/api/comments': typeof ApiCommentsRoute
   '/api/feed': typeof ApiFeedRoute
   '/api/flywheel': typeof ApiFlywheelRoute
@@ -185,6 +198,7 @@ export interface FileRoutesByFullPath {
   '/api/inbox': typeof ApiInboxRoute
   '/api/points': typeof ApiPointsRoute
   '/api/streams': typeof ApiStreamsRoute
+  '/api/tips': typeof ApiTipsRoute
   '/api/token-meta': typeof ApiTokenMetaRoute
   '/api/trader': typeof ApiTraderRoute
   '/api/upload': typeof ApiUploadRoute
@@ -199,12 +213,13 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/board': typeof BoardRoute
+  '/clubhouse': typeof ClubhouseRoute
   '/docs': typeof DocsRoute
   '/launch': typeof LaunchRoute
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
-  '/traders': typeof TradersRoute
+  '/alerts/$address': typeof AlertsAddressRoute
   '/api/comments': typeof ApiCommentsRoute
   '/api/feed': typeof ApiFeedRoute
   '/api/flywheel': typeof ApiFlywheelRoute
@@ -213,6 +228,7 @@ export interface FileRoutesByTo {
   '/api/inbox': typeof ApiInboxRoute
   '/api/points': typeof ApiPointsRoute
   '/api/streams': typeof ApiStreamsRoute
+  '/api/tips': typeof ApiTipsRoute
   '/api/token-meta': typeof ApiTokenMetaRoute
   '/api/trader': typeof ApiTraderRoute
   '/api/upload': typeof ApiUploadRoute
@@ -228,12 +244,13 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/board': typeof BoardRoute
+  '/clubhouse': typeof ClubhouseRoute
   '/docs': typeof DocsRoute
   '/launch': typeof LaunchRoute
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
-  '/traders': typeof TradersRoute
+  '/alerts/$address': typeof AlertsAddressRoute
   '/api/comments': typeof ApiCommentsRoute
   '/api/feed': typeof ApiFeedRoute
   '/api/flywheel': typeof ApiFlywheelRoute
@@ -242,6 +259,7 @@ export interface FileRoutesById {
   '/api/inbox': typeof ApiInboxRoute
   '/api/points': typeof ApiPointsRoute
   '/api/streams': typeof ApiStreamsRoute
+  '/api/tips': typeof ApiTipsRoute
   '/api/token-meta': typeof ApiTokenMetaRoute
   '/api/trader': typeof ApiTraderRoute
   '/api/upload': typeof ApiUploadRoute
@@ -258,12 +276,13 @@ export interface FileRouteTypes {
     | '/'
     | '/analytics'
     | '/board'
+    | '/clubhouse'
     | '/docs'
     | '/launch'
     | '/points'
     | '/pools'
     | '/swap'
-    | '/traders'
+    | '/alerts/$address'
     | '/api/comments'
     | '/api/feed'
     | '/api/flywheel'
@@ -272,6 +291,7 @@ export interface FileRouteTypes {
     | '/api/inbox'
     | '/api/points'
     | '/api/streams'
+    | '/api/tips'
     | '/api/token-meta'
     | '/api/trader'
     | '/api/upload'
@@ -286,12 +306,13 @@ export interface FileRouteTypes {
     | '/'
     | '/analytics'
     | '/board'
+    | '/clubhouse'
     | '/docs'
     | '/launch'
     | '/points'
     | '/pools'
     | '/swap'
-    | '/traders'
+    | '/alerts/$address'
     | '/api/comments'
     | '/api/feed'
     | '/api/flywheel'
@@ -300,6 +321,7 @@ export interface FileRouteTypes {
     | '/api/inbox'
     | '/api/points'
     | '/api/streams'
+    | '/api/tips'
     | '/api/token-meta'
     | '/api/trader'
     | '/api/upload'
@@ -314,12 +336,13 @@ export interface FileRouteTypes {
     | '/'
     | '/analytics'
     | '/board'
+    | '/clubhouse'
     | '/docs'
     | '/launch'
     | '/points'
     | '/pools'
     | '/swap'
-    | '/traders'
+    | '/alerts/$address'
     | '/api/comments'
     | '/api/feed'
     | '/api/flywheel'
@@ -328,6 +351,7 @@ export interface FileRouteTypes {
     | '/api/inbox'
     | '/api/points'
     | '/api/streams'
+    | '/api/tips'
     | '/api/token-meta'
     | '/api/trader'
     | '/api/upload'
@@ -343,12 +367,13 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AnalyticsRoute: typeof AnalyticsRoute
   BoardRoute: typeof BoardRoute
+  ClubhouseRoute: typeof ClubhouseRoute
   DocsRoute: typeof DocsRoute
   LaunchRoute: typeof LaunchRoute
   PointsRoute: typeof PointsRoute
   PoolsRoute: typeof PoolsRoute
   SwapRoute: typeof SwapRoute
-  TradersRoute: typeof TradersRoute
+  AlertsAddressRoute: typeof AlertsAddressRoute
   ApiCommentsRoute: typeof ApiCommentsRoute
   ApiFeedRoute: typeof ApiFeedRoute
   ApiFlywheelRoute: typeof ApiFlywheelRoute
@@ -357,6 +382,7 @@ export interface RootRouteChildren {
   ApiInboxRoute: typeof ApiInboxRoute
   ApiPointsRoute: typeof ApiPointsRoute
   ApiStreamsRoute: typeof ApiStreamsRoute
+  ApiTipsRoute: typeof ApiTipsRoute
   ApiTokenMetaRoute: typeof ApiTokenMetaRoute
   ApiTraderRoute: typeof ApiTraderRoute
   ApiUploadRoute: typeof ApiUploadRoute
@@ -389,6 +415,13 @@ declare module '@tanstack/react-router' {
       path: '/board'
       fullPath: '/board'
       preLoaderRoute: typeof BoardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/clubhouse': {
+      id: '/clubhouse'
+      path: '/clubhouse'
+      fullPath: '/clubhouse'
+      preLoaderRoute: typeof ClubhouseRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/docs': {
@@ -426,11 +459,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SwapRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/traders': {
-      id: '/traders'
-      path: '/traders'
-      fullPath: '/traders'
-      preLoaderRoute: typeof TradersRouteImport
+    '/alerts/$address': {
+      id: '/alerts/$address'
+      path: '/alerts/$address'
+      fullPath: '/alerts/$address'
+      preLoaderRoute: typeof AlertsAddressRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/comments': {
@@ -487,6 +520,13 @@ declare module '@tanstack/react-router' {
       path: '/api/streams'
       fullPath: '/api/streams'
       preLoaderRoute: typeof ApiStreamsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/tips': {
+      id: '/api/tips'
+      path: '/api/tips'
+      fullPath: '/api/tips'
+      preLoaderRoute: typeof ApiTipsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/token-meta': {
@@ -559,12 +599,13 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnalyticsRoute: AnalyticsRoute,
   BoardRoute: BoardRoute,
+  ClubhouseRoute: ClubhouseRoute,
   DocsRoute: DocsRoute,
   LaunchRoute: LaunchRoute,
   PointsRoute: PointsRoute,
   PoolsRoute: PoolsRoute,
   SwapRoute: SwapRoute,
-  TradersRoute: TradersRoute,
+  AlertsAddressRoute: AlertsAddressRoute,
   ApiCommentsRoute: ApiCommentsRoute,
   ApiFeedRoute: ApiFeedRoute,
   ApiFlywheelRoute: ApiFlywheelRoute,
@@ -573,6 +614,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInboxRoute: ApiInboxRoute,
   ApiPointsRoute: ApiPointsRoute,
   ApiStreamsRoute: ApiStreamsRoute,
+  ApiTipsRoute: ApiTipsRoute,
   ApiTokenMetaRoute: ApiTokenMetaRoute,
   ApiTraderRoute: ApiTraderRoute,
   ApiUploadRoute: ApiUploadRoute,

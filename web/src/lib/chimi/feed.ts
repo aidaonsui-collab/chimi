@@ -13,6 +13,7 @@ import {
   type FeedComment,
   type FeedItem,
   type FeedLaunch,
+  type FeedTip,
   type FeedTrade,
 } from "@/lib/chimi/feed-rules";
 import { followersOf, followingOf } from "@/lib/chimi/follow-rules";
@@ -20,6 +21,8 @@ import { useFeed as useFollowedRecord, useFollows } from "@/lib/chimi/follows";
 import { SUPPLY, capAfter, capBefore, coinStats, useEthUsd, useSwaps, type CoinStats } from "@/lib/chimi/live";
 import { loadLaunchWindow, type Coin, type PoolSwap } from "@/lib/chimi/market";
 import { usePoints } from "@/lib/chimi/rewards";
+import { shownMessage } from "@/lib/chimi/tip-rules";
+import { useRecentTips } from "@/lib/chimi/tips";
 import { useChimi } from "@/components/chimi/provider";
 
 /*
@@ -263,6 +266,7 @@ export function useHomeFeed(nowMs: number | null) {
   const times = useLaunchTimes(deployment?.factory, live.length);
   const tokens = useMemo(() => live.map((c) => c.token.toLowerCase()), [live]);
   const comments = useRecentComments(tokens, me);
+  const recentTips = useRecentTips(deployment);
 
   const byToken = useMemo(() => new Map(live.map((c) => [c.token.toLowerCase(), c])), [live]);
 
@@ -306,7 +310,11 @@ export function useHomeFeed(nowMs: number | null) {
       time: times?.get(coin.token.toLowerCase()) ?? live.length - i,
     }));
 
-    const items = buildFeed({ trades, launches, comments, caps, me, following, followers, now });
+    const tips: FeedTip[] = recentTips
+      .filter((t) => t.time !== undefined && byToken.has(t.token))
+      .map((t) => ({ key: t.key, time: t.time!, token: t.token, wallet: t.from, creator: t.creator, eth: Number(t.amount) / 1e18, text: shownMessage(t.message, 120) }));
+
+    const items = buildFeed({ trades, launches, comments, tips, caps, me, following, followers, now });
     return {
       now,
       trades,
@@ -319,7 +327,7 @@ export function useHomeFeed(nowMs: number | null) {
       digest: digest(trades, now),
       suggestions: suggestTraders(points?.season ?? [], trades, [me, ...following]),
     };
-  }, [live, byPool, record.trades, byToken, times, comments, me, following, followers, ethUsd, stats, points, nowMs]);
+  }, [live, byPool, record.trades, byToken, times, comments, recentTips, me, following, followers, ethUsd, stats, points, nowMs]);
 
   return {
     ...feed,

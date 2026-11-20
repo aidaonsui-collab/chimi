@@ -171,7 +171,7 @@ export function TopTraders({
         <h2 id="top-traders-title" className="text-[16px] font-semibold tracking-[-0.01em]">
           Top traders
         </h2>
-        <Link to="/traders" search={{ view: "leaderboard" }} className="inline-flex items-center gap-0.5 text-[13px] font-medium text-muted hover:text-fg">
+        <Link to="/clubhouse" search={{ view: "leaderboard" }} className="inline-flex items-center gap-0.5 text-[13px] font-medium text-muted hover:text-fg">
           See all
           <IconChevronRight size={14} />
         </Link>

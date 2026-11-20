@@ -25,7 +25,7 @@ const ROOF_SCENE: Scene = { still: "/banner.webp", loop: ROOF.wide, narrow: ROOF
  * for Launch. The board and the traders share the roof with the feed.
  */
 const SCENES: Record<string, Scene> = {
-  "/traders": ROOF_SCENE,
+  "/clubhouse": ROOF_SCENE,
   "/swap": scene("swap", "50% 0%", "74% 0%"),
   "/pools": scene("pools", "50% 0%", "84% 0%"),
   "/analytics": scene("analytics", "50% 0%", "88% 0%"),
