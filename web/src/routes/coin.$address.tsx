@@ -38,6 +38,9 @@ import { CreatorFeesCard } from "@/components/chimi/creator-fees";
 import { StreamIdle, StreamSheet, StreamStage } from "@/components/chimi/stream";
 import { platformName } from "@/lib/chimi/stream-rules";
 import { useStream } from "@/lib/chimi/streams";
+import { useCoinXPosts } from "@/lib/chimi/x";
+import { xHandleOf } from "@/lib/chimi/x-rules";
+import { XPostCard } from "@/components/chimi/x-post";
 import { FlywheelCard } from "@/components/chimi/flywheel-card";
 import { toast } from "@/components/chimi/toast";
 import { EthLogo, TokenLogo } from "@/components/chimi/token-logo";
@@ -45,12 +48,12 @@ import { Blockie, Change, CopyButton, Empty, Modal, Note, Seg, TraderLink } from
 
 export const Route = createFileRoute("/coin/$address")({
   // ?copy=<wallet>&eth=<their size> opens the page ready to copy that wallet's buy (the Copy button in the feed).
-  // ?tab=comments|trades|holders opens it on that list, and ?c=<comment id> brings one comment into view (a comment
+  // ?tab=comments|trades|holders|x opens it on that list, and ?c=<comment id> brings one comment into view (a comment
   // card in the feed, a line of the inbox).
-  validateSearch: (search: Record<string, unknown>): { copy?: string; eth?: number; tab?: "comments" | "trades" | "holders"; c?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { copy?: string; eth?: number; tab?: "comments" | "trades" | "holders" | "x"; c?: string } => ({
     copy: typeof search.copy === "string" && /^0x[0-9a-fA-F]{40}$/.test(search.copy) ? search.copy.toLowerCase() : undefined,
     eth: Number.isFinite(Number(search.eth)) && Number(search.eth) > 0 ? Number(search.eth) : undefined,
-    tab: search.tab === "comments" || search.tab === "trades" || search.tab === "holders" ? search.tab : undefined,
+    tab: search.tab === "comments" || search.tab === "trades" || search.tab === "holders" || search.tab === "x" ? search.tab : undefined,
     c: typeof search.c === "string" && /^[0-9a-z-]{1,40}$/.test(search.c) ? search.c : undefined,
   }),
   component: CoinPage,
@@ -109,8 +112,11 @@ function CoinPage() {
   const [chartKind, setChartKind] = useState<"candles" | "line">("candles");
   const [traders, setTraders] = useState<BubbleMode>("all");
   // What is said about the coin leads, with the day's trades between the threads; the full lists are a tab away.
-  const [panel, setPanel] = useState<"comments" | "trades" | "holders">(search.tab ?? "comments");
+  const [panel, setPanel] = useState<"comments" | "trades" | "holders" | "x">(search.tab ?? "comments");
   const thread = useComments(coin && !coin.preview ? coin.token : undefined);
+  // Posts on X from the coin's own account or linking to it (server/x-posts.ts).
+  const xPosts = useCoinXPosts(coin && !coin.preview ? coin.token : undefined);
+  const xHandle = xHandleOf(meta?.twitter);
   const [shown, setShown] = useState(25);
   const [reload, setReload] = useState(0);
 
@@ -463,7 +469,7 @@ function CoinPage() {
                 <IconExternal size={16} />
               </IconLink>
               {meta?.twitter ? (
-                <IconLink href={`https://x.com/${meta.twitter}`} label="X">
+                <IconLink href={`https://x.com/${xHandle ?? meta.twitter}`} label="X">
                   <IconX size={15} />
                 </IconLink>
               ) : null}
@@ -771,10 +777,18 @@ function CoinPage() {
                 ["comments", `Comments${thread.view ? ` · ${thread.view.total}` : ""}`],
                 ["trades", `Trades${swaps ? ` · ${swaps.length}` : ""}`],
                 ["holders", `Holders${holders ? ` · ${holders.length}` : ""}`],
+                // Only for a coin with an X account, or one people have posted about.
+                ...(xHandle || xPosts?.length || panel === "x" ? ([["x", `On X${xPosts?.length ? ` · ${xPosts.length}` : ""}`]] as const) : []),
               ]}
             />
             <span className="hidden truncate text-xs text-faint sm:block lg:hidden xl:block">
-              {panel === "trades" ? "About the last day of trades" : panel === "holders" ? "The pool, the creator and recent traders" : "With the day’s trades in between"}
+              {panel === "trades"
+                ? "About the last day of trades"
+                : panel === "holders"
+                  ? "The pool, the creator and recent traders"
+                  : panel === "x"
+                    ? "Posts from its account and posts that link to it"
+                    : "With the day’s trades in between"}
             </span>
           </div>
           {panel === "comments" ? (
@@ -819,6 +833,22 @@ function CoinPage() {
                   </button>
                 ) : null}
               </>
+            )
+          ) : panel === "x" ? (
+            !xPosts ? (
+              <RowsSkeleton />
+            ) : xPosts.length === 0 ? (
+              <Empty mark="조용함" title="No posts on X yet">
+                {xHandle
+                  ? `Posts from @${xHandle}, and posts that link to ${coin.symbol} on Chimi or name its contract address, show up here.`
+                  : `Posts that link to ${coin.symbol} on Chimi or name its contract address show up here.`}
+              </Empty>
+            ) : (
+              <ul>
+                {xPosts.map((post) => (
+                  <XPostCard key={`${post.id}:${post.token}`} post={post} now={now} symbol={coin.symbol} />
+                ))}
+              </ul>
             )
           ) : !holders ? (
             <RowsSkeleton />
@@ -1072,7 +1102,7 @@ function ProfileEditor({
           <div className="grid gap-3 sm:grid-cols-3">
             <label>
               <span className="label">X handle</span>
-              <input value={twitter} onChange={(e) => setTwitter(e.target.value.replace(/^@/, ""))} className="field" />
+              <input value={twitter} placeholder="handle" onChange={(e) => setTwitter(e.target.value.replace(/^@/, ""))} className="field" />
             </label>
             <label>
               <span className="label">Telegram</span>
@@ -1083,6 +1113,7 @@ function ProfileEditor({
               <input value={website} placeholder="https://" onChange={(e) => setWebsite(e.target.value)} className="field" />
             </label>
           </div>
+          <p className="text-[12.5px] text-faint">Posts from this X account show on the coin’s page and in the Clubhouse.</p>
         </div>
       </div>
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">

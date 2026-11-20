@@ -61,6 +61,23 @@ export const IconHeart = (p: IconProps) => (
   </Svg>
 );
 
+/** Two arrows chasing each other round: a repost. */
+export const IconRepost = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M7 4L4 7l3 3" />
+    <path d="M4 7h11a4 4 0 014 4v1" />
+    <path d="M17 20l3-3-3-3" />
+    <path d="M20 17H9a4 4 0 01-4-4v-1" />
+  </Svg>
+);
+
+/** A play triangle, for a video's still. */
+export const IconPlay = ({ size = 20, ...rest }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden {...rest}>
+    <path d="M8 5.5v13a1 1 0 001.5.86l11-6.5a1 1 0 000-1.72l-11-6.5A1 1 0 008 5.5z" />
+  </svg>
+);
+
 export const IconReply = (p: IconProps) => (
   <Svg {...p}>
     <path d="M9 7L4 12l5 5" />

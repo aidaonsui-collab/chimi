@@ -1,8 +1,11 @@
 /*
  * What the home feed shows, and in what order: trades, launches, comments, coins crossing a round market cap, and
- * the times someone bought after you. The feed is built in the browser from things the page already reads, so this
- * file only sorts and picks. It imports nothing, so the rules can be tested on their own.
+ * the times someone bought after you, and posts on X about the coins. The feed is built in the browser from things the
+ * page already reads, so this file only sorts and picks. It imports nothing but a type, so the rules can be tested on
+ * their own.
  */
+
+import type { XPost } from "./x-rules.ts";
 
 /** One buy or sale. `key` is the transaction and its place in it, so a trade read twice is one trade. */
 export type FeedTrade = { key: string; time: number; wallet: string; token: string; buy: boolean; tokens: number; eth: number; tx: string };
@@ -31,7 +34,9 @@ export type FeedItem =
   | { kind: "milestone"; key: string; time: number; token: string; cap: number }
   | { kind: "copied"; key: string; time: number; token: string; by: string[]; eth: number }
   /** `wallet` tipped `creator`, who launched `token`, `eth` while they streamed. `text` is the message, already made safe to show. */
-  | { kind: "tip"; key: string; time: number; token: string; wallet: string; creator: string; eth: number; text: string; followed: boolean; mine: boolean };
+  | { kind: "tip"; key: string; time: number; token: string; wallet: string; creator: string; eth: number; text: string; followed: boolean; mine: boolean }
+  /** A post on X about `token`, from the coin's own account or linking to it (lib/chimi/x-rules.ts). */
+  | { kind: "x"; key: string; time: number; token: string; post: XPost };
 
 /** A tip as the feed takes it in. */
 export type FeedTip = { key: string; time: number; token: string; wallet: string; creator: string; eth: number; text: string };
@@ -132,6 +137,8 @@ export type FeedInput = {
   comments: FeedComment[];
   /** Tips to creators while they streamed. */
   tips?: FeedTip[];
+  /** Posts on X about the coins, already cut to a few per coin (x-rules.ts xForFeed). */
+  x?: XPost[];
   /** Per coin (lowercase token): its market cap around each trade, and what it is now. */
   caps?: Record<string, { points: CapPoint[]; now: number }>;
   me?: string;
@@ -189,6 +196,11 @@ export function buildFeed(input: FeedInput): FeedItem[] {
     const wallet = lower(t.wallet);
     const creator = lower(t.creator);
     items.push({ kind: "tip", key: `tip:${t.key}`, time: t.time, token: lower(t.token), wallet, creator, eth: t.eth, text: t.text, followed: followed.has(wallet) || followed.has(creator), mine: wallet === me });
+  }
+
+  for (const post of input.x ?? []) {
+    const token = lower(post.token);
+    items.push({ kind: "x", key: `x:${post.id}:${token}`, time: post.time, token, post });
   }
 
   for (const [token, cap] of Object.entries(input.caps ?? {})) {
