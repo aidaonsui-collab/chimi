@@ -30,7 +30,7 @@ const PAGES = [
   { to: "/analytics", title: "Analytics", sub: "Volume and launches", icon: IconChart },
   { to: "/points", title: "Points", sub: "The daily pool and the season board", icon: IconPoints },
   { to: "/houses", title: "Houses", sub: "Trade under one seal", icon: IconHouse },
-  { to: "/docs", title: "Docs", sub: "How Chimi works: fees, the flywheel, points", icon: IconBook },
+  { to: "/docs", title: "Docs", sub: "How Chimi works: fees, burns, points", icon: IconBook },
 ] as const;
 
 /** Search everything: coins by name, ticker or address, houses by name or tag, and the pages themselves. */

@@ -5,7 +5,7 @@ import { POOL_FEE, factoryAbi, giwaSepolia } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
 import { ethText, money } from "@/lib/chimi/format";
 import { useEthUsd } from "@/lib/chimi/live";
-import { bpsLabel, splitFor } from "@/lib/chimi/fee-split";
+import { bpsLabel, hasFeeChoice, splitFor, type FeeSplit } from "@/lib/chimi/fee-split";
 import { feeLabel, fmt, short } from "@/lib/chimi/market";
 import { saveTokenMeta, shrinkImage } from "@/lib/chimi/meta";
 import { publishTokenProfile, refreshTokenProfiles } from "@/lib/chimi/token-image";
@@ -49,6 +49,8 @@ function LaunchPage() {
   const [telegram, setTelegram] = useState("");
   const [website, setWebsite] = useState("");
   const [devBuy, setDevBuy] = useState("");
+  // Burn the coin with 10% of its fees: ticked unless the creator unticks it.
+  const [burnOwn, setBurnOwn] = useState(true);
   const [balance, setBalance] = useState<bigint>();
   const [fee, setFee] = useState<bigint>();
   const [virtualQuote, setVirtualQuote] = useState<bigint>();
@@ -141,7 +143,7 @@ function LaunchPage() {
       setBusy(true);
       setKind("");
       setNote("Confirm the launch in your wallet.");
-      const token = await createCoin(name.trim(), symbol.trim(), devBuy.trim() || "0");
+      const token = await createCoin(name.trim(), symbol.trim(), devBuy.trim() || "0", burnOwn);
       const profile = {
         description: description.trim(),
         image,
@@ -187,7 +189,9 @@ function LaunchPage() {
   const mark = symbol.trim() || "TICKER";
   const quote = virtualQuote ?? 0n;
   // New coins launch on the last DEX: its fee and how the ETH side of fees is shared.
-  const split = deployment ? splitFor(deployment) : null;
+  const choice = !!deployment && hasFeeChoice(deployment);
+  const split = deployment ? splitFor(deployment, burnOwn) : null;
+  const coinName = symbol.trim() || "your coin";
   const launchFee = split?.fee ?? POOL_FEE;
   const received = buyOk ? tokensOut(buy, quote, launchFee) : 0n;
   const share = received === 0n ? 0 : Number((received * 10_000n) / SUPPLY) / 100;
@@ -347,6 +351,34 @@ function LaunchPage() {
             {buy > 0n && quote > 0n ? <p className="mt-1 text-xs text-faint">An estimate at the opening price, after the {feeLabel(launchFee)} pool fee.</p> : null}
           </Panel>
 
+          {choice && split ? (
+            <Panel step="4" title="Trading fees" sub={`Every trade pays the pool ${feeLabel(launchFee)}. Choose what your coin’s share of it does. This can’t be changed after launch.`}>
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={burnOwn}
+                aria-labelledby="burn-own-title"
+                aria-describedby="burn-own-body"
+                onClick={() => setBurnOwn(!burnOwn)}
+                className={`flex w-full items-start gap-3.5 rounded-2xl border px-4 py-3.5 text-left transition-colors ${burnOwn ? "border-gold/45 bg-gold/8" : "border-line hover:border-edge"}`}
+              >
+                <span className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-md border transition-colors ${burnOwn ? "border-gold bg-gold text-bg" : "border-edge bg-bg"}`} aria-hidden>
+                  {burnOwn ? <IconCheck size={13} /> : null}
+                </span>
+                <span className="min-w-0">
+                  <span id="burn-own-title" className="block text-[15px] font-semibold">
+                    Burn {coinName} with 10% of its fees
+                  </span>
+                  <span id="burn-own-body" className="mt-0.5 block text-sm leading-relaxed text-muted">
+                    Every day, 10% of the ETH your pool earns buys {coinName} back and burns it, taking it out of the supply for good. Your share is 70% instead of
+                    80%.
+                  </span>
+                </span>
+              </button>
+              <FeeBreakdown split={split} coin={symbol.trim() || "Coin"} />
+            </Panel>
+          ) : null}
+
           <details className="card group px-5 py-4 sm:px-6">
             <summary className="flex cursor-pointer list-none items-center justify-between text-[15px] font-semibold [&::-webkit-details-marker]:hidden">
               What every Chimi coin gets
@@ -359,12 +391,7 @@ function LaunchPage() {
                 ["Pool fee", feeLabel(launchFee)],
                 ["Lock", "100 years, then the beneficiary"],
                 ["Creator share", `${bpsLabel(split?.creatorBps ?? 7_000)} of the ETH trading fees`],
-                ...(split?.flywheel
-                  ? [
-                      ["Platform share", bpsLabel(split.platformBps)],
-                      ["CHIMI flywheel", `${bpsLabel(split.burnBps + split.holdersBps)}: half burns CHIMI, half is paid to CHIMI holders`],
-                    ]
-                  : []),
+                ...(split ? shareRows(split, symbol.trim() || "your coin") : []),
                 ["Token-side fees", "Burned"],
                 ["Transfer tax", "None. The pool fee is the only cost of a trade"],
                 ["Opens at", opensAt ? `About ${opensAt} market cap` : "—"],
@@ -392,6 +419,7 @@ function LaunchPage() {
                 <Row label="Opens at" value={opensAt ? `${opensAt} cap` : "—"} />
                 <Row label="Creation fee" value={!account ? "Connect to see" : due === 0n ? "None" : `${fmt(due, 4)} ETH`} />
                 <Row label="First buy" value={buy > 0n ? `${fmt(buy, 4)} ETH${quote > 0n ? ` · ${share.toFixed(2)}%` : ""}` : "None"} />
+                {choice && split ? <Row label="Your share of fees" value={bpsLabel(split.creatorBps)} /> : null}
                 <div className="flex items-baseline justify-between gap-4 border-t border-line pt-3">
                   <dt className="font-medium">You pay</dt>
                   <dd className="num text-right text-lg font-semibold tracking-[-0.01em]">
@@ -422,6 +450,43 @@ function LaunchPage() {
         </aside>
       </div>
     </main>
+  );
+}
+
+/** The rows after "Creator share" in "What every Chimi coin gets". */
+function shareRows(split: FeeSplit, coin: string): [string, string][] {
+  const rows: [string, string][] = [["Platform share", bpsLabel(split.platformBps)]];
+  if (split.ownBurnBps) rows.push([`${coin} burn`, `${bpsLabel(split.ownBurnBps)}: buys ${coin} and burns it`]);
+  if (split.holdersBps) rows.push(["CHIMI flywheel", `${bpsLabel(split.chimiBurnBps + split.holdersBps)}: half burns CHIMI, half is paid to CHIMI holders`]);
+  else if (split.chimiBurnBps) rows.push(["CHIMI burn", `${bpsLabel(split.chimiBurnBps)}: buys CHIMI and burns it`]);
+  return rows;
+}
+
+/** Where the ETH side of the fee goes, as a bar and a key. */
+function FeeBreakdown({ split, coin }: { split: FeeSplit; coin: string }) {
+  const parts = [
+    { label: "You", bps: split.creatorBps, tone: "bg-gold" },
+    { label: `${coin} burn`, bps: split.ownBurnBps, tone: "bg-ok" },
+    { label: "CHIMI burn", bps: split.chimiBurnBps, tone: "bg-ok/45" },
+    { label: "Platform", bps: split.platformBps, tone: "bg-edge" },
+  ].filter((p) => p.bps > 0);
+  return (
+    <div className="mt-4">
+      <div className="flex h-2 overflow-hidden rounded-full bg-raise2" aria-hidden>
+        {parts.map((p) => (
+          <span key={p.label} className={`${p.tone} h-full transition-[width] duration-200`} style={{ width: `${p.bps / 100}%` }} />
+        ))}
+      </div>
+      <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+        {parts.map((p) => (
+          <div key={p.label} className="flex min-w-0 items-center gap-2">
+            <span className={`size-2 shrink-0 rounded-full ${p.tone}`} aria-hidden />
+            <dt className="truncate text-muted">{p.label}</dt>
+            <dd className="num ml-auto font-semibold">{bpsLabel(p.bps)}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }
 

@@ -1,42 +1,80 @@
-import { dexOf, dexesOf, launchDex, type Deployment } from "@/lib/chimi/chain";
+import { useEffect, useState } from "react";
+import { zeroAddress, type Address } from "viem";
+import { burnerAbi, coinBurnerAbi, dexOf, dexesOf, launchDex, lockerAbi, type Deployment } from "@/lib/chimi/chain";
+import { publicClient } from "@/lib/chimi/client";
+import { BURNS_ITSELF, FIRST_DEX, PLAIN, WITH_FLYWHEEL, splitFromLock, type FeeSplit } from "@/lib/chimi/fee-rules";
+
+export { bpsLabel, splitLine, type FeeSplit } from "@/lib/chimi/fee-rules";
 
 /*
- * How a coin's ETH trading fees are shared, for the pages that explain it. The real split is stamped on each coin's
- * lock when it launches (read it from the locker for a payout); this says which of the two it is. Coins on the first
- * DEX: 70% creator, 30% platform. Coins on the later DEX: 70% creator, 15% platform, and 15% to the CHIMI flywheel,
- * half of which buys and burns CHIMI and half of which is paid in ETH to CHIMI holders. The coin side always burns.
+ * Which split applies, for the pages that explain it (fee-rules.ts has the numbers). A coin's real split is on its
+ * lock: `readSplit` reads it; `splitFor` is the split a coin launched now would get.
  */
 
-export type FeeSplit = {
-  /** The pool's fee, in hundredths of a bip (20000 = 2%). */
-  fee: number;
-  creatorBps: number;
-  platformBps: number;
-  /** Buys CHIMI and burns it. */
-  burnBps: number;
-  /** Paid in ETH to wallets holding 10,000+ CHIMI. */
-  holdersBps: number;
-  flywheel: boolean;
-};
+/** Whether launches offer the choice to burn the coin with part of its fees. */
+export const hasFeeChoice = (d: Deployment) => !!d.burner;
 
-const FIRST = { creatorBps: 7_000, platformBps: 3_000, burnBps: 0, holdersBps: 0 };
-const WITH_FLYWHEEL = { creatorBps: 7_000, platformBps: 1_500, burnBps: 750, holdersBps: 750 };
-
-/** The split of `coin`, or of a coin launched now when no coin is given. */
-export function splitFor(d: Deployment, coin?: { uniFactory?: string; fee?: number }): FeeSplit {
-  const all = dexesOf(d);
-  const dex = coin ? dexOf(d, coin) : launchDex(d);
-  const later = !!d.flywheel && all.indexOf(dex) > 0;
-  return { fee: coin?.fee ?? dex.fee, ...(later ? WITH_FLYWHEEL : FIRST), flywheel: later };
+/** The split of a coin launched now. With the fee choice, `burnOwnCoin` picks which (ticked by default). */
+export function splitFor(d: Deployment, burnOwnCoin = true): FeeSplit {
+  const dex = launchDex(d);
+  const fee = dex.fee;
+  if (hasFeeChoice(d)) return { fee, ...(burnOwnCoin ? BURNS_ITSELF : PLAIN) };
+  const later = !!d.flywheel && dexesOf(d).indexOf(dex) > 0;
+  return { fee, ...(later ? WITH_FLYWHEEL : FIRST_DEX) };
 }
 
-/** "7.5%" from 750. */
-export const bpsLabel = (bps: number) => `${Number((bps / 100).toFixed(2))}%`;
+/** A coin's split, read from its lock. */
+export async function readSplit(d: Deployment, coin: { positionId?: bigint; uniFactory?: Address; fee?: number }): Promise<FeeSplit> {
+  const dex = dexOf(d, coin);
+  const fee = coin.fee ?? dex.fee;
+  if (coin.positionId === undefined) return { fee, ...FIRST_DEX };
+  const base = { address: dex.locker, abi: lockerAbi, args: [coin.positionId] } as const;
+  const [creator, staker, lock] = await Promise.all([
+    publicClient.readContract({ ...base, functionName: "creatorSplits" }),
+    publicClient.readContract({ ...base, functionName: "stakerSplits" }),
+    publicClient.readContract({ ...base, functionName: "locks" }),
+  ]);
+  return splitFromLock(
+    { creatorBps: creator[1], stakerWallet: staker[0], stakerBps: staker[1], backingWallet: lock[3], backingBps: lock[4] },
+    fee,
+    { flywheel: d.flywheel?.address },
+  );
+}
 
-/** One line: "70% creator · 15% platform · 7.5% CHIMI burn · 7.5% CHIMI holders". */
-export function splitLine(split: FeeSplit): string {
-  const parts = [`${bpsLabel(split.creatorBps)} creator`, `${bpsLabel(split.platformBps)} platform`];
-  if (split.burnBps) parts.push(`${bpsLabel(split.burnBps)} CHIMI burn`);
-  if (split.holdersBps) parts.push(`${bpsLabel(split.holdersBps)} CHIMI holders`);
-  return parts.join(" · ");
+export type CoinFees = {
+  split: FeeSplit;
+  /** For a coin that burns itself: its burner's totals and what is waiting to be spent. */
+  burn?: { burner: Address; burned: bigint; spent: bigint; pending: bigint };
+};
+
+/** A coin's split as its lock has it, and what its own burn has done so far. Null until read. */
+export function useCoinFees(d: Deployment | null | undefined, coin: { token: Address; positionId?: bigint; uniFactory?: Address; fee?: number; preview?: boolean } | null) {
+  const [state, setState] = useState<CoinFees | null>(null);
+  const token = coin?.token;
+  useEffect(() => {
+    setState(null);
+    if (!d || !coin || coin.preview) return;
+    let off = false;
+    void (async () => {
+      const split = await readSplit(d, coin);
+      let burn: CoinFees["burn"];
+      if (split.ownBurnBps && d.burner) {
+        const burner = await publicClient.readContract({ address: d.burner.address, abi: burnerAbi, functionName: "burnerOf", args: [coin.token] });
+        if (burner !== zeroAddress) {
+          const base = { address: burner, abi: coinBurnerAbi } as const;
+          const [burned, spent, pending] = await Promise.all([
+            publicClient.readContract({ ...base, functionName: "totalBurned" }),
+            publicClient.readContract({ ...base, functionName: "totalSpent" }),
+            publicClient.readContract({ ...base, functionName: "pending" }),
+          ]);
+          burn = { burner, burned, spent, pending };
+        }
+      }
+      if (!off) setState({ split, burn });
+    })().catch(() => undefined);
+    return () => {
+      off = true;
+    };
+  }, [d?.factory, d?.burner?.address, token, coin?.positionId, coin?.uniFactory]); // eslint-disable-line react-hooks/exhaustive-deps
+  return state;
 }

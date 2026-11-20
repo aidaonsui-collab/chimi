@@ -9,7 +9,7 @@ import { useFollows } from "@/lib/chimi/follows";
 import { ago, amountText, compactCount, compactUsd, ethText, money, tokenUsd } from "@/lib/chimi/format";
 import { useSwapHistory } from "@/lib/chimi/history";
 import { SUPPLY, capBefore, coinStats, fetchSwaps, useEthUsd } from "@/lib/chimi/live";
-import { splitFor, splitLine } from "@/lib/chimi/fee-split";
+import { splitLine, useCoinFees } from "@/lib/chimi/fee-split";
 import { estimatedOut, feeLabel, loadCoin, loadHolders, short, shortAddr, wethPerToken, type Coin, type Holder, type PoolSwap } from "@/lib/chimi/market";
 import { saveTokenMeta, shrinkImage } from "@/lib/chimi/meta";
 import { quoteTrade, useQuote } from "@/lib/chimi/quote";
@@ -42,6 +42,7 @@ import { useCoinXPosts } from "@/lib/chimi/x";
 import { xHandleOf } from "@/lib/chimi/x-rules";
 import { XPostCard } from "@/components/chimi/x-post";
 import { FlywheelCard } from "@/components/chimi/flywheel-card";
+import { BurnCard } from "@/components/chimi/burn-card";
 import { toast } from "@/components/chimi/toast";
 import { EthLogo, TokenLogo } from "@/components/chimi/token-logo";
 import { Blockie, Change, CopyButton, Empty, Modal, Note, Seg, TraderLink } from "@/components/chimi/ui";
@@ -117,6 +118,8 @@ function CoinPage() {
   // Posts on X from the coin's own account or linking to it (server/x-posts.ts).
   const xPosts = useCoinXPosts(coin && !coin.preview ? coin.token : undefined);
   const xHandle = xHandleOf(meta?.twitter);
+  // The coin's split as its lock has it, and its own burn if it has one.
+  const fees = useCoinFees(deployment, coin);
   const [shown, setShown] = useState(25);
   const [reload, setReload] = useState(0);
 
@@ -743,7 +746,11 @@ function CoinPage() {
 
           <CreatorFeesCard coin={coin} bump={reload} />
 
-          {deployment?.flywheel && coin.token.toLowerCase() === deployment.flywheel.chimi.toLowerCase() ? <FlywheelCard compact /> : null}
+          {deployment?.burner && coin.token.toLowerCase() === deployment.burner.chimi.toLowerCase() ? (
+            <BurnCard compact />
+          ) : deployment?.flywheel && coin.token.toLowerCase() === deployment.flywheel.chimi.toLowerCase() ? (
+            <FlywheelCard compact />
+          ) : null}
 
           <section className="card p-5">
             <h2 className="text-[15px] font-semibold">About {coin.symbol}</h2>
@@ -751,7 +758,23 @@ function CoinPage() {
             <dl className="mt-3 space-y-2.5 text-sm">
               <Line label="Supply" value="1,000,000,000" />
               <Line label="Pool" value={`${coin.symbol}/ETH · v3 · ${feeLabel(coin.fee ?? POOL_FEE)}`} />
-              {deployment ? <Line label="ETH fees go" value={<span className="block max-w-[15rem] text-right leading-snug">{splitLine(splitFor(deployment, coin))}</span>} /> : null}
+              {deployment ? (
+                <Line
+                  label="ETH fees go"
+                  value={<span className="block max-w-[15rem] text-right leading-snug">{fees ? splitLine(fees.split, coin.symbol) : <span className="skeleton inline-block h-3.5 w-40 align-middle" />}</span>}
+                />
+              ) : null}
+              {fees?.burn ? (
+                <Line
+                  label="Bought back and burned"
+                  value={
+                    <span className="block text-right leading-snug">
+                      {fees.burn.burned > 0n ? `${compactCount(Number(fees.burn.burned / 10n ** 18n))} ${coin.symbol}` : "None yet"}
+                      {fees.burn.pending > 0n ? <span className="block text-xs text-faint">{amountText(fees.burn.pending, 6)} ETH for the next burn</span> : null}
+                    </span>
+                  }
+                />
+              ) : null}
               <Line label="Launch liquidity" value="Locked 100 years" />
               <Line label="All-time high" value={history ? cash(chart.athEth) : "—"} />
               <Line

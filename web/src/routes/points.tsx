@@ -6,6 +6,7 @@ import { DAILY_POOL, LEAD_SHARE, LEAGUES, dayEndMs, dayLabel, leagueOf, today, t
 import { fmtPoints, useHouses, useMyProfile, usePoints } from "@/lib/chimi/rewards";
 import { IconChevronRight, IconSearch } from "@/components/chimi/icons";
 import { FlywheelCard } from "@/components/chimi/flywheel-card";
+import { BurnCard } from "@/components/chimi/burn-card";
 import { useChimi } from "@/components/chimi/provider";
 import { LeaguesRoof } from "@/components/chimi/leagues-roof";
 import { Empty } from "@/components/chimi/ui";
@@ -33,6 +34,7 @@ export const Route = createFileRoute("/points")({
 type Board = "season" | "today" | "last";
 
 function PointsPage() {
+  const { deployment } = useChimi();
   const { data: points, loading, error } = usePoints();
   const { data: houses } = useHouses();
   const [board, setBoard] = useState<Board>("season");
@@ -84,7 +86,7 @@ function PointsPage() {
         ) : null}
 
         <div className="mt-8 empty:hidden">
-          <FlywheelCard />
+          {deployment?.burner ? <BurnCard /> : <FlywheelCard />}
         </div>
 
         <div className="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
