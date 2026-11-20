@@ -19,7 +19,7 @@
 import { isAddress, type Address } from "viem";
 import deployment from "../../public/deployments.json";
 import { factoryAbi } from "@/lib/chimi/chain";
-import { coinIndex, hiddenEntry, mergePosts, readTweet, xHandleOf, xSearches, xTime, type RawTweet, type XDoc, type XPost } from "@/lib/chimi/x-rules";
+import { coinIndex, hiddenEntry, mergePosts, newHandles, readTweet, xHandleOf, xSearches, xTime, type RawTweet, type XDoc, type XPost } from "@/lib/chimi/x-rules";
 import { env } from "@/server/env";
 import { kvMGetJson, kvReady } from "@/server/kv";
 import { giwa } from "@/server/points";
@@ -29,7 +29,10 @@ const store = () => docStore<XDoc>("chimi:x:v1");
 
 /** How often X is asked, at most. */
 const REFRESH_MS = 3 * 60_000;
-/** The first look reaches back this far. So does a look after a long quiet spell, at most. */
+/**
+ * The first look reaches back this far, as does the first search of an account just linked to a coin. A look after a
+ * long quiet spell reaches back this far at most.
+ */
 const FIRST_LOOK_S = 2 * 24 * 60 * 60;
 /** Each look starts a little before the last one ended, so a post X indexes late isn't missed. */
 const OVERLAP_S = 120;
@@ -124,8 +127,11 @@ async function look(prev: XDoc | null, key: string): Promise<XDoc> {
   const coins = await chimiCoins();
   const index = coinIndex(coins);
   const since = Math.max(prev?.through ? prev.through - OVERLAP_S : 0, now - FIRST_LOOK_S);
+  const handles = [...new Set(coins.flatMap((c) => (c.handle ? [c.handle.toLowerCase()] : [])))];
   const queries = xSearches({
-    handles: coins.flatMap((c) => (c.handle ? [c.handle] : [])),
+    handles,
+    newHandles: newHandles(handles, prev?.handles),
+    newSince: now - FIRST_LOOK_S,
     tokens: coins.slice(-ADDRESS_COINS).map((c) => c.token),
     since,
   });
@@ -152,6 +158,8 @@ async function look(prev: XDoc | null, key: string): Promise<XDoc> {
     ranAt: Date.now(),
     posts: mergePosts(prev?.posts ?? [], found, now, hidden),
     hidden,
+    // An account counts as searched once a look that included it finished; until then it's new again next time.
+    handles: complete ? handles : (prev?.handles ?? []),
   };
 }
 

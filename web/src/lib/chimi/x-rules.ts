@@ -49,6 +49,8 @@ export type XDoc = {
   posts: XPost[];
   /** Post ids, and accounts as "@handle", the operator took down. */
   hidden: string[];
+  /** The coins' accounts (lowercase handles) the last finished look searched. One missing here is newly linked. */
+  handles?: string[];
 };
 
 /** A post as twitterapi.io sends it. Only the fields read here; any of them may be missing. */
@@ -132,19 +134,41 @@ export function orQueries(terms: readonly string[], tail: string, max = X_QUERY_
 
 /**
  * Every search one look at X takes, for posts since `since` (unix seconds): one set for the coins' own accounts, one
- * for links to Chimi and the coins' contract addresses. Replies and reposts are left out of both.
+ * for links to Chimi and the coins' contract addresses. Replies and reposts are left out of both. Accounts in
+ * `newHandles` (just linked to a coin) are searched on their own from `newSince` instead, so their recent posts come in
+ * too and not only the ones after the link.
  */
-export function xSearches(input: { handles: readonly string[]; tokens: readonly string[]; since: number; hosts?: readonly string[] }): string[] {
-  const tail = `-filter:replies -filter:retweets since_time:${Math.floor(input.since)}`;
-  const handles = [...new Map(input.handles.filter((h) => X_HANDLE_RE.test(h)).map((h) => [lower(h), h])).values()];
+export function xSearches(input: {
+  handles: readonly string[];
+  tokens: readonly string[];
+  since: number;
+  newHandles?: readonly string[];
+  newSince?: number;
+  hosts?: readonly string[];
+}): string[] {
+  const tail = (since: number) => `-filter:replies -filter:retweets since_time:${Math.floor(since)}`;
+  const unique = (list: readonly string[]) => [...new Map(list.filter((h) => X_HANDLE_RE.test(h)).map((h) => [lower(h), h])).values()];
+  const fresh = unique(input.newHandles ?? []);
+  const isFresh = new Set(fresh.map(lower));
+  const known = unique(input.handles).filter((h) => !isFresh.has(lower(h)));
   const tokens = [...new Set(input.tokens.map(lower).filter((t) => /^0x[0-9a-f]{40}$/.test(t)))];
   return [
     ...orQueries(
-      handles.map((h) => `from:${h}`),
-      tail,
+      known.map((h) => `from:${h}`),
+      tail(input.since),
     ),
-    ...orQueries([...(input.hosts ?? SEARCH_HOSTS).map((h) => `url:${h}`), ...tokens.map((t) => `"${t}"`)], tail),
+    ...orQueries(
+      fresh.map((h) => `from:${h}`),
+      tail(Math.min(input.newSince ?? input.since, input.since)),
+    ),
+    ...orQueries([...(input.hosts ?? SEARCH_HOSTS).map((h) => `url:${h}`), ...tokens.map((t) => `"${t}"`)], tail(input.since)),
   ];
+}
+
+/** The accounts in `handles` a look hasn't searched before (`searched`, lowercase): all of them on a first look. */
+export function newHandles(handles: readonly string[], searched: readonly string[] | undefined): string[] {
+  const before = new Set((searched ?? []).map(lower));
+  return handles.filter((h) => !before.has(lower(h)));
 }
 
 /** Which coin each handle speaks for (lowercase handle → lowercase tokens), and every coin there is. */

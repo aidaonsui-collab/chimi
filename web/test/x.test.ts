@@ -7,6 +7,7 @@ import {
   coinIndex,
   hiddenEntry,
   mergePosts,
+  newHandles,
   orQueries,
   readTweet,
   xForFeed,
@@ -87,6 +88,23 @@ test("one look asks for the coins' accounts, and for links to Chimi and contract
   assert.equal(queries[1], `(url:chimi.club OR url:chimi-sage.vercel.app OR "${COIN}") -filter:replies -filter:retweets since_time:${NOW - 3601}`);
   // No coin has an account: only the second search.
   assert.equal(xSearches({ handles: [], tokens: [], since: NOW }).length, 1);
+});
+
+test("an account just linked to a coin is searched back further, on its own", () => {
+  const queries = xSearches({ handles: ["old_one", "NewOne"], newHandles: ["newone"], newSince: NOW - 172_800, tokens: [], since: NOW - 300 });
+  assert.deepEqual(queries, [
+    `(from:old_one) -filter:replies -filter:retweets since_time:${NOW - 300}`,
+    `(from:newone) -filter:replies -filter:retweets since_time:${NOW - 172_800}`,
+    `(url:chimi.club OR url:chimi-sage.vercel.app) -filter:replies -filter:retweets since_time:${NOW - 300}`,
+  ]);
+  // A "new" window later than the usual one never narrows the search.
+  assert.equal(xSearches({ handles: [], newHandles: ["a"], newSince: NOW, tokens: [], since: NOW - 300 })[0], `(from:a) -filter:replies -filter:retweets since_time:${NOW - 300}`);
+});
+
+test("an account is new until a finished look has searched it", () => {
+  assert.deepEqual(newHandles(["a", "B", "c"], ["b"]), ["a", "c"]);
+  assert.deepEqual(newHandles(["a"], undefined), ["a"]);
+  assert.deepEqual(newHandles([], ["a"]), []);
 });
 
 test("a coin is read out of a link to its page on Chimi", () => {
