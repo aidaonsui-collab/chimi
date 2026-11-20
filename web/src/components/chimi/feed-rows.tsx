@@ -23,6 +23,7 @@ import { TokenLogo } from "@/components/chimi/token-logo";
 import { LivePill } from "@/components/chimi/live-pill";
 import { useLiveTokens, useStream } from "@/lib/chimi/streams";
 import { Blockie, Change, Sparkline } from "@/components/chimi/ui";
+import { XPostCard } from "@/components/chimi/x-post";
 
 /*
  * The rows of the home feed: one per thing that happened. The feed is a list to scan, not a wall of cards, so a row
@@ -677,6 +678,15 @@ function TipRow({ item, ctx, coin, fresh }: { item: Extract<FeedItem, { kind: "t
   );
 }
 
+/** A post on X about the coin: the post as it reads on X, with the coin as a card under it, like a comment. */
+function XRow({ item, ctx, coin, fresh }: { item: Extract<FeedItem, { kind: "x" }>; ctx: RowContext; coin: Coin; fresh?: boolean }) {
+  return (
+    <XPostCard post={item.post} now={ctx.now} symbol={coin.symbol} fresh={fresh}>
+      <CoinCard ctx={ctx} coin={coin} />
+    </XPostCard>
+  );
+}
+
 /**
  * One feed item as its row. An item about a coin the board doesn't list (it was just launched, say) is skipped.
  * `fresh` marks a row that arrived while the page was open.
@@ -690,6 +700,7 @@ export function FeedRow({ item, ctx, fresh }: { item: FeedItem; ctx: RowContext;
   if (item.kind === "comment") return <CommentPost item={item} ctx={ctx} coin={coin} fresh={fresh} />;
   if (item.kind === "milestone") return <MilestoneRow item={item} ctx={ctx} coin={coin} fresh={fresh} />;
   if (item.kind === "tip") return <TipRow item={item} ctx={ctx} coin={coin} fresh={fresh} />;
+  if (item.kind === "x") return <XRow item={item} ctx={ctx} coin={coin} fresh={fresh} />;
   return <CopiedRow item={item} ctx={ctx} coin={coin} fresh={fresh} />;
 }
 

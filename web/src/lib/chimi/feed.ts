@@ -23,6 +23,8 @@ import { loadLaunchWindow, type Coin, type PoolSwap } from "@/lib/chimi/market";
 import { usePoints } from "@/lib/chimi/rewards";
 import { shownMessage } from "@/lib/chimi/tip-rules";
 import { useRecentTips } from "@/lib/chimi/tips";
+import { useXPosts } from "@/lib/chimi/x";
+import { xForFeed } from "@/lib/chimi/x-rules";
 import { useChimi } from "@/components/chimi/provider";
 
 /*
@@ -267,6 +269,7 @@ export function useHomeFeed(nowMs: number | null) {
   const tokens = useMemo(() => live.map((c) => c.token.toLowerCase()), [live]);
   const comments = useRecentComments(tokens, me);
   const recentTips = useRecentTips(deployment);
+  const xPosts = useXPosts();
 
   const byToken = useMemo(() => new Map(live.map((c) => [c.token.toLowerCase(), c])), [live]);
 
@@ -314,7 +317,10 @@ export function useHomeFeed(nowMs: number | null) {
       .filter((t) => t.time !== undefined && byToken.has(t.token))
       .map((t) => ({ key: t.key, time: t.time!, token: t.token, wallet: t.from, creator: t.creator, eth: Number(t.amount) / 1e18, text: shownMessage(t.message, 120) }));
 
-    const items = buildFeed({ trades, launches, comments, tips, caps, me, following, followers, now });
+    // Posts on X about the coins on the board, a few per coin.
+    const x = xForFeed((xPosts ?? []).filter((p) => byToken.has(p.token)));
+
+    const items = buildFeed({ trades, launches, comments, tips, x, caps, me, following, followers, now });
     return {
       now,
       trades,
@@ -327,7 +333,7 @@ export function useHomeFeed(nowMs: number | null) {
       digest: digest(trades, now),
       suggestions: suggestTraders(points?.season ?? [], trades, [me, ...following]),
     };
-  }, [live, byPool, record.trades, byToken, times, comments, recentTips, me, following, followers, ethUsd, stats, points, nowMs]);
+  }, [live, byPool, record.trades, byToken, times, comments, recentTips, xPosts, me, following, followers, ethUsd, stats, points, nowMs]);
 
   return {
     ...feed,
