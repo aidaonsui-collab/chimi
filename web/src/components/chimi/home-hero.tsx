@@ -126,11 +126,13 @@ export function HomeBanner({ stats, live }: { stats: HeroStat[]; live: boolean }
         onFocusCapture={() => (held.current = true)}
         onBlurCapture={() => (held.current = false)}
       >
+        {/* A phone's banner is narrower than the 16:9 roof, so it crops the sides: it keeps the right end, where the
+            chimi on the ridge sits clear of the text (the left one would be under the shading behind the text). */}
         <picture>
           <source media="(max-width: 640px)" srcSet="/banner-960.webp" />
-          <img src="/banner.webp" alt="" fetchPriority="high" className="absolute inset-0 -z-20 size-full object-cover object-[center_42%]" />
+          <img src="/banner.webp" alt="" fetchPriority="high" className="absolute inset-0 -z-20 size-full object-cover object-[center_42%] max-sm:object-[100%_42%]" />
         </picture>
-        <LoopVideo wide={ROOF.wide} narrow={ROOF.narrow} className="absolute inset-0 -z-20 size-full object-cover object-[center_42%]" />
+        <LoopVideo wide={ROOF.wide} narrow={ROOF.narrow} className="absolute inset-0 -z-20 size-full object-cover object-[center_42%] max-sm:object-[100%_42%]" />
         <div className="banner-fog -z-10" />
         <div className="roof-scrim absolute inset-0 -z-10" />
 
