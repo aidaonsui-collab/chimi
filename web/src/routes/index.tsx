@@ -3,9 +3,10 @@ import { useMemo } from "react";
 import { compactUsd, ethText } from "@/lib/chimi/format";
 import { useHomeFeed } from "@/lib/chimi/feed";
 import { usePoolEth } from "@/lib/chimi/live";
-import { useTokenImages } from "@/lib/chimi/token-image";
+import { useBurned } from "@/lib/chimi/burned";
+import { useTokenProfiles } from "@/lib/chimi/token-image";
 import { CreatorFeesMini } from "@/components/chimi/creator-fees";
-import { PairsBoard } from "@/components/chimi/home-board";
+import { LiveTrades, PairsBoard, type CoinLinks } from "@/components/chimi/home-board";
 import { HomeBanner, type HeroStat } from "@/components/chimi/home-hero";
 import { useChimi } from "@/components/chimi/provider";
 import { useNow } from "@/components/chimi/rewards-bits";
@@ -23,8 +24,20 @@ function Home() {
   // The feed's hook paints the pairs this browser saw last time at once, and keeps them live.
   const feed = useHomeFeed(nowMs);
   const listed = preview ? coins : feed.live;
-  const images = useTokenImages(useMemo(() => listed.map((coin) => coin.token), [listed]));
+  const profiles = useTokenProfiles(useMemo(() => listed.map((coin) => coin.token), [listed]));
+  const { images, links } = useMemo(() => {
+    const images: Record<string, string> = {};
+    const links: Record<string, CoinLinks> = {};
+    for (const [token, p] of Object.entries(profiles)) {
+      if (p.image) images[token] = p.image;
+      if (p.twitter || p.telegram || p.website) links[token] = { twitter: p.twitter, telegram: p.telegram, website: p.website };
+    }
+    return { images, links };
+  }, [profiles]);
   const reserves = usePoolEth(feed.live, deployment?.weth);
+  const burned = useBurned(feed.live);
+  // The platform's own coin: the one every coin's fee buys back and burns.
+  const official = (deployment?.burner?.chimi ?? deployment?.flywheel?.chimi)?.toLowerCase();
 
   const usd = (eth: number | undefined) => (eth === undefined ? "—" : feed.ethUsd ? compactUsd(eth * feed.ethUsd) : `${ethText(eth)} ETH`);
   const totals = useMemo(() => {
@@ -66,12 +79,16 @@ function Home() {
             stats={feed.stats}
             images={images}
             reserves={reserves}
+            burned={burned}
+            links={links}
+            official={official}
             ethUsd={feed.ethUsd}
             launched={feed.launched}
             known={feed.points?.file.profiles}
             now={feed.now}
             waiting={feed.waiting}
             tradesReady={feed.tradesReady}
+            side={preview ? undefined : <LiveTrades coins={feed.live} byPool={feed.byPool} images={images} ethUsd={feed.ethUsd} now={feed.now} ready={!feed.waiting && feed.tradesReady} />}
           />
         )}
         <div className="mt-6 max-w-xl empty:hidden">
