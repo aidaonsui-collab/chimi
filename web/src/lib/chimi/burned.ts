@@ -22,24 +22,41 @@ export function useBurned(coins: Coin[]): Record<string, number> {
   useEffect(() => {
     if (tokens.length === 0) return;
     let off = false;
+    let busy = false;
+    // When the last read landed; 0 until one has.
+    let readAt = 0;
     const read = async () => {
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      const out = await publicClient.multicall({
-        allowFailure: true,
-        contracts: tokens.map((t) => ({ address: t, abi: erc20Abi, functionName: "balanceOf", args: [BURN_ADDRESS] }) as const),
-      });
-      if (off) return;
-      const next: Record<string, number> = {};
-      out.forEach((r, i) => {
-        if (r.status === "success") next[tokens[i]!] = Number(r.result as bigint) / 1e18 / SUPPLY;
-      });
-      setBurned((was) => ({ ...was, ...next }));
+      if (busy || (typeof document !== "undefined" && document.visibilityState !== "visible")) return;
+      busy = true;
+      try {
+        const out = await publicClient.multicall({
+          allowFailure: true,
+          contracts: tokens.map((t) => ({ address: t, abi: erc20Abi, functionName: "balanceOf", args: [BURN_ADDRESS] }) as const),
+        });
+        if (off) return;
+        const next: Record<string, number> = {};
+        out.forEach((r, i) => {
+          if (r.status === "success") next[tokens[i]!] = Number(r.result as bigint) / 1e18 / SUPPLY;
+        });
+        readAt = Date.now();
+        setBurned((was) => ({ ...was, ...next }));
+      } finally {
+        busy = false;
+      }
     };
-    void read().catch(() => undefined);
-    const timer = setInterval(() => void read().catch(() => undefined), EVERY_MS);
+    const run = () => void read().catch(() => undefined);
+    // A page opened in a background tab skips its first read; read as soon as it is shown, and on coming back to a
+    // tab whose figures are older than a refresh.
+    const shown = () => {
+      if (document.visibilityState === "visible" && Date.now() - readAt >= EVERY_MS) run();
+    };
+    run();
+    const timer = setInterval(run, EVERY_MS);
+    document.addEventListener("visibilitychange", shown);
     return () => {
       off = true;
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", shown);
     };
     // `tokens` is keyed by `key`.
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
