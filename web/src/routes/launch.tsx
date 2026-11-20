@@ -391,7 +391,7 @@ function LaunchPage() {
                 ["Pool fee", feeLabel(launchFee)],
                 ["Lock", "100 years, then the beneficiary"],
                 ["Creator share", `${bpsLabel(split?.creatorBps ?? 7_000)} of the ETH trading fees`],
-                ...(split ? shareRows(split, symbol.trim() || "your coin") : []),
+                ...(split ? shareRows(split, symbol.trim()) : []),
                 ["Token-side fees", "Burned"],
                 ["Transfer tax", "None. The pool fee is the only cost of a trade"],
                 ["Opens at", opensAt ? `About ${opensAt} market cap` : "—"],
@@ -453,10 +453,10 @@ function LaunchPage() {
   );
 }
 
-/** The rows after "Creator share" in "What every Chimi coin gets". */
-function shareRows(split: FeeSplit, coin: string): [string, string][] {
+/** The rows after "Creator share" in "What every Chimi coin gets". `ticker` is empty until one is typed. */
+function shareRows(split: FeeSplit, ticker: string): [string, string][] {
   const rows: [string, string][] = [["Platform share", bpsLabel(split.platformBps)]];
-  if (split.ownBurnBps) rows.push([`${coin} burn`, `${bpsLabel(split.ownBurnBps)}: buys ${coin} and burns it`]);
+  if (split.ownBurnBps) rows.push([`${ticker || "Coin"} burn`, `${bpsLabel(split.ownBurnBps)}: buys ${ticker || "your coin"} and burns it`]);
   if (split.holdersBps) rows.push(["CHIMI flywheel", `${bpsLabel(split.chimiBurnBps + split.holdersBps)}: half burns CHIMI, half is paid to CHIMI holders`]);
   else if (split.chimiBurnBps) rows.push(["CHIMI burn", `${bpsLabel(split.chimiBurnBps)}: buys CHIMI and burns it`]);
   return rows;
