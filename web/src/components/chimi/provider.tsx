@@ -46,7 +46,8 @@ type ChimiContext = {
   /** Asks the wallet to move to GIWA Sepolia if it is on another network. */
   ensureChain: () => Promise<void>;
   refresh: () => Promise<void>;
-  createCoin: (name: string, symbol: string, firstBuy: string) => Promise<Address>;
+  /** `burnOwnCoin`: 10% of the coin's ETH fees buy it back and burn it. Only where the pad offers the choice. */
+  createCoin: (name: string, symbol: string, firstBuy: string, burnOwnCoin?: boolean) => Promise<Address>;
   /** A sale pays out in ETH: the swap and the unwrap are one transaction, after an approval. */
   trade: (coin: Coin, side: "buy" | "sell", amount: string, minOut?: bigint) => Promise<string>;
   /**
@@ -267,7 +268,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
   }
 
   const createCoin = useCallback(
-    async (name: string, symbol: string, firstBuy: string) => {
+    async (name: string, symbol: string, firstBuy: string, burnOwnCoin = true) => {
       if (!deployment || !isDeployed(deployment)) throw new Error("Deploy the factory before launching a coin.");
       const { who, client } = await ready();
       const fee = await publicClient.readContract({
@@ -277,15 +278,10 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
         args: [who],
       });
       const value = fee + parseEther(firstBuy.trim() || "0");
-      const hash = await client.writeContract({
-        account: who,
-        chain: giwaSepolia,
-        address: deployment.factory,
-        abi: factoryAbi,
-        functionName: "createTokenMemeInstantQuoteWithEth",
-        args: [name.trim(), symbol.trim()],
-        value,
-      });
+      const base = { account: who, chain: giwaSepolia, address: deployment.factory, abi: factoryAbi, value } as const;
+      const hash = deployment.burner
+        ? await client.writeContract({ ...base, functionName: "createTokenWithEth", args: [name.trim(), symbol.trim(), burnOwnCoin] })
+        : await client.writeContract({ ...base, functionName: "createTokenMemeInstantQuoteWithEth", args: [name.trim(), symbol.trim()] });
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       const created = parseEventLogs({
         abi: factoryAbi,

@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { Address } from "viem";
 import bundledDeployment from "../../public/deployments.json";
 import { giwaSepolia, launchDex, type Deployment } from "@/lib/chimi/chain";
-import { bpsLabel, splitFor, type FeeSplit } from "@/lib/chimi/fee-split";
+import { bpsLabel, hasFeeChoice, splitFor, type FeeSplit } from "@/lib/chimi/fee-split";
 import { DOJANG_URL } from "@/lib/chimi/identity";
 import { feeLabel, shortAddr } from "@/lib/chimi/market";
 import { DAILY_POOL, LEAD_SHARE, LEAGUES } from "@/lib/chimi/points-rules";
@@ -26,7 +26,7 @@ const SECTIONS: [id: string, title: string][] = [
   ["launch", "Launching a coin"],
   ["trade", "Trading"],
   ["fees", "Fees"],
-  ["flywheel", "CHIMI flywheel"],
+  ["burns", "Burns"],
   ["creators", "Creator rewards"],
   ["streams", "Live streams"],
   ["points", "Points and leagues"],
@@ -44,6 +44,9 @@ function Docs() {
   const deployment = useChimi().deployment ?? (bundledDeployment as Deployment);
   const active = useActiveSection();
   const now: FeeSplit | null = deployment ? splitFor(deployment) : null;
+  // With the fee choice a creator picks one of two splits at launch: burning their coin (the default) or not.
+  const choice = !!deployment && hasFeeChoice(deployment);
+  const plain: FeeSplit | null = deployment && choice ? splitFor(deployment, false) : null;
   const flywheel = !!deployment?.flywheel;
   const dex = deployment ? launchDex(deployment) : null;
   const fee = now ? feeLabel(now.fee) : "";
@@ -110,6 +113,15 @@ function Docs() {
               items={[
                 <>Pick a name, a ticker and a picture, and optionally a first buy that goes through in the same transaction.</>,
                 <>The coin opens at about a $2,000 market cap (it moves with the ETH price). There is no launch fee today, only gas.</>,
+                ...(choice && now && plain
+                  ? [
+                      <>
+                        Choose whether the coin burns itself: <b>10% of its ETH fees buy it back and burn it</b>. It's ticked to start with. Ticked, the creator's
+                        share is {bpsLabel(now.creatorBps)}; unticked, {bpsLabel(plain.creatorBps)}. The choice is written into the coin's lock and can't be
+                        changed later.
+                      </>,
+                    ]
+                  : []),
                 <>
                   Its pool charges {now ? fee : "a fee"} on every buy and sell. That is the whole cost of a trade: the coin itself has no tax.
                 </>,
@@ -147,7 +159,38 @@ function Docs() {
               Every buy and sell pays the pool {now ? fee : "its fee"}. That fee is how Chimi earns, not a tax built into the coin, so sending coins between
               wallets costs nothing. The part of the fee paid in ETH is shared out; the part paid in the coin is burned, which takes it out of the supply.
             </P>
-            {now ? (
+            {choice && now && plain ? (
+              <div className="overflow-x-auto">
+                <table className="docs-table">
+                  <thead>
+                    <tr>
+                      <th>The coin</th>
+                      <th>Creator</th>
+                      <th>Platform</th>
+                      <th>Coin burn</th>
+                      <th>CHIMI burn</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      ["Burns itself (the default)", now],
+                      ["Doesn't burn itself", plain],
+                    ].map(([label, split]) => {
+                      const sp = split as FeeSplit;
+                      return (
+                        <tr key={label as string}>
+                          <td>{label as string}</td>
+                          <td className="num">{bpsLabel(sp.creatorBps)}</td>
+                          <td className="num">{bpsLabel(sp.platformBps)}</td>
+                          <td className="num">{sp.ownBurnBps ? bpsLabel(sp.ownBurnBps) : "—"}</td>
+                          <td className="num">{bpsLabel(sp.chimiBurnBps)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : now ? (
               <div className="overflow-x-auto">
                 <table className="docs-table">
                   <thead>
@@ -164,7 +207,7 @@ function Docs() {
                       <td className="num">{fee}</td>
                       <td className="num">{bpsLabel(now.creatorBps)}</td>
                       <td className="num">{bpsLabel(now.platformBps)}</td>
-                      <td className="num">{now.burnBps ? bpsLabel(now.burnBps) : "—"}</td>
+                      <td className="num">{now.chimiBurnBps ? bpsLabel(now.chimiBurnBps) : "—"}</td>
                       <td className="num">{now.holdersBps ? bpsLabel(now.holdersBps) : "—"}</td>
                     </tr>
                   </tbody>
@@ -172,13 +215,39 @@ function Docs() {
               </div>
             ) : null}
             <P>
-              Shares are of the ETH side of the fee. A coin's split is written into its lock when it launches and can't be changed later; its page shows it under
-              About.
+              Shares are of the ETH side of the {fee} fee. A coin's split is written into its lock when it launches and can't be changed later; its page shows
+              it under About.{choice ? " Coins launched before the choice keep the split they launched with." : ""}
             </P>
           </Section>
 
-          <Section id="flywheel" title="CHIMI flywheel">
-            {flywheel ? (
+          <Section id="burns" title="Burns">
+            {choice ? (
+              <>
+                <P>Part of every coin's fees buys coins back and sends them to the burn address, where nobody can ever move them. Both burns run once a day at 00:10 in Seoul.</P>
+                <List
+                  items={[
+                    <>
+                      <b>CHIMI burn.</b> {now ? bpsLabel(now.chimiBurnBps) : "5%"} of the ETH fees of every coin buys CHIMI in CHIMI's own pool and burns it. It applies
+                      to every coin, whatever the creator chose. Coins launched on the {fee} pools before the choice send their 15% here too.
+                    </>,
+                    <>
+                      <b>Coin burn.</b> A coin whose creator left the box ticked has its own burner contract. {now ? bpsLabel(now.ownBurnBps) : "10%"} of its ETH
+                      fees collects there, and once a day it buys the coin in its own pool and burns all of it. The coin's page shows how much it has burned.
+                    </>,
+                    <>Each buy spends at most 0.25 ETH a day and never takes less than 98% of the price checked just before it.</>,
+                    <>
+                      The burn contracts' owner can only change the wallet that runs the daily job. That wallet can buy and burn, and nothing else: the ETH can't
+                      go anywhere but into a buy that burns.
+                    </>,
+                  ]}
+                />
+                <P>
+                  <Link to="/points" className="docs-link">
+                    See the CHIMI burn
+                  </Link>
+                </P>
+              </>
+            ) : flywheel ? (
               <>
                 <P>
                   15% of the ETH fees on every {fee} pool goes to the flywheel, a contract that splits each arrival in half. The more Chimi trades, the harder
@@ -215,10 +284,17 @@ function Docs() {
           <Section id="creators" title="Creator rewards">
             <List
               items={[
-                <>The wallet that launches a coin earns {now ? bpsLabel(now.creatorBps) : "its share"} of the ETH side of every fee its pool takes, for as long as the coin trades.</>,
+                choice && now && plain ? (
+                  <>
+                    The wallet that launches a coin earns {bpsLabel(now.creatorBps)} of the ETH side of every fee its pool takes, or {bpsLabel(plain.creatorBps)} if it
+                    unticked the coin burn at launch, for as long as the coin trades.
+                  </>
+                ) : (
+                  <>The wallet that launches a coin earns {now ? bpsLabel(now.creatorBps) : "its share"} of the ETH side of every fee its pool takes, for as long as the coin trades.</>
+                ),
                 <>
                   Fees build up in the locked position until it is swept. Anyone can sweep a coin's fees, and the money still goes to the wallets on its lock.
-                  {flywheel ? " Every coin's fees are swept once a day automatically, so they arrive without anyone claiming." : ""}
+                  {flywheel || choice ? " Every coin's fees are swept once a day automatically, so they arrive without anyone claiming." : ""}
                 </>,
                 <>
                   The creator sees a card on the coin's page with what is waiting and a Claim button. The fees arrive as wrapped ETH, so claiming is two
@@ -357,7 +433,13 @@ function Docs() {
                     <AddressRow label="Liquidity locker" address={dex.locker} />
                   </div>
                 ) : null}
-                {deployment.flywheel ? (
+                {deployment.burner ? (
+                  <div className="mt-2 grid gap-1.5">
+                    <p className="th uppercase">CHIMI</p>
+                    <AddressRow label="CHIMI" address={deployment.burner.chimi} />
+                    <AddressRow label="Burns (CHIMI and each coin's burner)" address={deployment.burner.address} />
+                  </div>
+                ) : deployment.flywheel ? (
                   <div className="mt-2 grid gap-1.5">
                     <p className="th uppercase">CHIMI</p>
                     <AddressRow label="CHIMI" address={deployment.flywheel.chimi} />

@@ -64,6 +64,29 @@ The script checks that the signer owns the pad and that CHIMI is a 1% coin on th
 
 The day's plan is saved before anything is sent, so a stopped run finishes the same plan next time. Env: `KEEPER_PRIVATE_KEY` (the keeper wallet) and `CRON_SECRET` (Vercel sends it to the cron route; nothing else may call it). `?dry=1` plans a run without sending anything. `/api/flywheel` serves the last run's report to the rewards panel on the Points page and the CHIMI page.
 
+### The launch fee choice
+
+A creator chooses at launch whether 10% of the coin's ETH fees buy the coin back and burn it. The box starts ticked. The split is stamped on the coin's lock and can't change later:
+
+| The coin | Creator | Platform | Coin burn | CHIMI burn |
+| --- | --- | --- | --- | --- |
+| Burns itself (the default) | 70% | 15% | 10% | 5% |
+| Doesn't burn itself | 80% | 15% | — | 5% |
+
+- **`ChimiBurner`** (`src/ChimiBurner.sol`) takes the 5% CHIMI burn from every new coin as the locker's staker share (native ETH). The keeper spends it on CHIMI in CHIMI's 1% pool and sends the CHIMI to the burn address. It also creates a **`CoinBurner`** for each coin that burns itself: a minimal clone with the coin, its router and pool fee baked into its code. The coin's 10% arrives there as WETH on the locker's backing share, and the keeper spends it on the coin in its own pool, all of it to the burn address. The owner can only change the keeper; the money can only leave as a buy that burns.
+- **`ChimiPadV2`** (`src/ChimiPadV2.sol`) is a new implementation for the live pad proxy. It adds `createTokenWithEth(name, symbol, burnOwnCoin)`; the first version's launch functions stay and don't burn the coin. It adds no storage: the proxy's `initialized` flag sits right after `allTokens`, and state added in the base would shift it. The two splits are read from the fee source at launch (`lpMeme*` for a coin that doesn't burn itself, `lpBacking/lpStaker/lpCreator` for one that does).
+- **`script/ChimiFeeChoice.sol`** deploys both, sets the two splits, points the pad's staker share at the burner and upgrades the pad, in an order where a launch in between still gets a whole split. `retarget` points the 15% of coins already on the 2% locker at the CHIMI burn (their percentages stay).
+- **Tests:** `test/ChimiFeeChoice.t.sol` covers the upgrade (settings, coins, no re-initialize), both splits in both currency orders, the first buy, the coin and CHIMI burns, and who can do what. `test/ChimiFeeChoiceLive.t.sol` runs the same steps on a fork of GIWA Sepolia as the deployer (`GIWA_RPC=… forge test --match-contract ChimiFeeChoiceLiveForkTest`).
+
+Run from `contracts/`, signed by the owner of the pad, its ProxyAdmin, the fee source and the 2% locker:
+
+```
+PRIVATE_KEY=0x… forge script script/DeployChimiFeeChoice.s.sol \
+  --rpc-url https://sepolia-rpc.giwa.io --broadcast
+```
+
+`KEEPER` defaults to the flywheel's keeper and `RETARGET=false` leaves coins already launched on the flywheel. The script adds `burner` to `web/public/deployments.json`; the app shows the choice once it's there. The keeper burns CHIMI from the burner and each coin from its own burner after the sweep, fullest first and at most 15 coins a run, on the same 0.25 ETH and 98% terms.
+
 ## Site
 
 ```

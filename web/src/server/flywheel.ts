@@ -1,11 +1,15 @@
 /**
- * The daily keeper for the fee flywheel (contracts/src/ChimiFlywheel.sol), run by Vercel Cron at 00:10 KST through
- * /api/keeper/flywheel. In order, each step on its own so one failing doesn't stop the next:
+ * The daily keeper for the fee burns (contracts/src/ChimiBurner.sol) and the flywheel before them
+ * (contracts/src/ChimiFlywheel.sol), run by Vercel Cron at 00:10 KST through /api/keeper/flywheel. In order, each step
+ * on its own so one failing doesn't stop the next:
  *
- * 1. Sweep the fees of every coin. On the 2% DEX that pays each creator their 70% (WETH), the platform its 15%, and
- *    the flywheel its 15% (ETH); on the first DEX, the creator's 70% and the platform's 30%.
- * 2. Buy back and burn CHIMI with the flywheel's burn half, up to MAX_BURN a day, at no less than 98% of a dry run's
- *    price taken just before.
+ * 1. Sweep the fees of every coin. Each lock pays the wallets written on it: on the 2% DEX the creator (WETH), the
+ *    platform, the CHIMI burn (ETH) and, for a coin that burns itself, its own burner (WETH); on the first DEX, the
+ *    creator's 70% and the platform's 30%.
+ * 2. Buy back and burn CHIMI with the flywheel's burn half, then with what the burner holds for CHIMI, each up to
+ *    MAX_BURN a day, at no less than 98% of a dry run's price taken just before.
+ * 2b. For every coin that burns itself, buy the coin with what its burner holds and burn it, on the same terms, the
+ *    fullest burners first, at most MAX_COIN_BURNS coins a run.
  * 3. Pay the KST day that just ended: the flywheel's holder half, shared by average CHIMI balance over the day among
  *    wallets that averaged at least 10,000 (lib/chimi/flywheel-rules.ts). The plan is saved before anything is sent,
  *    so a run that stops halfway finishes the same plan next time; the contract pays each (day, batch) once.
@@ -15,7 +19,7 @@
 import { createPublicClient, createWalletClient, http, parseAbiItem, type Address, type Hex, type PublicClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import deploymentJson from "../../public/deployments.json";
-import { dexesOf, erc20Abi, factoryAbi, flywheelAbi, giwaSepolia, lockerAbi, poolAbi, type Deployment } from "@/lib/chimi/chain";
+import { burnerAbi, coinBurnerAbi, dexesOf, erc20Abi, factoryAbi, flywheelAbi, giwaSepolia, lockerAbi, poolAbi, type Deployment } from "@/lib/chimi/chain";
 import { BATCH, MIN_HOLD, averageBalances, batches, eligible, isContractCode, periodBounds, periodDate, periodOf, shareOut, type ChimiTransfer } from "@/lib/chimi/flywheel-rules";
 import { env } from "@/server/env";
 import { docStore, takeLock } from "@/server/store";
@@ -27,6 +31,8 @@ const ZERO = "0x0000000000000000000000000000000000000000";
 const MIN_BURN = 10n ** 14n;
 /** The most the burn spends in one day, so one buy never moves CHIMI's small pool too far. */
 const MAX_BURN = 25n * 10n ** 16n;
+/** Coins bought back and burned per run, so the run stays inside the function's time limit. */
+const MAX_COIN_BURNS = 15;
 /** The public RPC answers getLogs for at most ~10k blocks at a time. */
 const LOG_SPAN = 9_000n;
 const transferEvent = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
@@ -44,6 +50,10 @@ export type FlywheelReport = {
   keeperEth?: string;
   sweep?: { positions: number; tx: string[] };
   burn?: { ethIn: string; chimiOut: string; tx?: string } | { skipped: string };
+  /** The CHIMI burn every coin launched since the fee choice pays (the burner). */
+  chimiBurn?: { ethIn: string; chimiOut: string; tx?: string } | { skipped: string };
+  /** Coins that burn themselves, bought back with their own burners. */
+  coinBurns?: { coin: string; ethIn: string; out: string; tx?: string }[];
   payout?: { period: number; date: string; total: string; wallets: number; tx: string[] } | { skipped: string };
   errors: string[];
 };
@@ -113,6 +123,29 @@ export async function runFlywheel(opts: { dry?: boolean; nowMs?: number } = {}):
       report.errors.push(`burn: ${message(e)}`);
     }
 
+    // 2. (continued) The burner: CHIMI, then each coin that burns itself.
+    const burner = deployment.burner;
+    if (burner) {
+      try {
+        const waiting = (await pub.readContract({ address: burner.address, abi: burnerAbi, functionName: "pendingChimi" })) as bigint;
+        if (waiting < MIN_BURN) report.chimiBurn = { skipped: `${waiting} wei waiting is under the minimum` };
+        else {
+          const amountIn = waiting < MAX_BURN ? waiting : MAX_BURN;
+          const { result } = await pub.simulateContract({ address: burner.address, abi: burnerAbi, functionName: "burnChimi", args: [amountIn, 0n], account: account ?? keeper });
+          const minOut = ((result as bigint) * 98n) / 100n;
+          const tx = await send({ address: burner.address, abi: burnerAbi, functionName: "burnChimi", args: [amountIn, minOut] });
+          report.chimiBurn = { ethIn: amountIn.toString(), chimiOut: (result as bigint).toString(), tx };
+        }
+      } catch (e) {
+        report.errors.push(`CHIMI burn: ${message(e)}`);
+      }
+      try {
+        report.coinBurns = await coinBurns(pub, send, burner.address, account?.address ?? keeper, report.errors);
+      } catch (e) {
+        report.errors.push(`coin burns: ${message(e)}`);
+      }
+    }
+
     // 3. Pay the day that just ended, by the chain's clock.
     try {
       const head = await pub.getBlock();
@@ -130,6 +163,44 @@ export async function runFlywheel(opts: { dry?: boolean; nowMs?: number } = {}):
 }
 
 type Send = (req: Parameters<PublicClient["simulateContract"]>[0]) => Promise<string | undefined>;
+
+/** Buys back and burns each coin whose burner holds enough, fullest first. A coin that fails is noted and skipped. */
+async function coinBurns(pub: PublicClient, send: Send, burner: Address, from: Address, errors: string[]): Promise<NonNullable<FlywheelReport["coinBurns"]>> {
+  const count = (await pub.readContract({ address: burner, abi: burnerAbi, functionName: "burningCoinsLength" })) as bigint;
+  if (count === 0n) return [];
+  const coins = (await pub.multicall({
+    allowFailure: false,
+    contracts: Array.from({ length: Number(count) }, (_, i) => ({ address: burner, abi: burnerAbi, functionName: "burningCoins", args: [BigInt(i)] }) as const),
+  })) as Address[];
+  const burners = (await pub.multicall({
+    allowFailure: false,
+    contracts: coins.map((c) => ({ address: burner, abi: burnerAbi, functionName: "burnerOf", args: [c] }) as const),
+  })) as Address[];
+  const pending = (await pub.multicall({
+    allowFailure: false,
+    contracts: burners.map((b) => ({ address: b, abi: coinBurnerAbi, functionName: "pending" }) as const),
+  })) as bigint[];
+  const due = coins
+    .map((coin, i) => ({ coin, pending: pending[i]! }))
+    .filter((c) => c.pending >= MIN_BURN)
+    .sort((a, b) => (a.pending === b.pending ? 0 : a.pending > b.pending ? -1 : 1))
+    .slice(0, MAX_COIN_BURNS);
+
+  const done: NonNullable<FlywheelReport["coinBurns"]> = [];
+  for (const { coin, pending: waiting } of due) {
+    try {
+      const amountIn = waiting < MAX_BURN ? waiting : MAX_BURN;
+      const { result } = await pub.simulateContract({ address: burner, abi: burnerAbi, functionName: "burnCoin", args: [coin, amountIn, 0n], account: from });
+      const [spent, out] = result as readonly [bigint, bigint];
+      const minOut = (out * 98n) / 100n;
+      const tx = await send({ address: burner, abi: burnerAbi, functionName: "burnCoin", args: [coin, amountIn, minOut] });
+      done.push({ coin, ethIn: spent.toString(), out: out.toString(), tx });
+    } catch (e) {
+      errors.push(`burn ${coin}: ${message(e)}`);
+    }
+  }
+  return done;
+}
 
 async function sweep(pub: PublicClient, send: Send) {
   // Every coin on every DEX: the first DEX's coins pay only their creator and the platform, but sweeping them too means

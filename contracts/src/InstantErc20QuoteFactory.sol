@@ -490,7 +490,7 @@ contract InstantErc20QuoteFactory is Ownable, ReentrancyGuard {
         if (left > 0) IERC20(token).safeTransfer(treasury, left);
     }
 
-    function _stampLock(address token, uint256 positionId, address creator) internal {
+    function _stampLock(address token, uint256 positionId, address creator) internal virtual {
         IBpsSource src = IBpsSource(bpsSource);
         uint16 cBps = src.lpMemeCreatorBps();
         uint16 sBps = src.lpMemeStakerBps();
