@@ -129,3 +129,11 @@ To keep the testnet running alongside, deploy a second Vercel project (e.g. test
 Without the Blob token there, coin pictures and house picture seals can't be uploaded on the testnet.
 
 If testnet users should get something on mainnet, snapshot first: CHIMI holders, points, Houses. That data lives in the old Redis and on GIWA Sepolia.
+
+The mainnet waitlist (`/mainnet`) promised its wallets the OG seal and a first-week points boost. Before step 6 switches Redis, export it from the testnet site:
+
+```bash
+curl -H "Authorization: Bearer $CHIMI_ADMIN_TOKEN" "https://www.chimi.club/api/waitlist?export=csv" -o chimi-mainnet-waitlist.csv
+```
+
+It lists wallet, place and join time in order. It lives in the old Redis as the sorted set `chimi:waitlist:v1`.
