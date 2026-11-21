@@ -13,6 +13,9 @@ export function waitlistMessage(wallet: string, time: number) {
   return `Chimi mainnet waitlist: add my wallet\n\nWallet: ${wallet.toLowerCase()}\nTime: ${new Date(time).toISOString()}`;
 }
 
+/** One row of the admin list (GET /api/waitlist?export=json). */
+export type WaitlistRow = { wallet: string; position: number; at: number };
+
 /** A wallet's place on the waitlist: 1 is the first to join. */
 export type WaitlistEntry = { position: number; at: number };
 

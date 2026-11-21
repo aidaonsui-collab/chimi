@@ -2,8 +2,8 @@
  * GET /api/waitlist: how many wallets are on the mainnet waitlist, and with ?wallet= that wallet's place.
  * POST /api/waitlist: join, { wallet, time, signature } over waitlistMessage (lib/chimi/waitlist-rules.ts). Joining
  * again answers with the place the wallet already has.
- * GET /api/waitlist?export=csv with `Authorization: Bearer $CHIMI_ADMIN_TOKEN`: the whole list in order, for the
- * perks at mainnet (docs/MAINNET.md).
+ * GET /api/waitlist?export=csv (or =json) with `Authorization: Bearer $CHIMI_ADMIN_TOKEN`: the whole list in order,
+ * for the admin page (/mainnet/admin) and the perks at mainnet (docs/MAINNET.md).
  *
  * Needs the project's Upstash Redis (KV_REST_API_URL / KV_REST_API_TOKEN) to take names.
  */
@@ -26,10 +26,15 @@ async function get(request: Request) {
   const url = new URL(request.url);
   const list = waitlist();
   try {
-    if (url.searchParams.get("export") === "csv") {
+    const exported = url.searchParams.get("export");
+    if (exported === "csv" || exported === "json") {
+      // So the token can't be guessed by trying.
+      if (await rateLimited(request, "waitlist-admin", 20, 60)) return json({ error: "Too many tries. Try again in a minute." }, 429, { "retry-after": "60" });
       const token = process.env.CHIMI_ADMIN_TOKEN;
       if (!token || request.headers.get("authorization") !== `Bearer ${token}`) return json({ error: "forbidden" }, 403);
-      const rows = (await list.all()).map((e, i) => csvRow(e.wallet, i + 1, e.at));
+      const all = await list.all();
+      if (exported === "json") return json({ count: all.length, entries: all.map((e, i) => ({ wallet: e.wallet, position: i + 1, at: e.at })) }, 200, { "cache-control": "no-store" });
+      const rows = all.map((e, i) => csvRow(e.wallet, i + 1, e.at));
       return new Response(["wallet,position,joined_at", ...rows].join("\n") + "\n", {
         headers: { "content-type": "text/csv; charset=utf-8", "cache-control": "no-store", "content-disposition": 'attachment; filename="chimi-mainnet-waitlist.csv"' },
       });
