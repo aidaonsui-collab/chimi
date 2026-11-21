@@ -7,10 +7,11 @@ import { IconArrowRight, IconInfo, IconPlus } from "@/components/chimi/icons";
 import { LoopVideo, ROOF } from "@/components/chimi/loop-video";
 import { duration, useNow } from "@/components/chimi/rewards-bits";
 import { NETWORK } from "@/lib/chimi/network";
+import { useWaitlistCount } from "@/lib/chimi/waitlist";
 
 /*
- * The banner at the top of the home page. The roof is always the picture; what turns over is the message on it: what
- * Chimi is, the traders to follow, the day's points and the houses. Each one is a step from what it is about. It
+ * The banner at the top of the home page. The roof is always the picture; what turns over is the message on it: the
+ * mainnet waitlist while Chimi is on the testnet, what Chimi is, the traders to follow, the day's points and the houses. Each one is a step from what it is about. It
  * turns every few seconds, holds still under the pointer or the keyboard, and doesn't move at all for visitors who
  * ask for less motion.
  */
@@ -40,8 +41,41 @@ export function HomeBanner({ stats, live }: { stats: HeroStat[]; live: boolean }
   const left = now === null ? null : dayEndMs(today(now)) - now;
   const [at, setAt] = useState(0);
   const held = useRef(false);
+  const waiting = useWaitlistCount();
 
   const slides: Slide[] = [
+    // While Chimi is on the testnet, the mainnet waitlist leads.
+    ...(NETWORK.testnet
+      ? [
+          {
+            key: "mainnet",
+            kicker: (
+              <>
+                <span className="font-serif text-[15px] text-gold">메인넷</span>
+                Mainnet waitlist
+              </>
+            ),
+            title: "Be first through the gate.",
+            body: (
+              <>
+                Chimi moves to GIWA mainnet when it opens. Join the waitlist for the OG seal and a first-week points boost: one signature, no gas.
+                {waiting ? (
+                  <>
+                    {" "}
+                    <span className="num font-semibold text-fg">{waiting.toLocaleString("en-US")}</span> already in.
+                  </>
+                ) : null}
+              </>
+            ),
+            actions: (
+              <Link to="/mainnet" className="btn btn-primary">
+                Join the waitlist
+                <IconArrowRight size={16} />
+              </Link>
+            ),
+          },
+        ]
+      : []),
     {
       key: "crown",
       kicker: (

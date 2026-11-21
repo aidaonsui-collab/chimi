@@ -15,6 +15,7 @@ import { Route as BoardRouteImport } from './routes/board'
 import { Route as ClubhouseRouteImport } from './routes/clubhouse'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as LaunchRouteImport } from './routes/launch'
+import { Route as MainnetRouteImport } from './routes/mainnet'
 import { Route as PointsRouteImport } from './routes/points'
 import { Route as PoolsRouteImport } from './routes/pools'
 import { Route as SwapRouteImport } from './routes/swap'
@@ -31,6 +32,7 @@ import { Route as ApiTipsRouteImport } from './routes/api/tips'
 import { Route as ApiTokenMetaRouteImport } from './routes/api/token-meta'
 import { Route as ApiTraderRouteImport } from './routes/api/trader'
 import { Route as ApiUploadRouteImport } from './routes/api/upload'
+import { Route as ApiWaitlistRouteImport } from './routes/api/waitlist'
 import { Route as ApiXRouteImport } from './routes/api/x'
 import { Route as CoinAddressRouteImport } from './routes/coin.$address'
 import { Route as HousesIndexRouteImport } from './routes/houses.index'
@@ -67,6 +69,11 @@ const DocsRoute = DocsRouteImport.update({
 const LaunchRoute = LaunchRouteImport.update({
   id: '/launch',
   path: '/launch',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MainnetRoute = MainnetRouteImport.update({
+  id: '/mainnet',
+  path: '/mainnet',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PointsRoute = PointsRouteImport.update({
@@ -149,6 +156,11 @@ const ApiUploadRoute = ApiUploadRouteImport.update({
   path: '/api/upload',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWaitlistRoute = ApiWaitlistRouteImport.update({
+  id: '/api/waitlist',
+  path: '/api/waitlist',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiXRoute = ApiXRouteImport.update({
   id: '/api/x',
   path: '/api/x',
@@ -192,6 +204,7 @@ export interface FileRoutesByFullPath {
   '/clubhouse': typeof ClubhouseRoute
   '/docs': typeof DocsRoute
   '/launch': typeof LaunchRoute
+  '/mainnet': typeof MainnetRoute
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
@@ -208,6 +221,7 @@ export interface FileRoutesByFullPath {
   '/api/token-meta': typeof ApiTokenMetaRoute
   '/api/trader': typeof ApiTraderRoute
   '/api/upload': typeof ApiUploadRoute
+  '/api/waitlist': typeof ApiWaitlistRoute
   '/api/x': typeof ApiXRoute
   '/coin/$address': typeof CoinAddressRoute
   '/houses/$tag': typeof HousesTagRoute
@@ -223,6 +237,7 @@ export interface FileRoutesByTo {
   '/clubhouse': typeof ClubhouseRoute
   '/docs': typeof DocsRoute
   '/launch': typeof LaunchRoute
+  '/mainnet': typeof MainnetRoute
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
@@ -239,6 +254,7 @@ export interface FileRoutesByTo {
   '/api/token-meta': typeof ApiTokenMetaRoute
   '/api/trader': typeof ApiTraderRoute
   '/api/upload': typeof ApiUploadRoute
+  '/api/waitlist': typeof ApiWaitlistRoute
   '/api/x': typeof ApiXRoute
   '/coin/$address': typeof CoinAddressRoute
   '/houses/$tag': typeof HousesTagRoute
@@ -255,6 +271,7 @@ export interface FileRoutesById {
   '/clubhouse': typeof ClubhouseRoute
   '/docs': typeof DocsRoute
   '/launch': typeof LaunchRoute
+  '/mainnet': typeof MainnetRoute
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
   '/swap': typeof SwapRoute
@@ -271,6 +288,7 @@ export interface FileRoutesById {
   '/api/token-meta': typeof ApiTokenMetaRoute
   '/api/trader': typeof ApiTraderRoute
   '/api/upload': typeof ApiUploadRoute
+  '/api/waitlist': typeof ApiWaitlistRoute
   '/api/x': typeof ApiXRoute
   '/coin/$address': typeof CoinAddressRoute
   '/houses/$tag': typeof HousesTagRoute
@@ -288,6 +306,7 @@ export interface FileRouteTypes {
     | '/clubhouse'
     | '/docs'
     | '/launch'
+    | '/mainnet'
     | '/points'
     | '/pools'
     | '/swap'
@@ -304,6 +323,7 @@ export interface FileRouteTypes {
     | '/api/token-meta'
     | '/api/trader'
     | '/api/upload'
+    | '/api/waitlist'
     | '/api/x'
     | '/coin/$address'
     | '/houses/$tag'
@@ -319,6 +339,7 @@ export interface FileRouteTypes {
     | '/clubhouse'
     | '/docs'
     | '/launch'
+    | '/mainnet'
     | '/points'
     | '/pools'
     | '/swap'
@@ -335,6 +356,7 @@ export interface FileRouteTypes {
     | '/api/token-meta'
     | '/api/trader'
     | '/api/upload'
+    | '/api/waitlist'
     | '/api/x'
     | '/coin/$address'
     | '/houses/$tag'
@@ -350,6 +372,7 @@ export interface FileRouteTypes {
     | '/clubhouse'
     | '/docs'
     | '/launch'
+    | '/mainnet'
     | '/points'
     | '/pools'
     | '/swap'
@@ -366,6 +389,7 @@ export interface FileRouteTypes {
     | '/api/token-meta'
     | '/api/trader'
     | '/api/upload'
+    | '/api/waitlist'
     | '/api/x'
     | '/coin/$address'
     | '/houses/$tag'
@@ -382,6 +406,7 @@ export interface RootRouteChildren {
   ClubhouseRoute: typeof ClubhouseRoute
   DocsRoute: typeof DocsRoute
   LaunchRoute: typeof LaunchRoute
+  MainnetRoute: typeof MainnetRoute
   PointsRoute: typeof PointsRoute
   PoolsRoute: typeof PoolsRoute
   SwapRoute: typeof SwapRoute
@@ -398,6 +423,7 @@ export interface RootRouteChildren {
   ApiTokenMetaRoute: typeof ApiTokenMetaRoute
   ApiTraderRoute: typeof ApiTraderRoute
   ApiUploadRoute: typeof ApiUploadRoute
+  ApiWaitlistRoute: typeof ApiWaitlistRoute
   ApiXRoute: typeof ApiXRoute
   CoinAddressRoute: typeof CoinAddressRoute
   HousesTagRoute: typeof HousesTagRoute
@@ -449,6 +475,13 @@ declare module '@tanstack/react-router' {
       path: '/launch'
       fullPath: '/launch'
       preLoaderRoute: typeof LaunchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mainnet': {
+      id: '/mainnet'
+      path: '/mainnet'
+      fullPath: '/mainnet'
+      preLoaderRoute: typeof MainnetRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/points': {
@@ -563,6 +596,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiUploadRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/waitlist': {
+      id: '/api/waitlist'
+      path: '/api/waitlist'
+      fullPath: '/api/waitlist'
+      preLoaderRoute: typeof ApiWaitlistRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/x': {
       id: '/api/x'
       path: '/api/x'
@@ -622,6 +662,7 @@ const rootRouteChildren: RootRouteChildren = {
   ClubhouseRoute: ClubhouseRoute,
   DocsRoute: DocsRoute,
   LaunchRoute: LaunchRoute,
+  MainnetRoute: MainnetRoute,
   PointsRoute: PointsRoute,
   PoolsRoute: PoolsRoute,
   SwapRoute: SwapRoute,
@@ -638,6 +679,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiTokenMetaRoute: ApiTokenMetaRoute,
   ApiTraderRoute: ApiTraderRoute,
   ApiUploadRoute: ApiUploadRoute,
+  ApiWaitlistRoute: ApiWaitlistRoute,
   ApiXRoute: ApiXRoute,
   CoinAddressRoute: CoinAddressRoute,
   HousesTagRoute: HousesTagRoute,

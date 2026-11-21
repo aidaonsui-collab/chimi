@@ -13,6 +13,7 @@ import { useTokenImages } from "@/lib/chimi/token-image";
 import { useBalances, useTrader } from "@/lib/chimi/trader";
 import { followersOf, followingOf } from "@/lib/chimi/follow-rules";
 import { useFollows } from "@/lib/chimi/follows";
+import { useWaitlistPlace } from "@/lib/chimi/waitlist";
 import { CreatorFeesSummary, useCreatorFees } from "@/components/chimi/creator-fees";
 import { FollowButton, WalletListModal } from "@/components/chimi/follow";
 import { HouseSeal } from "@/components/chimi/house-seal";
@@ -51,6 +52,8 @@ function TraderPage() {
   const live = useMemo(() => coins.filter((c) => !c.preview), [coins]);
   const images = useTokenImages(useMemo(() => live.map((c) => c.token), [live]));
   const held = useBalances(wallet, live);
+  // A place on the mainnet waitlist shows as a chip: the OG seal to come.
+  const gate = useWaitlistPlace(wallet);
   const [tab, setTab] = useState<Tab>("holdings");
   const [shown, setShown] = useState(25);
   // On your own page, the pool fees waiting on the coins you launched. Read again after a claim.
@@ -163,6 +166,11 @@ function TraderPage() {
                 <div className="mt-1.5 flex flex-wrap items-center gap-2">
                   {mine ? <span className="chip border-gold/30 bg-gold/10 text-gold">You</span> : null}
                   {league ? <LeagueChip league={league} /> : null}
+                  {gate ? (
+                    <Link to="/mainnet" className="chip border-gold/30 bg-gold/10 text-gold hover:border-gold/60" title="On the Chimi mainnet waitlist">
+                      Mainnet waitlist <span className="num">#{gate.toLocaleString("en-US")}</span>
+                    </Link>
+                  ) : null}
                   {house ? (
                     <Link to="/houses/$tag" params={{ tag: house.tag }} className="chip hover:text-fg">
                       <HouseSeal seal={house.seal} ink={house.ink} image={house.image} size={14} />
