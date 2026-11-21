@@ -37,6 +37,7 @@ import { Route as ApiXRouteImport } from './routes/api/x'
 import { Route as CoinAddressRouteImport } from './routes/coin.$address'
 import { Route as HousesIndexRouteImport } from './routes/houses.index'
 import { Route as HousesTagRouteImport } from './routes/houses.$tag'
+import { Route as MainnetAdminRouteImport } from './routes/mainnet_.admin'
 import { Route as PoolAddressRouteImport } from './routes/pool.$address'
 import { Route as UAddressRouteImport } from './routes/u.$address'
 import { Route as ApiKeeperFlywheelRouteImport } from './routes/api/keeper/flywheel'
@@ -181,6 +182,11 @@ const HousesTagRoute = HousesTagRouteImport.update({
   path: '/houses/$tag',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MainnetAdminRoute = MainnetAdminRouteImport.update({
+  id: '/mainnet_/admin',
+  path: '/mainnet/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PoolAddressRoute = PoolAddressRouteImport.update({
   id: '/pool/$address',
   path: '/pool/$address',
@@ -225,6 +231,7 @@ export interface FileRoutesByFullPath {
   '/api/x': typeof ApiXRoute
   '/coin/$address': typeof CoinAddressRoute
   '/houses/$tag': typeof HousesTagRoute
+  '/mainnet/admin': typeof MainnetAdminRoute
   '/pool/$address': typeof PoolAddressRoute
   '/u/$address': typeof UAddressRoute
   '/houses/': typeof HousesIndexRoute
@@ -258,6 +265,7 @@ export interface FileRoutesByTo {
   '/api/x': typeof ApiXRoute
   '/coin/$address': typeof CoinAddressRoute
   '/houses/$tag': typeof HousesTagRoute
+  '/mainnet/admin': typeof MainnetAdminRoute
   '/pool/$address': typeof PoolAddressRoute
   '/u/$address': typeof UAddressRoute
   '/houses': typeof HousesIndexRoute
@@ -292,6 +300,7 @@ export interface FileRoutesById {
   '/api/x': typeof ApiXRoute
   '/coin/$address': typeof CoinAddressRoute
   '/houses/$tag': typeof HousesTagRoute
+  '/mainnet_/admin': typeof MainnetAdminRoute
   '/pool/$address': typeof PoolAddressRoute
   '/u/$address': typeof UAddressRoute
   '/houses/': typeof HousesIndexRoute
@@ -327,6 +336,7 @@ export interface FileRouteTypes {
     | '/api/x'
     | '/coin/$address'
     | '/houses/$tag'
+    | '/mainnet/admin'
     | '/pool/$address'
     | '/u/$address'
     | '/houses/'
@@ -360,6 +370,7 @@ export interface FileRouteTypes {
     | '/api/x'
     | '/coin/$address'
     | '/houses/$tag'
+    | '/mainnet/admin'
     | '/pool/$address'
     | '/u/$address'
     | '/houses'
@@ -393,6 +404,7 @@ export interface FileRouteTypes {
     | '/api/x'
     | '/coin/$address'
     | '/houses/$tag'
+    | '/mainnet_/admin'
     | '/pool/$address'
     | '/u/$address'
     | '/houses/'
@@ -427,6 +439,7 @@ export interface RootRouteChildren {
   ApiXRoute: typeof ApiXRoute
   CoinAddressRoute: typeof CoinAddressRoute
   HousesTagRoute: typeof HousesTagRoute
+  MainnetAdminRoute: typeof MainnetAdminRoute
   PoolAddressRoute: typeof PoolAddressRoute
   UAddressRoute: typeof UAddressRoute
   HousesIndexRoute: typeof HousesIndexRoute
@@ -631,6 +644,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HousesTagRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/mainnet_/admin': {
+      id: '/mainnet_/admin'
+      path: '/mainnet/admin'
+      fullPath: '/mainnet/admin'
+      preLoaderRoute: typeof MainnetAdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pool/$address': {
       id: '/pool/$address'
       path: '/pool/$address'
@@ -683,6 +703,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiXRoute: ApiXRoute,
   CoinAddressRoute: CoinAddressRoute,
   HousesTagRoute: HousesTagRoute,
+  MainnetAdminRoute: MainnetAdminRoute,
   PoolAddressRoute: PoolAddressRoute,
   UAddressRoute: UAddressRoute,
   HousesIndexRoute: HousesIndexRoute,
