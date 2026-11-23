@@ -294,13 +294,14 @@ export function Shell({ children }: { children: ReactNode }) {
       <PageBackdrop path={path} />
       <Rail path={path} />
       <header className={`vt-top sticky top-0 z-30 border-b transition-colors duration-200 ${scrolled ? "border-line bg-bg/85 backdrop-blur-xl" : "border-transparent bg-transparent"}`}>
-        <TopTicker className="ticker-phone" />
+        {/* The home board has its own live strip, so the top bar carries one on every other page. */}
+        {path === "/" ? null : <TopTicker className="ticker-phone" />}
         <div className="flex h-14 items-center gap-3 px-4 sm:px-6 lg:h-16 lg:px-8">
           <Link to="/" className="flex shrink-0 items-center gap-2.5 lg:hidden" aria-label="Chimi home">
             <ChimiMark size={32} />
             <span className="hidden text-[18px] font-bold tracking-[0.02em] min-[400px]:inline md:hidden">Chimi</span>
           </Link>
-          <TopTicker className="ticker-wide" />
+          {path === "/" ? null : <TopTicker className="ticker-wide" />}
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <button type="button" onClick={() => setSearch(true)} aria-label="Search" className="btn btn-icon btn-secondary lg:hidden">
               <IconSearch size={18} />

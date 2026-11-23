@@ -1626,12 +1626,306 @@ li.lead-row:last-child {
 }
 
 /*
- * The pairs table on the home page (home-board.tsx). A row is a grid, and the board is its container: the columns
- * come in as the board itself widens, so it lays out the same beside the live trades as across a page. The narrowest
- * keeps the pair, its market cap and move, the day's line and the buy button; the rank, move, burned share, volume,
- * liquidity and trades come in after. The heading row and each coin's row are separate grids, so every column but
- * the pair's has a fixed width: a column sized to its content would be "Buy" wide in the heading and button wide in a
- * row, and every heading would sit off its column.
+ * The board on the home page (home-board.tsx). On top one card: the live strip, then four short lists. Under it the
+ * bar to filter, search, sort and pick the layout, then the coins as a list (the default) or a grid of cards.
+ */
+.board-top {
+  overflow: hidden;
+  margin-bottom: 1.25rem;
+}
+.act-strip {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  min-width: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-line) 80%, transparent);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.act-label {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+  height: 100%;
+  padding-inline: 0.875rem 0.875rem;
+  border-right: 1px solid color-mix(in srgb, var(--color-line) 80%, transparent);
+  font-weight: 600;
+  color: var(--color-fg);
+}
+.act-quiet {
+  min-width: 0;
+  padding-inline: 1rem;
+  color: var(--color-faint);
+}
+.act-strip > .ticker-window {
+  display: flex;
+  align-self: stretch;
+  align-items: center;
+}
+/* A few trades sit still: a phone can slide them by hand. */
+.act-still {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.act-still::-webkit-scrollbar {
+  display: none;
+}
+.act-row {
+  gap: 0;
+  padding: 0;
+}
+.act-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  height: 24px;
+  padding-inline: 0.875rem 1.125rem;
+  border-left: 2px solid var(--color-ok);
+}
+.act-sell {
+  border-left-color: var(--color-down);
+}
+.act-coin {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.act-coin:hover .text-fg {
+  color: var(--color-gold);
+}
+@media (min-width: 768px) {
+  .act-strip {
+    height: 50px;
+    font-size: 13.5px;
+  }
+  .act-label {
+    padding-inline: 1.25rem;
+  }
+}
+
+/* The four short lists: two by two on a phone, four across from a laptop up. */
+.board-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.board-stat {
+  min-width: 0;
+  padding: 0.875rem 0.875rem 0.625rem;
+}
+.board-stat:nth-child(2n) {
+  border-left: 1px solid color-mix(in srgb, var(--color-line) 80%, transparent);
+}
+.board-stat:nth-child(n + 3) {
+  border-top: 1px solid color-mix(in srgb, var(--color-line) 80%, transparent);
+}
+@media (min-width: 1024px) {
+  .board-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .board-stat {
+    padding: 1rem 1.25rem 0.75rem;
+  }
+  .board-stat:nth-child(n) {
+    border-top: 0;
+    border-left: 1px solid color-mix(in srgb, var(--color-line) 80%, transparent);
+  }
+  .board-stat:first-child {
+    border-left: 0;
+  }
+}
+.stat-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  height: 2.25rem;
+}
+.stat-link {
+  margin-inline: -0.5rem;
+  padding-inline: 0.5rem;
+  border-radius: 0.625rem;
+  transition: background-color 0.15s ease;
+}
+.stat-link:hover {
+  background: color-mix(in srgb, var(--color-raise) 75%, transparent);
+}
+.stat-link:hover .truncate {
+  color: var(--color-gold);
+}
+@media (max-width: 639px) {
+  .stat-row {
+    gap: 0.5rem;
+  }
+  .stat-rank {
+    display: none;
+  }
+}
+
+/*
+ * The bar over the board. On a phone: the filter, the order and the layout toggle on one line, then search and the
+ * quick-buy amount. Wider: the filters as tabs, then search, order, amount and layout on one line (the two groups'
+ * boxes open up, and `order` puts their parts in place).
+ */
+.board-tools {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 0.875rem;
+}
+.board-tools-a {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 0.5rem;
+}
+.board-tools-b {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+}
+.board-filter-tabs {
+  display: none;
+}
+.board-tools .chip {
+  height: 2.375rem;
+  min-width: 0;
+  padding-inline: 0.75rem 0.5rem;
+  border-radius: 999px;
+  font-size: 13px;
+}
+.board-select select {
+  min-width: 0;
+  flex: 1 1 auto;
+  cursor: pointer;
+  background: transparent;
+  color: var(--color-fg);
+  font-weight: 600;
+  outline: none;
+}
+@media (max-width: 399px) {
+  .board-sort-icon {
+    display: none;
+  }
+}
+.board-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 2.375rem;
+  min-width: 0;
+  padding-inline: 0.875rem 0.375rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-line);
+  background: var(--color-raise);
+  transition: border-color 0.15s ease;
+}
+.board-search:focus-within {
+  border-color: var(--color-edge);
+}
+.board-search input {
+  min-width: 0;
+  flex: 1 1 0;
+  height: 100%;
+  background: transparent;
+  color: var(--color-fg);
+  font-size: 13.5px;
+  outline: none;
+}
+.board-search input::placeholder {
+  color: var(--color-faint);
+}
+.board-search input::-webkit-search-cancel-button {
+  display: none;
+}
+.view-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid var(--color-line);
+  background: var(--color-chip);
+}
+.view-toggle button {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 1.875rem;
+  border-radius: 999px;
+  color: var(--color-muted);
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+.view-toggle button:hover {
+  color: var(--color-fg);
+}
+.view-toggle button[aria-pressed="true"] {
+  background: var(--color-fg);
+  color: var(--color-bg);
+}
+/* A tablet or small laptop: the tabs and the layout toggle on top, then search, order and amount. */
+@media (min-width: 768px) {
+  .board-tools {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "tabs tabs view"
+      "search sort quick";
+  }
+  .board-tools-a,
+  .board-tools-b {
+    display: contents;
+  }
+  .board-filter-tabs {
+    display: block;
+    grid-area: tabs;
+  }
+  .board-filter-pick {
+    display: none;
+  }
+  .view-toggle {
+    grid-area: view;
+    justify-self: end;
+  }
+  .board-search {
+    grid-area: search;
+  }
+  .board-sort {
+    grid-area: sort;
+  }
+  .board-quick {
+    grid-area: quick;
+  }
+}
+/* Wide: one line. */
+@media (min-width: 1200px) {
+  .board-tools {
+    display: flex;
+    align-items: center;
+  }
+  .board-filter-tabs {
+    margin-right: auto;
+  }
+  .board-search {
+    order: 1;
+    flex: 0 1 15rem;
+    min-width: 10rem;
+  }
+  .board-sort {
+    order: 2;
+  }
+  .board-quick {
+    order: 3;
+  }
+  .view-toggle {
+    order: 4;
+  }
+}
+
+/*
+ * The list. A row is a grid, and the list is its container: the columns come in as the list itself widens. The
+ * narrowest (a phone) keeps the coin, its market cap and move, the day's line and the buy button, with a round logo
+ * and the name over the ticker; from 680px a row takes the wide look (a rounded-square logo, the ticker over the
+ * name) and the move, burned share, volume and last trade come in. The heading row and each coin's row are separate
+ * grids, so every column but the coin's has a fixed width: a column sized to its content would be "Buy" wide in the
+ * heading and button wide in a row, and every heading would sit off its column.
  */
 .pairs-card {
   container: pairs / inline-size;
@@ -1643,12 +1937,10 @@ li.lead-row:last-child {
   column-gap: 0.5rem;
   padding-inline: 1rem;
 }
-.pairs-grid > .pg-rank,
 .pairs-grid > .pg-chg,
 .pairs-grid > .pg-burn,
 .pairs-grid > .pg-vol,
-.pairs-grid > .pg-liq,
-.pairs-grid > .pg-trades,
+.pairs-grid > .pg-last,
 .pairs-grid > .pg-spark {
   display: none;
 }
@@ -1658,10 +1950,66 @@ li.lead-row:last-child {
 .pg-by {
   display: none;
 }
+.pair-item {
+  --pg-logo: 40px;
+  --pg-logo-r: 999px;
+}
+.pair-item > .pairs-grid {
+  min-height: 4.25rem;
+  padding-block: 0.625rem;
+}
+.pg-logo,
+.pg-logo > span {
+  border-radius: var(--pg-logo-r);
+}
+.pg-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.pg-sub {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.375rem;
+  overflow: hidden;
+  font-size: 12.5px;
+  color: var(--color-muted);
+}
+.pg-t-wide {
+  display: none;
+}
+/* In a narrow coin cell (a phone) the Official tag has no room beside the name: it becomes a gold check on the logo. */
+.pg-logo-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.pg-official-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: none;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 999px;
+  border: 2px solid var(--color-chip);
+  background: var(--color-gold);
+  color: #1b1408;
+}
+@container pair (max-width: 239px) {
+  .pg-official-badge {
+    display: grid;
+  }
+}
+/* With only the name and ticker's room, the launch age goes too. */
+@container pair (max-width: 169px) {
+  .pg-age {
+    display: none;
+  }
+}
 @container pairs (min-width: 320px) {
   .pairs-grid {
     grid-template-columns: minmax(0, 1fr) 4.25rem 44px 4.375rem;
-    column-gap: 0.5rem;
   }
   .pairs-grid > .pg-spark {
     display: flex;
@@ -1682,16 +2030,33 @@ li.lead-row:last-child {
 }
 @container pairs (min-width: 680px) {
   .pairs-grid {
-    grid-template-columns: 1.5rem minmax(0, 1fr) 6rem 4.5rem 5rem 88px 5rem;
+    grid-template-columns: minmax(0, 1fr) 6rem 4.5rem 5rem 88px 5rem;
   }
-  .pairs-grid > .pg-rank,
   .pairs-grid > .pg-burn {
     display: block;
+  }
+  .pair-item {
+    --pg-logo: 48px;
+    --pg-logo-r: 0.75rem;
+  }
+  .pair-item > .pairs-grid {
+    min-height: 4.75rem;
+  }
+  .pg-title {
+    font-size: 15.5px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+  }
+  .pg-t-phone {
+    display: none;
+  }
+  .pg-t-wide {
+    display: inline;
   }
 }
 @container pairs (min-width: 840px) {
   .pairs-grid {
-    grid-template-columns: 1.5rem minmax(0, 1fr) 6rem 4.5rem 5rem 5.5rem 96px 5rem;
+    grid-template-columns: minmax(0, 1fr) 6rem 4.5rem 5rem 6rem 96px 5rem;
   }
   .pairs-grid > .pg-vol {
     display: block;
@@ -1699,23 +2064,150 @@ li.lead-row:last-child {
 }
 @container pairs (min-width: 1000px) {
   .pairs-grid {
-    grid-template-columns: 1.75rem minmax(0, 1fr) 6.5rem 4.75rem 5.25rem 6rem 6rem 100px 5.25rem;
+    grid-template-columns: minmax(0, 1fr) 6.5rem 4.75rem 5.25rem 6.25rem 9.5rem 100px 5.25rem;
   }
-  .pairs-grid > .pg-liq {
-    display: block;
-  }
-}
-@container pairs (min-width: 1120px) {
-  .pairs-grid {
-    grid-template-columns: 1.75rem minmax(0, 1fr) 6.5rem 4.75rem 5.25rem 6rem 6rem 4.5rem 112px 5.25rem;
-  }
-  .pairs-grid > .pg-trades {
+  .pairs-grid > .pg-last {
     display: block;
   }
   .pg-by {
     display: inline;
   }
 }
+@container pairs (min-width: 1160px) {
+  .pairs-grid {
+    grid-template-columns: minmax(0, 1fr) 6.75rem 5rem 5.5rem 6.75rem 10rem 112px 5.5rem;
+    padding-inline: 1.5rem;
+  }
+}
+
+/* The grid: two cards across on a phone, as many as fit from there. A card's picture carries its tags and buy button. */
+.coin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.625rem;
+}
+@media (min-width: 640px) {
+  .coin-grid {
+    grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr));
+    gap: 0.875rem;
+  }
+}
+.coin-card {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 1rem;
+  border: 1px solid var(--color-line);
+  background: var(--color-chip);
+  transition:
+    border-color 0.2s ease,
+    transform 0.25s cubic-bezier(0.2, 0.7, 0.2, 1),
+    box-shadow 0.25s ease;
+}
+@media (hover: hover) {
+  .coin-card:hover {
+    border-color: var(--color-edge);
+    transform: translateY(-2px);
+    box-shadow: 0 18px 36px -24px rgba(0, 0, 0, 0.9);
+  }
+  .coin-card:hover .coin-card-link {
+    color: var(--color-gold);
+  }
+}
+.coin-card-art {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  container-type: inline-size;
+  background: var(--color-raise);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-line) 80%, transparent);
+}
+.coin-card-tags {
+  position: absolute;
+  z-index: 2;
+  bottom: 0.5rem;
+  left: 0.5rem;
+  display: flex;
+  max-width: calc(100% - 5.25rem);
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  pointer-events: none;
+}
+.coin-card-tags .official-tag,
+.coin-card-tags .dev-locked-tag {
+  background-color: rgb(14 14 18 / 0.82);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+.coin-card-buy {
+  position: absolute;
+  z-index: 2;
+  right: 0.5rem;
+  bottom: 0.5rem;
+}
+.coin-card-buy .buy-pill {
+  background-color: rgb(14 14 18 / 0.82);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+.coin-card-body {
+  display: grid;
+  gap: 0.3125rem;
+  padding: 0.6875rem 0.75rem 0.75rem;
+  font-size: 12.5px;
+}
+@media (min-width: 640px) {
+  .coin-card-body {
+    padding: 0.75rem 0.875rem 0.875rem;
+    font-size: 13px;
+  }
+}
+.coin-card-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.coin-card-link {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 15.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-fg);
+  transition: color 0.15s ease;
+}
+/* The whole card opens the coin; the tags and the buy button sit above that. */
+.coin-card-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+.coin-card-invite {
+  border-style: dashed;
+  background: transparent;
+}
+.coin-card-link-invite {
+  display: flex;
+  height: 100%;
+  min-height: 13rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  text-align: center;
+  color: var(--color-muted);
+}
+.coin-card-invite:hover {
+  border-color: var(--color-edge);
+}
+
 /* A column heading that sorts the board by it. */
 .pg-sort {
   display: inline-flex;
@@ -1754,16 +2246,10 @@ li.lead-row:last-child {
   font-weight: 600;
   letter-spacing: 0.02em;
 }
-/* In a narrow pair cell the tag goes under the name, beside the ticker, so the name keeps its room. */
-.official-sub {
-  display: none;
-}
+/* In a narrow coin cell the tag leaves the name its room and shows as a check on the logo instead (.pg-official-badge). */
 @container pair (max-width: 239px) {
   .official-top {
     display: none;
-  }
-  .official-sub {
-    display: inline-flex;
   }
 }
 /* The launch form's "days" box beside the lock's presets: the presets' height, a field's look. */
@@ -1896,58 +2382,6 @@ li.lead-row:last-child {
   background: color-mix(in srgb, var(--color-raise) 55%, transparent);
 }
 
-/*
- * The live trades beside the board (home-board.tsx LiveTrades): newest first, a row per trade, the whole row opens
- * the coin. Beside the board it is as tall as the board and scrolls inside; under it on a phone it has a height of its own.
- */
-.live-trades {
-  display: flex;
-  flex-direction: column;
-}
-.live-trades-list {
-  max-height: 26rem;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-}
-@media (min-width: 1024px) {
-  .live-trades-aside {
-    position: relative;
-    min-height: 18rem;
-  }
-  .live-trades-aside > .live-trades {
-    position: absolute;
-    inset: 0;
-  }
-  .live-trades-list {
-    flex: 1 1 0;
-    max-height: none;
-  }
-}
-.live-trade {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-height: 3.75rem;
-  padding: 0.5rem 1rem;
-  transition: background-color 0.15s ease;
-}
-.live-trade:hover {
-  background: color-mix(in srgb, var(--color-raise) 55%, transparent);
-}
-.live-trade-new {
-  animation: live-trade-in 0.9s ease-out;
-}
-@keyframes live-trade-in {
-  from {
-    background: color-mix(in srgb, var(--color-gold) 16%, transparent);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .live-trade-new {
-    animation: none;
-  }
-}
 
 /*
  * The feed is one list of rows. A row is a line of who did what and a quieter line of detail, with the coin's move,

@@ -2,12 +2,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { compactUsd, ethText } from "@/lib/chimi/format";
 import { useHomeFeed } from "@/lib/chimi/feed";
-import { usePoolEth } from "@/lib/chimi/live";
 import { useBurned } from "@/lib/chimi/burned";
 import { useAllLocks } from "@/lib/chimi/creator-lock";
 import { unlockedAt } from "@/lib/chimi/creator-lock-rules";
 import { useTokenProfiles } from "@/lib/chimi/token-image";
-import { LiveTrades, PairsBoard, type CoinLinks } from "@/components/chimi/home-board";
+import { PairsBoard, type CoinLinks } from "@/components/chimi/home-board";
 import { HomeBanner, type HeroStat } from "@/components/chimi/home-hero";
 import { HomeIntro } from "@/components/chimi/home-intro";
 import { useChimi } from "@/components/chimi/provider";
@@ -15,8 +14,8 @@ import { useNow } from "@/components/chimi/rewards-bits";
 import { Empty } from "@/components/chimi/ui";
 
 /**
- * The home page is the board: the roof banner, then every pair on Chimi in one table. What the traders are doing
- * and saying, the feed, lives on the Traders page.
+ * The home page is the board: the roof banner, then every coin on Chimi, with the live trades and the day's leaders
+ * over it. What the traders are doing and saying, the feed, lives on the Traders page.
  */
 export const Route = createFileRoute("/")({ component: Home });
 
@@ -36,7 +35,6 @@ function Home() {
     }
     return { images, links };
   }, [profiles]);
-  const reserves = usePoolEth(feed.live, deployment?.weth);
   const burned = useBurned(feed.live);
   // The platform's own coin: the one every coin's fee buys back and burns.
   const official = (deployment?.burner?.chimi ?? deployment?.flywheel?.chimi)?.toLowerCase();
@@ -87,7 +85,7 @@ function Home() {
             coins={listed}
             stats={feed.stats}
             images={images}
-            reserves={reserves}
+            byPool={feed.byPool}
             burned={burned}
             links={links}
             official={official}
@@ -98,7 +96,6 @@ function Home() {
             now={feed.now}
             waiting={feed.waiting}
             tradesReady={feed.tradesReady}
-            side={preview ? undefined : <LiveTrades coins={feed.live} byPool={feed.byPool} images={images} ethUsd={feed.ethUsd} now={feed.now} ready={!feed.waiting && feed.tradesReady} />}
           />
         )}
       </div>
