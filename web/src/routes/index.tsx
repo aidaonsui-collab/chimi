@@ -4,6 +4,8 @@ import { compactUsd, ethText } from "@/lib/chimi/format";
 import { useHomeFeed } from "@/lib/chimi/feed";
 import { usePoolEth } from "@/lib/chimi/live";
 import { useBurned } from "@/lib/chimi/burned";
+import { useAllLocks } from "@/lib/chimi/creator-lock";
+import { unlockedAt } from "@/lib/chimi/creator-lock-rules";
 import { useTokenProfiles } from "@/lib/chimi/token-image";
 import { LiveTrades, PairsBoard, type CoinLinks } from "@/components/chimi/home-board";
 import { HomeBanner, type HeroStat } from "@/components/chimi/home-hero";
@@ -38,6 +40,12 @@ function Home() {
   const burned = useBurned(feed.live);
   // The platform's own coin: the one every coin's fee buys back and burns.
   const official = (deployment?.burner?.chimi ?? deployment?.flywheel?.chimi)?.toLowerCase();
+  // Coins whose creator's first buy is still locked.
+  const { locks } = useAllLocks();
+  const locked = useMemo(() => {
+    const now = Math.floor(Date.now() / 1000);
+    return new Set((locks ?? []).filter((l) => unlockedAt(l, now) < l.amount).map((l) => l.token));
+  }, [locks]);
 
   const usd = (eth: number | undefined) => (eth === undefined ? "—" : feed.ethUsd ? compactUsd(eth * feed.ethUsd) : `${ethText(eth)} ETH`);
   const totals = useMemo(() => {
@@ -83,6 +91,7 @@ function Home() {
             burned={burned}
             links={links}
             official={official}
+            locked={locked}
             ethUsd={feed.ethUsd}
             launched={feed.launched}
             known={feed.points?.file.profiles}

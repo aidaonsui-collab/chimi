@@ -9,7 +9,8 @@ import {
 } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import {ArcBpsSource} from "../src/ArcBpsSource.sol";
 import {ChimiBurner} from "../src/ChimiBurner.sol";
-import {ChimiPadV2} from "../src/ChimiPadV2.sol";
+import {ChimiPadV3} from "../src/ChimiPadV3.sol";
+import {ChimiCreatorLock} from "../src/ChimiCreatorLock.sol";
 import {ChimiTips} from "../src/ChimiTips.sol";
 import {InstantErc20QuoteFactoryProxyInit} from "../src/InstantErc20QuoteFactoryProxyInit.sol";
 import {MonLockProxyInit} from "../src/MonLockProxyInit.sol";
@@ -82,6 +83,8 @@ library ChimiMainnet {
         address burner;
         address coinBurnerImpl;
         address padImpl;
+        /// Holds creators' locked first buys (ChimiPadV3.createTokenWithEthLocked).
+        address creatorLock;
     }
 
     // ─── 1. the stack ───────────────────────────────────────────────────────────────────────────────────────────
@@ -176,10 +179,12 @@ library ChimiMainnet {
         ChimiBurner burner = new ChimiBurner(weth, chimi, chimiRouter, chimiPoolFee, s.pad, keeper, owner);
         b.burner = address(burner);
         b.coinBurnerImpl = burner.COIN_BURNER_IMPL();
-        b.padImpl = address(new ChimiPadV2(weth, 18, weth, b.burner));
+        b.creatorLock = address(new ChimiCreatorLock(s.pad));
+        b.padImpl = address(new ChimiPadV3(weth, 18, weth, b.burner, b.creatorLock));
     }
 
-    /// @notice The pad's 5% share goes to the burner, the pad gets the launch choice, and launches made before now
+    /// @notice The pad's 5% share goes to the burner, the pad gets the launch choice and the creator first-buy lock
+    ///         (ChimiPadV3), and launches made before now
     ///         (whose 5% went to the platform) feed the burner too. Returns how many of those were moved.
     function wireBurns(Stack memory s, Burns memory b, address platform) internal returns (uint256 moved) {
         InstantErc20QuoteFactoryProxyInit(payable(s.pad)).setStakingPool(b.burner);

@@ -132,9 +132,13 @@ async function advance(prev: PointsFile | null, settings: PointsSettings, leads:
   }
 
   // Swaps on every Chimi pool, a span at a time. A swap pays out to its recipient, which is the trader, unless a
-  // router took the output to unwrap it: then the trader is whoever sent the transaction.
+  // router took the output to unwrap it: then the trader is whoever sent the transaction. A first buy locked at launch
+  // pays out to the creator lock, so the same goes for it: the trader is the creator, whose own coin earns them nothing.
   const pools = Object.keys(book.pools) as Address[];
-  const routers = new Set(dexesOf(deployment as Deployment).flatMap((d) => [d.swapRouter, d.positionManager]).map((a) => a.toLowerCase()));
+  const d = deployment as Deployment;
+  const routers = new Set(
+    [...dexesOf(d).flatMap((x) => [x.swapRouter, x.positionManager]), ...(d.creatorLock ? [d.creatorLock.address] : [])].map((a) => a.toLowerCase()),
+  );
   // Who follows whom, as it stands now: a followed wallet earns when a follower buys a coin after it (points-rules).
   // If the list can't be read, the swaps still score; they just lead nobody this time.
   const follows = await docStore<FollowsState>("chimi:follows:v1")

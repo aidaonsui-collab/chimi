@@ -22,6 +22,7 @@ export const POOL_FEE: number = (bundledDeployment as { dexes?: { fee: number }[
 export const factoryAbi = parseAbi([
   "function createTokenMemeInstantQuoteWithEth(string name, string symbol) payable returns (address token)",
   "function createTokenWithEth(string name, string symbol, bool burnOwnCoin) payable returns (address token)",
+  "function createTokenWithEthLocked(string name, string symbol, bool burnOwnCoin, uint64 lockCliff, uint64 lockVesting) payable returns (address token, uint256 lockId)",
   "event FeeChoice(address indexed token, bool burnsOwnCoin, address burner)",
   "function allTokensLength() view returns (uint256)",
   "function allTokens(uint256) view returns (address)",
@@ -31,6 +32,20 @@ export const factoryAbi = parseAbi([
   "function launchVirtualQuote() view returns (uint256)",
   "function QUOTE() view returns (address)",
   "function poolFee() view returns (uint24)",
+]);
+
+/** The creator first-buy lock (contracts/src/ChimiCreatorLock.sol). */
+export const creatorLockAbi = parseAbi([
+  "struct Lock { address token; address creator; uint128 amount; uint128 claimed; uint64 start; uint64 cliffEnd; uint64 vestEnd; }",
+  "function lockCount() view returns (uint256)",
+  "function getLock(uint256 id) view returns (Lock)",
+  "function locksOfToken(address token) view returns (uint256[])",
+  "function locksOfCreator(address creator) view returns (uint256[])",
+  "function locksPage(uint256 start, uint256 count) view returns (Lock[])",
+  "function claimable(uint256 id) view returns (uint256)",
+  "function claim(uint256 id) returns (uint256 amount)",
+  "event Locked(uint256 indexed id, address indexed token, address indexed creator, uint256 amount, uint64 start, uint64 cliffEnd, uint64 vestEnd)",
+  "event Claimed(uint256 indexed id, address indexed creator, uint256 amount)",
 ]);
 
 export const erc20Abi = parseAbi([
@@ -172,6 +187,11 @@ export type Deployment = {
   burner?: { address: Address; chimi: Address; keeper: Address; block: number };
   /** Tips to creators while they stream (90% creator / 10% platform). Absent until it's deployed. */
   tips?: { address: Address; block: number };
+  /**
+   * Where creators' locked first buys are held (ChimiCreatorLock; the pad is ChimiPadV3). Its presence means launches
+   * offer to lock the first buy. Absent until it's deployed.
+   */
+  creatorLock?: { address: Address; block: number };
 };
 
 /** The DEXes, oldest first. A deployment from before the second one has just its first. */

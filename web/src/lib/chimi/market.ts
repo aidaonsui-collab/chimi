@@ -62,6 +62,25 @@ export function estimatedOut(amountIn: bigint, priceWethPerToken: bigint, buying
   return (afterFee * priceWethPerToken) / 10n ** 18n;
 }
 
+/*
+ * A first buy locked at launch is paid out by the pool to the creator lock, not to the creator. Every trade shown on
+ * Chimi names its trader by the swap's recipient, so a swap paid to the creator lock is shown as its coin's creator's:
+ * the pools' creators are noted as coins load, and toSwap swaps the lock for the creator.
+ */
+let creatorLock: string | undefined;
+const creatorOfPool = new Map<string, Address>();
+
+function noteCreators(dep: Deployment, coins: Pick<Coin, "pool" | "creator">[]) {
+  creatorLock = dep.creatorLock?.address.toLowerCase();
+  for (const c of coins) creatorOfPool.set(c.pool.toLowerCase(), c.creator);
+}
+
+/** The trader a swap names: its recipient, or the coin's creator when the recipient is the creator lock. */
+function traderOf(recipient: Address, pool: string): Address {
+  if (!creatorLock || recipient.toLowerCase() !== creatorLock) return recipient;
+  return creatorOfPool.get(pool.toLowerCase()) ?? recipient;
+}
+
 export async function loadCoins(dep: Deployment): Promise<Coin[]> {
   if (!isDeployed(dep)) return [];
   const length = Number(
@@ -106,7 +125,9 @@ export async function loadCoins(dep: Deployment): Promise<Coin[]> {
       }
     }),
   );
-  return found.filter((coin): coin is Coin => coin !== null).reverse();
+  const coins = found.filter((coin): coin is Coin => coin !== null).reverse();
+  noteCreators(dep, coins);
+  return coins;
 }
 
 export async function loadCoin(dep: Deployment, token: Address): Promise<Coin | null> {
@@ -118,6 +139,7 @@ export async function loadCoin(dep: Deployment, token: Address): Promise<Coin | 
     args: [token],
   });
   if (pool.uniPool === zeroAddress) return null;
+  noteCreators(dep, [{ pool: pool.uniPool, creator: pool.creator }]);
   const [name, symbol, token0, slot0, fee, uniFactory] = await Promise.all([
     publicClient.readContract({ address: token, abi: erc20Abi, functionName: "name" }),
     publicClient.readContract({ address: token, abi: erc20Abi, functionName: "symbol" }),
@@ -286,7 +308,7 @@ function toSwap(log: SwapLog, tokenIs0: boolean, head: { number: bigint; time: n
     block,
     index: Number(log.logIndex ?? 0),
     time: head.time - Number(head.number - block),
-    recipient: log.args.recipient ?? log.address,
+    recipient: log.args.recipient ? traderOf(log.args.recipient, log.address) : log.address,
     buy: tokenAmt < 0n,
     tokenAmount: tokenAmt < 0n ? -tokenAmt : tokenAmt,
     ethAmount: ethAmt < 0n ? -ethAmt : ethAmt,
@@ -482,7 +504,7 @@ export async function loadSwapWindow(pool: Address, tokenIs0: boolean, seconds: 
         block: BigInt(log.blockNumber),
         index: hexNumber(log.logIndex),
         time: Number(BigInt(log.timeStamp)),
-        recipient: args.recipient,
+        recipient: traderOf(args.recipient, pool),
         buy: tokenAmt < 0n,
         tokenAmount: tokenAmt < 0n ? -tokenAmt : tokenAmt,
         ethAmount: ethAmt < 0n ? -ethAmt : ethAmt,

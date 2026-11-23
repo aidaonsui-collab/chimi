@@ -20,7 +20,8 @@ GIWA mainnet isn't live yet. On 2026-11-20 GIWA's docs ([connect to GIWA](https:
 
 1. **The stack**: a copy of Uniswap v3 with the 2% and 3% tiers on and its owner given up; the fee settings; the locker; the launch contract (pad), launching into 2% pools.
 2. **CHIMI**: by default the script launches it on the new pad from the signer, who becomes its creator.
-3. **The burner** (`ChimiBurner`): fixed forever to CHIMI, the router of CHIMI's pool and that pool's fee. The pad's 5% share then goes to it, and the pad is upgraded to `ChimiPadV2`, which offers the burn-my-coin choice at launch. CHIMI's own launch is pointed at the burner too, so CHIMI's 5% buys and burns CHIMI.
+3. **The burner** (`ChimiBurner`): fixed forever to CHIMI, the router of CHIMI's pool and that pool's fee. The pad's 5% share then goes to it, and the pad is upgraded to `ChimiPadV3`, which offers the burn-my-coin choice at launch and lets a creator lock their first buy. CHIMI's own launch is pointed at the burner too, so CHIMI's 5% buys and burns CHIMI.
+   - **The creator lock** (`ChimiCreatorLock`) is deployed in the same step, fixed to the pad. A creator who locks their first buy at launch has it delivered straight into the lock: nothing unlocks before the cliff, then it releases evenly over the vesting period (four years at most in all). It has no owner. Only the creator claims, and a lock can be pushed later, never shortened.
 4. **Tips** (`ChimiTips`): 90% to the creator, 10% to the platform.
 
 Fee split of every new coin's ETH fees:
@@ -117,7 +118,8 @@ The same order is covered by `forge test --match-contract ChimiMainnetTest`.
    - CHIMI carries the **Official** tag on the board (it is `burner.chimi` in `deployments.json`);
    - once the keeper has burned, CHIMI's **Burned** column on the board is above 0%. The keeper burns on its daily run, or when called with the cron secret after some trading. The column reads the burn address with Multicall3, so a column stuck on "—" means Multicall3 is missing (step 1);
    - from a wallet with a Dojang, found a house with a **picture seal**. The upload going through shows `BLOB_READ_WRITE_TOKEN` works on this deployment;
-   - **Connect, Disconnect, Connect again**: the wallet asks which account to share, and with two wallets installed Chimi first asks which wallet.
+   - **Connect, Disconnect, Connect again**: the wallet asks which account to share, and with two wallets installed Chimi first asks which wallet;
+   - a launch with **Lock my first buy** ticked: the coin page shows the creator lock card and a "Dev locked" tag, the lock is on `/locks`, and the creator's wallet holds none of the first buy.
 
 To keep the testnet running alongside, deploy a second Vercel project (e.g. testnet.chimi.club) from a branch whose `deployments.json` is Sepolia's. Before step 6 switches production's settings, copy today's to the new project:
 - the old Redis (`KV_REST_API_URL` / `KV_REST_API_TOKEN`);

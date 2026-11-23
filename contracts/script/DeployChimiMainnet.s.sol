@@ -4,7 +4,8 @@ pragma solidity ^0.8.24;
 import {Script, console2} from "forge-std/Script.sol";
 import {ArcBpsSource} from "../src/ArcBpsSource.sol";
 import {ChimiBurner} from "../src/ChimiBurner.sol";
-import {ChimiPadV2} from "../src/ChimiPadV2.sol";
+import {ChimiPadV3} from "../src/ChimiPadV3.sol";
+import {ChimiCreatorLock} from "../src/ChimiCreatorLock.sol";
 import {ChimiTips} from "../src/ChimiTips.sol";
 import {MonLock} from "../src/MonLock.sol";
 import {ChimiFeeChoice} from "./ChimiFeeChoice.sol";
@@ -95,6 +96,7 @@ contract DeployChimiMainnet is Script {
         if (!stackOnly) {
             console2.log("CHIMI", chimi);
             console2.log("burner", b.burner);
+            console2.log("creatorLock", b.creatorLock);
             console2.log("tips", tips);
             console2.log("launches pointed at the burner", moved);
         }
@@ -118,7 +120,7 @@ contract DeployChimiMainnet is Script {
         }
         require(chimi.code.length > 0, "CHIMI has no code");
         // A coin on this pad trades on the pad's DEX; anything else says where its pool is.
-        bool onPad = ChimiPadV2(payable(s.pad)).getPool(chimi).uniPool != address(0);
+        bool onPad = ChimiPadV3(payable(s.pad)).getPool(chimi).uniPool != address(0);
         router = vm.envOr("CHIMI_ROUTER", onPad ? s.swapRouter02 : address(0));
         fee = uint24(vm.envOr("CHIMI_POOL_FEE", onPad ? uint256(ChimiMainnet.POOL_FEE) : uint256(0)));
         require(router != address(0) && fee != 0, "CHIMI_ROUTER and CHIMI_POOL_FEE for a CHIMI that isn't on this pad");
@@ -132,7 +134,7 @@ contract DeployChimiMainnet is Script {
         address keeper,
         bool stackOnly
     ) internal view {
-        ChimiPadV2 pad = ChimiPadV2(payable(s.pad));
+        ChimiPadV3 pad = ChimiPadV3(payable(s.pad));
         require(pad.owner() == p.owner, "pad owner");
         require(pad.poolFee() == ChimiMainnet.POOL_FEE && pad.lpLocker() == s.locker, "pad DEX");
         require(pad.swapRouter() == s.swapRouter02 && pad.positionManager() == s.nfpm, "pad DEX");
@@ -143,6 +145,8 @@ contract DeployChimiMainnet is Script {
         require(MonLock(payable(s.locker)).owner() == p.owner, "locker owner");
         if (stackOnly) return;
         require(address(pad.BURNER()) == b.burner, "pad not upgraded");
+        require(address(pad.CREATOR_LOCK()) == b.creatorLock, "creator lock");
+        require(ChimiCreatorLock(b.creatorLock).pad() == s.pad, "creator lock's pad");
         require(pad.stakingPool() == b.burner, "staker leg");
         require(ChimiBurner(payable(b.burner)).keeper() == keeper, "keeper");
         require(ChimiBurner(payable(b.burner)).owner() == p.owner, "burner owner");
@@ -162,7 +166,8 @@ contract DeployChimiMainnet is Script {
         s.pad = vm.parseJsonAddress(json, ".factory");
     }
 
-    /// @dev The app's deployment file (web/src/lib/chimi/chain.ts `Deployment`): one DEX, the burner, tips.
+    /// @dev The app's deployment file (web/src/lib/chimi/chain.ts `Deployment`): one DEX, the burner, the creator lock,
+    ///      tips.
     function _json(
         ChimiMainnet.Stack memory s,
         address weth,
@@ -199,6 +204,9 @@ contract DeployChimiMainnet is Script {
             vm.serializeAddress(burner, "chimi", chimi);
             vm.serializeAddress(burner, "keeper", keeper);
             vm.serializeString(root, "burner", vm.serializeUint(burner, "block", block.number));
+            string memory cl = "creatorLock";
+            vm.serializeAddress(cl, "address", b.creatorLock);
+            vm.serializeString(root, "creatorLock", vm.serializeUint(cl, "block", block.number));
             string memory t = "tips";
             vm.serializeAddress(t, "address", tips);
             json = vm.serializeString(root, "tips", vm.serializeUint(t, "block", block.number));

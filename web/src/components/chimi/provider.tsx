@@ -15,6 +15,7 @@ import {
 import {
   POOL_FEE,
   ROUTER_KEEPS,
+  creatorLockAbi,
   dexOf,
   erc20Abi,
   factoryAbi,
@@ -55,7 +56,11 @@ type ChimiContext = {
   ensureChain: () => Promise<void>;
   refresh: () => Promise<void>;
   /** `burnOwnCoin`: 10% of the coin's ETH fees buy it back and burn it. Only where the pad offers the choice. */
-  createCoin: (name: string, symbol: string, firstBuy: string, burnOwnCoin?: boolean) => Promise<Address>;
+  /**
+   * `lock`: lock the first buy for the creator in the public creator lock (cliff and vesting in seconds). Only where the
+   * pad offers it (deployment.creatorLock) and with a first buy.
+   */
+  createCoin: (name: string, symbol: string, firstBuy: string, burnOwnCoin?: boolean, lock?: { cliff: number; vesting: number }) => Promise<Address>;
   /** A sale pays out in ETH: the swap and the unwrap are one transaction, after an approval. */
   trade: (coin: Coin, side: "buy" | "sell", amount: string, minOut?: bigint) => Promise<string>;
   /**
@@ -70,6 +75,8 @@ type ChimiContext = {
    * creator's share goes to the wallet stamped on the lock, as wrapped ETH. Answers with what this wallet received.
    */
   claimFees: (positions: LockedPosition[]) => Promise<{ hash: string; received: bigint }>;
+  /** Sends the creator what has unlocked so far in their first-buy lock `id`. Answers with what was sent. */
+  claimLock: (id: bigint) => Promise<{ hash: string; amount: bigint }>;
   /** Personal-sign with the connected wallet (used to publish token pictures). */
   signMessage: (message: string) => Promise<`0x${string}`>;
   /**
@@ -314,8 +321,11 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
   }
 
   const createCoin = useCallback(
-    async (name: string, symbol: string, firstBuy: string, burnOwnCoin = true) => {
+    async (name: string, symbol: string, firstBuy: string, burnOwnCoin = true, lock?: { cliff: number; vesting: number }) => {
       if (!deployment || !isDeployed(deployment)) throw new Error("Deploy the factory before launching a coin.");
+      const locked = !!lock && lock.cliff + lock.vesting > 0;
+      if (locked && !deployment.creatorLock) throw new Error("Locking a first buy isn't available yet.");
+      if (locked && !(Number(firstBuy) > 0)) throw new Error("Set a first buy to lock.");
       const { who, client } = await ready();
       const fee = await publicClient.readContract({
         address: deployment.factory,
@@ -325,7 +335,9 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       });
       const value = fee + parseEther(firstBuy.trim() || "0");
       const base = { account: who, chain: giwaChain, address: deployment.factory, abi: factoryAbi, value } as const;
-      const hash = deployment.burner
+      const hash = locked
+        ? await client.writeContract({ ...base, functionName: "createTokenWithEthLocked", args: [name.trim(), symbol.trim(), burnOwnCoin, BigInt(lock!.cliff), BigInt(lock!.vesting)] })
+        : deployment.burner
         ? await client.writeContract({ ...base, functionName: "createTokenWithEth", args: [name.trim(), symbol.trim(), burnOwnCoin] })
         : await client.writeContract({ ...base, functionName: "createTokenMemeInstantQuoteWithEth", args: [name.trim(), symbol.trim()] });
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
@@ -545,6 +557,21 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
     [deployment],
   );
 
+  const claimLock = useCallback(
+    async (id: bigint) => {
+      const lockAddress = deployment?.creatorLock?.address;
+      if (!lockAddress) throw new Error("There's no creator lock on this deployment.");
+      const { who, client } = await ready();
+      const hash = await client.writeContract({ account: who, chain: giwaChain, address: lockAddress, abi: creatorLockAbi, functionName: "claim", args: [id] });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") throw new Error("The claim failed on-chain, so nothing moved.");
+      const claimed = parseEventLogs({ abi: creatorLockAbi, logs: receipt.logs, eventName: "Claimed" });
+      return { hash, amount: claimed[0]?.args.amount ?? 0n };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [deployment],
+  );
+
   const signMessage = useCallback(async (message: string) => {
     const { who, client } = await ready(false);
     return client.signMessage({ account: who, message });
@@ -565,6 +592,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       ensureChain,
       refresh,
       createCoin,
+      claimLock,
       trade,
       quickBuy,
       unwrap,
@@ -572,7 +600,7 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       signMessage,
       tip,
     }),
-    [deployment, live, coins, loading, preview, note, account, connect, disconnect, ensureChain, refresh, createCoin, trade, quickBuy, unwrap, claimFees, signMessage, tip],
+    [deployment, live, coins, loading, preview, note, account, connect, disconnect, ensureChain, refresh, createCoin, claimLock, trade, quickBuy, unwrap, claimFees, signMessage, tip],
   );
 
   return (

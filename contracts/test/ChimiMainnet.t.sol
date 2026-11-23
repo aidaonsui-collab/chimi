@@ -9,7 +9,7 @@ import {ChimiFeeChoice} from "../script/ChimiFeeChoice.sol";
 import {WETH9} from "../script/testnet/WETH9.sol";
 import {ArcBpsSource} from "../src/ArcBpsSource.sol";
 import {ChimiBurner} from "../src/ChimiBurner.sol";
-import {ChimiPadV2} from "../src/ChimiPadV2.sol";
+import {ChimiPadV3} from "../src/ChimiPadV3.sol";
 import {ChimiTips} from "../src/ChimiTips.sol";
 import {InstantErc20QuoteFactory} from "../src/InstantErc20QuoteFactory.sol";
 import {InstantErc20QuoteFactoryProxyInit} from "../src/InstantErc20QuoteFactoryProxyInit.sol";
@@ -44,7 +44,7 @@ contract ChimiMainnetTest is Test {
 
     ChimiMainnet.Stack internal s;
     ChimiMainnet.Burns internal b;
-    ChimiPadV2 internal pad;
+    ChimiPadV3 internal pad;
     MonLock internal locker;
     ChimiBurner internal burner;
     address internal chimi;
@@ -63,7 +63,7 @@ contract ChimiMainnetTest is Test {
         b = ChimiMainnet.deployBurns(s, WETH, chimi, s.swapRouter02, FEE, keeper, address(this));
         moved = ChimiMainnet.wireBurns(s, b, platform);
         tips = ChimiMainnet.deployTips(s, platform, address(this));
-        pad = ChimiPadV2(payable(s.pad));
+        pad = ChimiPadV3(payable(s.pad));
         locker = MonLock(payable(s.locker));
         burner = ChimiBurner(payable(b.burner));
     }
@@ -232,7 +232,7 @@ contract ChimiMainnetTest is Test {
         assertEq(address(burner2.CHIMI_ROUTER()), o.swapRouter02);
 
         // Fees from a coin on the new pad buy the CHIMI on the other DEX.
-        ChimiPadV2 pad2 = ChimiPadV2(payable(s2.pad));
+        ChimiPadV3 pad2 = ChimiPadV3(payable(s2.pad));
         vm.prank(creator);
         address token = pad2.createTokenWithEth("Coin", "COIN", false);
         _sell(s2.swapRouter02, FEE, token, _buy(s2.swapRouter02, FEE, token, 1 ether));
@@ -282,6 +282,6 @@ contract ChimiMainnetTest is Test {
         assertEq(ChimiMainnet.wireBurns(s2, b2, platform), 2);
         (address after_,) = MonLock(payable(s2.locker)).stakerSplits(pad2.getPool(early).positionId);
         assertEq(after_, b2.burner);
-        assertEq(address(ChimiPadV2(payable(s2.pad)).BURNER()), b2.burner);
+        assertEq(address(ChimiPadV3(payable(s2.pad)).BURNER()), b2.burner);
     }
 }

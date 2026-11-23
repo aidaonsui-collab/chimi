@@ -115,6 +115,19 @@ function Docs() {
             <List
               items={[
                 <>Pick a name, a ticker and a picture, and optionally a first buy that goes through in the same transaction.</>,
+                ...(deployment?.creatorLock
+                  ? [
+                      <>
+                        You can <b>lock your first buy</b>: it goes straight from the pool into a public lock in the launch transaction, so you never hold it
+                        unlocked. Nothing unlocks before the cliff you pick, then it releases evenly over the vesting period (four years at most in all). Only you
+                        can claim it, and you can push a lock later but never shorten it. The coin shows a "Dev locked" tag, and every lock is on the{" "}
+                        <Link to="/locks" className="docs-link">
+                          Locks
+                        </Link>{" "}
+                        page.
+                      </>,
+                    ]
+                  : []),
                 <>The coin opens at about a $2,000 market cap (it moves with the ETH price). There is no launch fee today, only gas.</>,
                 ...(choice && now && plain
                   ? [
