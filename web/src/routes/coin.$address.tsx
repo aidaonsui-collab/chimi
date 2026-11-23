@@ -35,6 +35,9 @@ import { Comments } from "@/components/chimi/comments";
 import { useComments } from "@/lib/chimi/comments";
 import { CopyNotice, copySize } from "@/components/chimi/copy";
 import { CreatorFeesCard } from "@/components/chimi/creator-fees";
+import { CreatorLockCard, DevLockedTag } from "@/components/chimi/creator-lock";
+import { stillLockedFor } from "@/lib/chimi/creator-lock-rules";
+import { useTokenLocks } from "@/lib/chimi/creator-lock";
 import { StreamIdle, StreamSheet, StreamStage } from "@/components/chimi/stream";
 import { platformName } from "@/lib/chimi/stream-rules";
 import { useStream } from "@/lib/chimi/streams";
@@ -98,6 +101,9 @@ function CoinPage() {
   const [kind, setKind] = useState<"" | "bad" | "good">("");
   const [busy, setBusy] = useState(false);
   const meta = useTokenProfile(address);
+  // The creator's first buy, if they locked it at launch: the header says so while any of it is still locked.
+  const { locks: tokenLocks } = useTokenLocks(address);
+  const devLocked = !!tokenLocks && stillLockedFor(tokenLocks, address, Math.floor(Date.now() / 1000));
   const [editing, setEditing] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const stream = useStream(address);
@@ -456,6 +462,7 @@ function CoinPage() {
                       Locked pool
                     </span>
                   )}
+                  {devLocked ? <DevLockedTag /> : null}
                   <Link to="/u/$address" params={{ address: coin.creator }} className="chip hover:text-fg" title="The wallet that launched this coin">
                     <Blockie address={coin.creator} size={14} />
                     <span className="num">{shortAddr(coin.creator)}</span>
@@ -743,6 +750,8 @@ function CoinPage() {
               {tradeNote}
             </Note>
           </section>
+
+          <CreatorLockCard token={coin.token} symbol={coin.symbol} />
 
           <CreatorFeesCard coin={coin} bump={reload} />
 

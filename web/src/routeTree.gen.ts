@@ -15,6 +15,7 @@ import { Route as BoardRouteImport } from './routes/board'
 import { Route as ClubhouseRouteImport } from './routes/clubhouse'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as LaunchRouteImport } from './routes/launch'
+import { Route as LocksRouteImport } from './routes/locks'
 import { Route as MainnetRouteImport } from './routes/mainnet'
 import { Route as PointsRouteImport } from './routes/points'
 import { Route as PoolsRouteImport } from './routes/pools'
@@ -70,6 +71,11 @@ const DocsRoute = DocsRouteImport.update({
 const LaunchRoute = LaunchRouteImport.update({
   id: '/launch',
   path: '/launch',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LocksRoute = LocksRouteImport.update({
+  id: '/locks',
+  path: '/locks',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MainnetRoute = MainnetRouteImport.update({
@@ -210,6 +216,7 @@ export interface FileRoutesByFullPath {
   '/clubhouse': typeof ClubhouseRoute
   '/docs': typeof DocsRoute
   '/launch': typeof LaunchRoute
+  '/locks': typeof LocksRoute
   '/mainnet': typeof MainnetRoute
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
@@ -244,6 +251,7 @@ export interface FileRoutesByTo {
   '/clubhouse': typeof ClubhouseRoute
   '/docs': typeof DocsRoute
   '/launch': typeof LaunchRoute
+  '/locks': typeof LocksRoute
   '/mainnet': typeof MainnetRoute
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
@@ -279,6 +287,7 @@ export interface FileRoutesById {
   '/clubhouse': typeof ClubhouseRoute
   '/docs': typeof DocsRoute
   '/launch': typeof LaunchRoute
+  '/locks': typeof LocksRoute
   '/mainnet': typeof MainnetRoute
   '/points': typeof PointsRoute
   '/pools': typeof PoolsRoute
@@ -315,6 +324,7 @@ export interface FileRouteTypes {
     | '/clubhouse'
     | '/docs'
     | '/launch'
+    | '/locks'
     | '/mainnet'
     | '/points'
     | '/pools'
@@ -349,6 +359,7 @@ export interface FileRouteTypes {
     | '/clubhouse'
     | '/docs'
     | '/launch'
+    | '/locks'
     | '/mainnet'
     | '/points'
     | '/pools'
@@ -383,6 +394,7 @@ export interface FileRouteTypes {
     | '/clubhouse'
     | '/docs'
     | '/launch'
+    | '/locks'
     | '/mainnet'
     | '/points'
     | '/pools'
@@ -418,6 +430,7 @@ export interface RootRouteChildren {
   ClubhouseRoute: typeof ClubhouseRoute
   DocsRoute: typeof DocsRoute
   LaunchRoute: typeof LaunchRoute
+  LocksRoute: typeof LocksRoute
   MainnetRoute: typeof MainnetRoute
   PointsRoute: typeof PointsRoute
   PoolsRoute: typeof PoolsRoute
@@ -488,6 +501,13 @@ declare module '@tanstack/react-router' {
       path: '/launch'
       fullPath: '/launch'
       preLoaderRoute: typeof LaunchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/locks': {
+      id: '/locks'
+      path: '/locks'
+      fullPath: '/locks'
+      preLoaderRoute: typeof LocksRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/mainnet': {
@@ -682,6 +702,7 @@ const rootRouteChildren: RootRouteChildren = {
   ClubhouseRoute: ClubhouseRoute,
   DocsRoute: DocsRoute,
   LaunchRoute: LaunchRoute,
+  LocksRoute: LocksRoute,
   MainnetRoute: MainnetRoute,
   PointsRoute: PointsRoute,
   PoolsRoute: PoolsRoute,

@@ -6,6 +6,7 @@ import { publicClient } from "@/lib/chimi/client";
 import { ethText, money } from "@/lib/chimi/format";
 import { useEthUsd } from "@/lib/chimi/live";
 import { bpsLabel, hasFeeChoice, splitFor, type FeeSplit } from "@/lib/chimi/fee-split";
+import { CLIFF_PRESETS, DAY, VEST_PRESETS, describePlan, planProblem } from "@/lib/chimi/creator-lock-rules";
 import { feeLabel, fmt, short } from "@/lib/chimi/market";
 import { saveTokenMeta, shrinkImage } from "@/lib/chimi/meta";
 import { publishTokenProfile, refreshTokenProfiles } from "@/lib/chimi/token-image";
@@ -52,6 +53,10 @@ function LaunchPage() {
   const [devBuy, setDevBuy] = useState("");
   // Burn the coin with 10% of its fees: ticked unless the creator unticks it.
   const [burnOwn, setBurnOwn] = useState(true);
+  // Lock the first buy in the public creator lock: off unless the creator ticks it.
+  const [lockOn, setLockOn] = useState(false);
+  const [cliffDays, setCliffDays] = useState("90");
+  const [vestDays, setVestDays] = useState("0");
   const [balance, setBalance] = useState<bigint>();
   const [fee, setFee] = useState<bigint>();
   const [virtualQuote, setVirtualQuote] = useState<bigint>();
@@ -140,11 +145,16 @@ function LaunchPage() {
       }
       return;
     }
+    if (lockOn && canLock && (buy === 0n || lockProblem)) {
+      setKind("bad");
+      setNote(buy === 0n ? "Set a first buy to lock, or untick the lock." : lockProblem!);
+      return;
+    }
     try {
       setBusy(true);
       setKind("");
       setNote("Confirm the launch in your wallet.");
-      const token = await createCoin(name.trim(), symbol.trim(), devBuy.trim() || "0", burnOwn);
+      const token = await createCoin(name.trim(), symbol.trim(), devBuy.trim() || "0", burnOwn, locking ? { cliff: cliffN * DAY, vesting: vestN * DAY } : undefined);
       const profile = {
         description: description.trim(),
         image,
@@ -199,6 +209,12 @@ function LaunchPage() {
   const fdvEth = quote === 0n ? 0 : Number((quote * SUPPLY) / VIRTUAL_TOKEN) / 1e18;
   const opensAt = fdvEth ? (ethUsd ? money(fdvEth * ethUsd) : `${ethText(fdvEth)} ETH`) : undefined;
   const broke = !!account && balance !== undefined && total > balance;
+  // The first-buy lock, where the pad offers it.
+  const canLock = !!deployment?.creatorLock;
+  const cliffN = Math.floor(Number(cliffDays || "0"));
+  const vestN = Math.floor(Number(vestDays || "0"));
+  const lockProblem = lockOn ? planProblem(cliffN, vestN) : null;
+  const locking = canLock && lockOn && buy > 0n && !lockProblem;
   const missing = tried && (!name.trim() || !symbol.trim());
   const ready = !!name.trim() && !!symbol.trim();
 
@@ -350,6 +366,19 @@ function LaunchPage() {
               )}
             </p>
             {buy > 0n && quote > 0n ? <p className="mt-1 text-xs text-faint">An estimate at the opening price, after the {feeLabel(launchFee)} pool fee.</p> : null}
+            {canLock ? (
+              <LockChoice
+                on={lockOn}
+                onToggle={() => setLockOn(!lockOn)}
+                cliffDays={cliffDays}
+                vestDays={vestDays}
+                onCliff={setCliffDays}
+                onVest={setVestDays}
+                problem={lockProblem}
+                plan={describePlan(cliffN, vestN)}
+                noBuy={buy === 0n}
+              />
+            ) : null}
           </Panel>
 
           {choice && split ? (
@@ -420,6 +449,7 @@ function LaunchPage() {
                 <Row label="Opens at" value={opensAt ? `${opensAt} cap` : "—"} />
                 <Row label="Creation fee" value={!account ? "Connect to see" : due === 0n ? "None" : `${fmt(due, 4)} ETH`} />
                 <Row label="First buy" value={buy > 0n ? `${fmt(buy, 4)} ETH${quote > 0n ? ` · ${share.toFixed(2)}%` : ""}` : "None"} />
+                {canLock && buy > 0n ? <Row label="Lock" value={locking ? describePlan(cliffN, vestN) : lockOn ? "Fix the lock" : "None"} /> : null}
                 {choice && split ? <Row label="Your share of fees" value={bpsLabel(split.creatorBps)} /> : null}
                 <div className="flex items-baseline justify-between gap-4 border-t border-line pt-3">
                   <dt className="font-medium">You pay</dt>
@@ -446,6 +476,14 @@ function LaunchPage() {
                 The launch liquidity is locked for 100 years.
               </span>
             </Check>
+            {locking ? (
+              <Check on>
+                <span className="inline-flex items-center gap-1.5">
+                  <IconLock size={13} className="text-gold" />
+                  Your first buy goes straight into the public creator lock: {describePlan(cliffN, vestN)}.
+                </span>
+              </Check>
+            ) : null}
             <Check on={!!image || !!description.trim()}>After launching you sign once, with no gas, to share the picture and links with everyone.</Check>
           </ul>
         </aside>
@@ -487,6 +525,100 @@ function FeeBreakdown({ split, coin }: { split: FeeSplit; coin: string }) {
           </div>
         ))}
       </dl>
+    </div>
+  );
+}
+
+/**
+ * "Lock my first buy": it goes straight from the pool into the public creator lock in the launch transaction, so the
+ * creator never holds it unlocked. Nothing unlocks before the cliff, then it releases evenly over the vesting period.
+ */
+function LockChoice({
+  on,
+  onToggle,
+  cliffDays,
+  vestDays,
+  onCliff,
+  onVest,
+  problem,
+  plan,
+  noBuy,
+}: {
+  on: boolean;
+  onToggle: () => void;
+  cliffDays: string;
+  vestDays: string;
+  onCliff: (v: string) => void;
+  onVest: (v: string) => void;
+  problem: string | null;
+  plan: string;
+  noBuy: boolean;
+}) {
+  return (
+    <div className="mt-5">
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={on}
+        aria-labelledby="lock-title"
+        aria-describedby="lock-body"
+        onClick={onToggle}
+        className={`flex w-full items-start gap-3.5 rounded-2xl border px-4 py-3.5 text-left transition-colors ${on ? "border-gold/45 bg-gold/8" : "border-line hover:border-edge"}`}
+      >
+        <span className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-md border transition-colors ${on ? "border-gold bg-gold text-bg" : "border-edge bg-bg"}`} aria-hidden>
+          {on ? <IconCheck size={13} /> : null}
+        </span>
+        <span className="min-w-0">
+          <span id="lock-title" className="flex items-center gap-1.5 text-[15px] font-semibold">
+            <IconLock size={14} className="text-gold" />
+            Lock my first buy
+          </span>
+          <span id="lock-body" className="mt-0.5 block text-sm leading-relaxed text-muted">
+            It goes straight into the public creator lock in the launch transaction, so you never hold it unlocked. Nothing unlocks before the cliff, then it
+            releases evenly. You can push a lock later, never shorten it. Everyone sees it on the coin’s page.
+          </span>
+        </span>
+      </button>
+      {on ? (
+        <div className="mt-4 grid gap-4 rounded-2xl border border-line bg-bg p-4">
+          <DayPresets label="Cliff · nothing unlocks before" value={cliffDays} options={CLIFF_PRESETS} onChange={onCliff} fmt={(d) => (d >= 365 ? `${d / 365} year` : `${d} days`)} />
+          <DayPresets
+            label="Then release evenly over"
+            value={vestDays}
+            options={VEST_PRESETS}
+            onChange={onVest}
+            fmt={(d) => (d === 0 ? "All at the cliff" : d >= 365 ? `${d / 365} year` : `${d} days`)}
+          />
+          <p className={`text-sm ${problem ? "text-down" : "text-fg"}`}>{problem ?? `Your first buy: ${plan}.`}</p>
+          {noBuy && !problem ? <p className="text-xs text-gold">Set a first buy above, or there’s nothing to lock.</p> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Day presets plus a box for any number of days. */
+function DayPresets({ label, value, options, onChange, fmt }: { label: string; value: string; options: readonly number[]; onChange: (v: string) => void; fmt: (d: number) => string }) {
+  return (
+    <div>
+      <span className="label">{label}</span>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {options.map((d) => (
+          <button
+            key={d}
+            type="button"
+            aria-pressed={value === String(d)}
+            onClick={() => onChange(String(d))}
+            className={`btn btn-sm ${value === String(d) ? "border-gold/60 bg-gold/12 text-fg" : "btn-secondary"}`}
+          >
+            {fmt(d)}
+          </button>
+        ))}
+        <span className="day-field">
+          <input value={value} onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, "").slice(0, 4))} inputMode="numeric" aria-label={`${label}, in days`} className="num w-full min-w-0 bg-transparent outline-none" />
+          <span className="shrink-0 text-faint">days</span>
+        </span>
+      </div>
     </div>
   );
 }

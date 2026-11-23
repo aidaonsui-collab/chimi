@@ -10,6 +10,7 @@ import { xHandleOf } from "@/lib/chimi/x-rules";
 import { QuickAmount, QuickBuy } from "@/components/chimi/feed-rows";
 import { IconGlobe, IconPlus, IconTelegram, IconX } from "@/components/chimi/icons";
 import { TokenLogo } from "@/components/chimi/token-logo";
+import { DevLockedTag } from "@/components/chimi/creator-lock";
 import { LivePill } from "@/components/chimi/stream";
 import { useLiveTokens } from "@/lib/chimi/streams";
 import { Change, Seg, Sparkline } from "@/components/chimi/ui";
@@ -51,6 +52,8 @@ export type PairsBoardProps = {
   links?: Record<string, CoinLinks | undefined>;
   /** The platform's own coin (CHIMI), lowercase: it carries an Official tag. */
   official?: string;
+  /** Coins whose creator's first buy is still in the creator lock, lowercase: they carry a "Dev locked" tag. */
+  locked?: Set<string>;
   ethUsd?: number;
   /** When each coin launched, by lowercase token. */
   launched?: Map<string, number>;
@@ -85,7 +88,7 @@ const value = (row: Row, key: Column): number => {
   }
 };
 
-export function PairsBoard({ coins, stats, images, reserves, burned, links, official, ethUsd, launched, known, now, waiting, tradesReady, side }: PairsBoardProps) {
+export function PairsBoard({ coins, stats, images, reserves, burned, links, official, locked, ethUsd, launched, known, now, waiting, tradesReady, side }: PairsBoardProps) {
   const [sort, setSort] = useState<Sort>("trending");
   const [column, setColumn] = useState<ColumnSort>(null);
   const [shown, setShown] = useState(PAGE);
@@ -244,6 +247,7 @@ export function PairsBoard({ coins, stats, images, reserves, burned, links, offi
                           <span className="flex items-center gap-1.5">
                             <span className="truncate text-[15px] font-semibold">{row.coin.name}</span>
                             {official === token ? <span className="official-tag official-top shrink-0">Official</span> : null}
+                            {locked?.has(token) ? <DevLockedTag className="shrink-0" /> : null}
                             {row.coin.preview ? <span className="chip h-[18px] shrink-0 px-1.5 text-[10.5px]">preview</span> : null}
                             {live.has(token) ? <LivePill small /> : null}
                           </span>
