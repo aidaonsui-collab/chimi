@@ -798,7 +798,7 @@
   color: #fff;
   pointer-events: auto;
   transition: scale 0.15s ease;
-  will-change: transform;
+  will-change: translate;
 }
 .chart-bubble[data-side="sell"] {
   --ring: var(--color-down);

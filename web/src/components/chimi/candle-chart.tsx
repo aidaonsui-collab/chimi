@@ -138,7 +138,9 @@ export function CandleChart({
     const ys = stackBubbles(shown, size * 0.82, size, size / 2 + 3);
     shown.forEach(({ el, x }, i) => {
       el.style.display = "";
-      el.style.transform = `translate3d(${Math.round(x - size / 2)}px, ${Math.round(ys[i]! - size / 2)}px, 0)`;
+      // Placed with `translate`, not `transform`: the hover's `scale` then grows the bubble about its own centre. With
+      // `transform` the scale also stretched the offset, so a hovered bubble leapt away from the pointer and flickered.
+      el.style.translate = `${Math.round(x - size / 2)}px ${Math.round(ys[i]! - size / 2)}px`;
     });
   }, []);
 
