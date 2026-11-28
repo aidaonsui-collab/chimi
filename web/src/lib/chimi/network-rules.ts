@@ -26,6 +26,20 @@ export type Network = {
   dojang?: { scroll: Address; attesters: { id: `0x${string}`; name: string }[]; issueUrl: string };
   /** up.id: Upbit's names on GIWA. Absent: wallets show as 0x…. */
   upId?: { registry: Address };
+  /**
+   * The Ethereum chain GIWA settles on, and GIWA's own (native) bridge there: the L1StandardBridge from GIWA's contract
+   * list (docs.giwa.io/network-information/contracts). The Bridge page sends ETH through it to the same address on GIWA.
+   * Absent: no Bridge page. VITE_L1_RPC (browser) points `rpc` elsewhere, such as a local fork.
+   */
+  l1?: {
+    id: number;
+    name: string;
+    rpc: string;
+    explorer: { name: string; url: string };
+    standardBridge: Address;
+    /** GIWA's own bridge app, for the way back (withdrawals take about 7 days). */
+    officialBridgeUrl: string;
+  };
 };
 
 const MULTICALL3: Address = "0xcA11bde05977b3631167028862bE2a173976CA11";
@@ -48,6 +62,16 @@ export const GIWA_SEPOLIA: Network = {
     issueUrl: "https://sepolia-playground.giwa.io/",
   },
   upId: { registry: "0x091D00004f21eb2Fc30964A8a4995692d9b49628" },
+  // From GIWA's contract list (L1 contracts, Sepolia). Checked on 2026-11-27: the bridge's OTHER_BRIDGE is GIWA's
+  // L2StandardBridge (0x4200…0010), its messenger's portal is the listed OptimismPortal, and it isn't paused.
+  l1: {
+    id: 11155111,
+    name: "Ethereum Sepolia",
+    rpc: "https://ethereum-sepolia-rpc.publicnode.com",
+    explorer: { name: "Etherscan", url: "https://sepolia.etherscan.io" },
+    standardBridge: "0x77b2ffc0F57598cAe1DB76cb398059cF5d10A7E7",
+    officialBridgeUrl: "https://sepolia-bridge.giwa.io/",
+  },
 };
 
 /*
@@ -60,9 +84,13 @@ export const GIWA_SEPOLIA: Network = {
  *     explorer: { name: "GIWA", url: "<official explorer>" }, multicall3: "0xcA11bde05977b3631167028862bE2a173976CA11",
  *     dojang: { scroll: "<DojangScroll>", attesters: [{ id: "<Upbit Korea attester id>", name: "Upbit Korea" }],
  *               issueUrl: "<where to get a Dojang>" },
- *     upId: { registry: "<up.id registry>" } }
+ *     upId: { registry: "<up.id registry>" },
+ *     l1: { id: 1, name: "Ethereum", rpc: "<an Ethereum mainnet RPC>", explorer: { name: "Etherscan", url: "https://etherscan.io" },
+ *           standardBridge: "<L1StandardBridge from GIWA's mainnet contract list>", officialBridgeUrl: "<GIWA's bridge>" } }
  *
- * Check multicall3 has code there before relying on it.
+ * Check multicall3 has code there before relying on it. For `l1`, check the bridge's OTHER_BRIDGE() is
+ * 0x4200000000000000000000000000000000000010 and its messenger's portal() is GIWA's listed OptimismPortal: the Bridge
+ * page turns on with this entry, so a wrong address here sends people's ETH somewhere else.
  */
 
 /** A local chain for rehearsing a deploy (contracts/script/DeployChimiMainnet.s.sol on anvil). No GIWA identity. */

@@ -19,6 +19,7 @@ import {
   IconChevronRight,
   IconExternal,
   IconHouse,
+  IconBridge,
   IconLock,
   IconMenu,
   IconPlus,
@@ -36,7 +37,7 @@ import { WalletButton } from "@/components/chimi/wallet-menu";
 import { NETWORK } from "@/lib/chimi/network";
 
 type NavItem = {
-  to: "/" | "/clubhouse" | "/swap" | "/pools" | "/analytics" | "/points" | "/houses" | "/locks" | "/launch" | "/docs";
+  to: "/" | "/clubhouse" | "/swap" | "/bridge" | "/pools" | "/analytics" | "/points" | "/houses" | "/locks" | "/launch" | "/docs";
   label: string;
   icon: ComponentType<{ size?: number; className?: string }>;
   on: (path: string) => boolean;
@@ -50,6 +51,7 @@ const NAV: NavItem[] = [
   HOME,
   CLUBHOUSE,
   SWAP,
+  { to: "/bridge", label: "Bridge", icon: IconBridge, on: (p) => p === "/bridge" },
   { to: "/pools", label: "Pools", icon: IconPools, on: (p) => p === "/pools" || p.startsWith("/pool/") },
   { to: "/points", label: "Points", icon: IconPoints, on: (p) => p === "/points" },
   { to: "/houses", label: "Houses", icon: IconHouse, on: (p) => p.startsWith("/houses") },

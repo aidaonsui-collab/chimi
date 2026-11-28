@@ -28,6 +28,8 @@ import {
   tipsAbi,
 } from "@/lib/chimi/chain";
 import { publicClient } from "@/lib/chimi/client";
+import { bridgeAbi, l1Chain, l1Client } from "@/lib/chimi/bridge";
+import { CHIMI_TAG, DEPOSIT_L2_GAS, sameOwnerOnGiwa } from "@/lib/chimi/bridge-rules";
 import type { LockedPosition } from "@/lib/chimi/fees";
 import { ethText } from "@/lib/chimi/format";
 import { NETWORK } from "@/lib/chimi/network";
@@ -77,6 +79,12 @@ type ChimiContext = {
   claimFees: (positions: LockedPosition[]) => Promise<{ hash: string; received: bigint }>;
   /** Sends the creator what has unlocked so far in their first-buy lock `id`. Answers with what was sent. */
   claimLock: (id: bigint) => Promise<{ hash: string; amount: bigint }>;
+  /**
+   * Sends `wei` of ETH from Ethereum to the same address on GIWA through GIWA's own bridge (Bridge page). Moves the
+   * wallet to Ethereum first, and refuses a wallet that is a smart contract there (the same address on GIWA might not be
+   * its owner's). Answers with the deposit's hash as soon as the wallet sends it.
+   */
+  bridgeToGiwa: (wei: bigint) => Promise<`0x${string}`>;
   /** Personal-sign with the connected wallet (used to publish token pictures). */
   signMessage: (message: string) => Promise<`0x${string}`>;
   /**
@@ -572,6 +580,48 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
     [deployment],
   );
 
+  const bridgeToGiwa = useCallback(async (wei: bigint) => {
+    const l1 = NETWORK.l1;
+    if (!l1 || !l1Chain || !l1Client) throw new Error("Bridging isn't set up on this network.");
+    if (wei <= 0n) throw new Error("Enter an amount above 0.");
+    const { who } = await ready(false);
+    if (!sameOwnerOnGiwa(await l1Client.getCode({ address: who }).catch(() => undefined))) {
+      throw new Error(`This wallet is a smart contract on ${l1.name}, so the same address on GIWA may not be yours. Bridge from a regular wallet.`);
+    }
+    const eth = ethereum();
+    if (!eth) throw new Error("No wallet in this browser.");
+    const client = createWalletClient({ chain: l1Chain, transport: custom(eth) });
+    if ((await client.getChainId().catch(() => undefined)) !== l1.id) {
+      try {
+        await client.switchChain({ id: l1.id });
+      } catch {
+        await eth.request({
+          method: "wallet_addEthereumChain",
+          params: [
+            {
+              chainId: numberToHex(l1.id),
+              chainName: l1.name,
+              nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+              rpcUrls: [l1.rpc],
+              blockExplorerUrls: [l1.explorer.url],
+            },
+          ],
+        });
+      }
+    }
+    // To the sender's own address on GIWA. bridgeETHTo, not depositETH: the latter refuses EIP-7702 accounts.
+    return client.writeContract({
+      account: who,
+      chain: l1Chain,
+      address: l1.standardBridge,
+      abi: bridgeAbi,
+      functionName: "bridgeETHTo",
+      args: [who, DEPOSIT_L2_GAS, CHIMI_TAG],
+      value: wei,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const signMessage = useCallback(async (message: string) => {
     const { who, client } = await ready(false);
     return client.signMessage({ account: who, message });
@@ -597,10 +647,11 @@ export function ChimiProvider({ children }: { children: ReactNode }) {
       quickBuy,
       unwrap,
       claimFees,
+      bridgeToGiwa,
       signMessage,
       tip,
     }),
-    [deployment, live, coins, loading, preview, note, account, connect, disconnect, ensureChain, refresh, createCoin, claimLock, trade, quickBuy, unwrap, claimFees, signMessage, tip],
+    [deployment, live, coins, loading, preview, note, account, connect, disconnect, ensureChain, refresh, createCoin, claimLock, trade, quickBuy, unwrap, claimFees, bridgeToGiwa, signMessage, tip],
   );
 
   return (

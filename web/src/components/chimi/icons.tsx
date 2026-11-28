@@ -257,6 +257,12 @@ export const IconLock = (p: IconProps) => (
     <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" />
   </Svg>
 );
+/** A suspension bridge: two towers, the cable between them, the deck. */
+export const IconBridge = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 15.5h18M7 6.5v12M17 6.5v12M3 9c1.6 0 3-1 4-2.5C8.6 9.4 10.2 11 12 11s3.4-1.6 5-4.5c1 1.5 2.4 2.5 4 2.5" />
+  </Svg>
+);
 export const IconGlobe = (p: IconProps) => (
   <Svg {...p}>
     <circle cx="12" cy="12" r="8.5" />

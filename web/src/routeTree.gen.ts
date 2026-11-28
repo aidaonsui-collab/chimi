@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as BoardRouteImport } from './routes/board'
+import { Route as BridgeRouteImport } from './routes/bridge'
 import { Route as ClubhouseRouteImport } from './routes/clubhouse'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as LaunchRouteImport } from './routes/launch'
@@ -56,6 +57,11 @@ const AnalyticsRoute = AnalyticsRouteImport.update({
 const BoardRoute = BoardRouteImport.update({
   id: '/board',
   path: '/board',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BridgeRoute = BridgeRouteImport.update({
+  id: '/bridge',
+  path: '/bridge',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ClubhouseRoute = ClubhouseRouteImport.update({
@@ -213,6 +219,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/board': typeof BoardRoute
+  '/bridge': typeof BridgeRoute
   '/clubhouse': typeof ClubhouseRoute
   '/docs': typeof DocsRoute
   '/launch': typeof LaunchRoute
@@ -248,6 +255,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/board': typeof BoardRoute
+  '/bridge': typeof BridgeRoute
   '/clubhouse': typeof ClubhouseRoute
   '/docs': typeof DocsRoute
   '/launch': typeof LaunchRoute
@@ -284,6 +292,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/board': typeof BoardRoute
+  '/bridge': typeof BridgeRoute
   '/clubhouse': typeof ClubhouseRoute
   '/docs': typeof DocsRoute
   '/launch': typeof LaunchRoute
@@ -321,6 +330,7 @@ export interface FileRouteTypes {
     | '/'
     | '/analytics'
     | '/board'
+    | '/bridge'
     | '/clubhouse'
     | '/docs'
     | '/launch'
@@ -356,6 +366,7 @@ export interface FileRouteTypes {
     | '/'
     | '/analytics'
     | '/board'
+    | '/bridge'
     | '/clubhouse'
     | '/docs'
     | '/launch'
@@ -391,6 +402,7 @@ export interface FileRouteTypes {
     | '/'
     | '/analytics'
     | '/board'
+    | '/bridge'
     | '/clubhouse'
     | '/docs'
     | '/launch'
@@ -427,6 +439,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AnalyticsRoute: typeof AnalyticsRoute
   BoardRoute: typeof BoardRoute
+  BridgeRoute: typeof BridgeRoute
   ClubhouseRoute: typeof ClubhouseRoute
   DocsRoute: typeof DocsRoute
   LaunchRoute: typeof LaunchRoute
@@ -480,6 +493,13 @@ declare module '@tanstack/react-router' {
       path: '/board'
       fullPath: '/board'
       preLoaderRoute: typeof BoardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/bridge': {
+      id: '/bridge'
+      path: '/bridge'
+      fullPath: '/bridge'
+      preLoaderRoute: typeof BridgeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/clubhouse': {
@@ -699,6 +719,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnalyticsRoute: AnalyticsRoute,
   BoardRoute: BoardRoute,
+  BridgeRoute: BridgeRoute,
   ClubhouseRoute: ClubhouseRoute,
   DocsRoute: DocsRoute,
   LaunchRoute: LaunchRoute,
