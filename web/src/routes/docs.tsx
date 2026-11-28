@@ -109,6 +109,16 @@ function Docs() {
                 Test ETH for {NETWORK.name} comes from GIWA's faucets. Everything here runs on the testnet, so nothing on it has real-money value.
               </P>
             ) : null}
+            {NETWORK.l1 ? (
+              <P>
+                ETH on {NETWORK.l1.name} comes over on the{" "}
+                <Link to="/bridge" className="docs-link">
+                  Bridge
+                </Link>{" "}
+                page: one transaction through GIWA's own bridge, to the same address, usually there within a few minutes. Chimi adds no fee to it. Going back to{" "}
+                {NETWORK.l1.name} takes about 7 days on any native bridge, so that way goes through GIWA's bridge app.
+              </P>
+            ) : null}
           </Section>
 
           <Section id="launch" title="Launching a coin">

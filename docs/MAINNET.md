@@ -10,7 +10,7 @@ GIWA mainnet isn't live yet. On 2026-11-20 GIWA's docs ([connect to GIWA](https:
 |---|---|---|
 | Contracts | `contracts/script/DeployChimiMainnet.s.sol` (library `ChimiMainnet.sol`) | One run deploys everything in its final form (below). |
 | Which chain the app runs on | `web/public/deployments.json` → its `chainId` | Replace it with the file the deploy writes. |
-| That chain's details | `web/src/lib/chimi/network-rules.ts` | Add mainnet's entry: name, RPC, explorer, Dojang, up.id. Until you do, the app stops with a clear error as soon as it loads. |
+| That chain's details | `web/src/lib/chimi/network-rules.ts` | Add mainnet's entry: name, RPC, explorer, Dojang, up.id, and `l1` (Ethereum and GIWA's L1StandardBridge there) for the Bridge page. Until you do, the app stops with a clear error as soon as it loads. |
 | Server data | Vercel env (Upstash Redis) | Start mainnet on a **new, empty** Redis. Points, Houses, follows, comments, streams, tips, X posts and token profiles are all keyed to testnet addresses. |
 | Keeper | Vercel env | A keeper wallet with mainnet ETH for gas; its address goes into the deploy. |
 
@@ -87,7 +87,8 @@ The same order is covered by `forge test --match-contract ChimiMainnetTest`.
 1. **Confirm GIWA mainnet's details** on docs.giwa.io: chain id, RPC, explorer. Use a production RPC provider; GIWA's public RPC is rate-limited and "not suitable for production" per its docs. Also confirm:
    - WETH has code at `0x4200000000000000000000000000000000000006`;
    - Multicall3 has code at `0xcA11bde05977b3631167028862bE2a173976CA11`;
-   - the DojangScroll and up.id addresses, and the Upbit attester id.
+   - the DojangScroll and up.id addresses, and the Upbit attester id;
+   - GIWA's L1StandardBridge on Ethereum mainnet, from GIWA's contract list. Check its `OTHER_BRIDGE()` is `0x4200000000000000000000000000000000000010` and its `messenger()`'s `portal()` is GIWA's listed OptimismPortal. The Bridge page sends people's ETH to this address, so take it from docs.giwa.io only.
 2. **Deploy** from `contracts/`:
 
    ```bash
@@ -119,6 +120,7 @@ The same order is covered by `forge test --match-contract ChimiMainnetTest`.
    - once the keeper has burned, CHIMI's **Burned** column on the board is above 0%. The keeper burns on its daily run, or when called with the cron secret after some trading. The column reads the burn address with Multicall3, so a column stuck on "—" means Multicall3 is missing (step 1);
    - from a wallet with a Dojang, found a house with a **picture seal**. The upload going through shows `BLOB_READ_WRITE_TOKEN` works on this deployment;
    - **Connect, Disconnect, Connect again**: the wallet asks which account to share, and with two wallets installed Chimi first asks which wallet;
+   - the **Bridge** page: bridge a small amount from Ethereum, and see it under Your bridges as Arrived, with the ETH in the wallet on GIWA;
    - a launch with **Lock my first buy** ticked: the coin page shows the creator lock card and a "Dev locked" tag, the lock is on `/locks`, and the creator's wallet holds none of the first buy.
 
 To keep the testnet running alongside, deploy a second Vercel project (e.g. testnet.chimi.club) from a branch whose `deployments.json` is Sepolia's. Before step 6 switches production's settings, copy today's to the new project:
